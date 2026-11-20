@@ -16,7 +16,12 @@ Architecture only. The four instruments sound, look and behave exactly as in 0.5
 - v4 and v5 songs migrate to v6 without loss: patterns, notes, steps, parameters, macros, mute/solo, scenes, harmony, arrangement (ids and repeats) and snapshots. v5 → v6 is deterministic and idempotent.
 - Files from a newer version, with an unknown instrument, or with more scenes/slots than supported are refused with a message instead of being cut down.
 
+### Fixed (post-merge hardening)
+- **Recoverable v0.5 → v6 library migration**: the v6 index keeps a per-song ledger (`v5Migration`). A song that fails to copy (storage quota vs. damaged data are told apart) no longer marks the whole library as adopted: it is retried on every launch, copied songs are never duplicated or overwritten, deleted ones are not resurrected, and the v0.5 keys are never written. A warning toast appears when songs could not be copied. Libraries created by the first v6 build are reconciled once.
+- **Solo ignores planned instruments**: `anySolo()` only counts playable slots, so a stored MUNCH slot with `solo: true` can no longer silence BOP, GOO, BLIP or FUZZ.
+
 ### Tests
+- New `tests/library-migration.test.mjs` and `tests/solo.test.mjs`.
 - New `tests/instruments.test.mjs`, `tests/migration.test.mjs`, `tests/scheduler.test.mjs` and `tests/app.test.mjs`, with golden references frozen from v0.5.1 (songs, scheduler dispatch logs, generator output).
 - `npm run test:ui` covers the slot flows and the v0.5 → v6 library upgrade.
 - New `npm run test:baseline` compares offline audio renders and screenshots with a baseline build.

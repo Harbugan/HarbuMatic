@@ -72,10 +72,10 @@ export function Switch(label, on, onToggle, title) {
 }
 
 let toastT = 0;
-export function toast(msg) {
+export function toast(msg, ms = 1800) {
   const t = $('#toast'); if (!t) return;
   t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 /* ---------- modal dialog ---------- */
