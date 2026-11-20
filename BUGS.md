@@ -64,20 +64,21 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### ENH-001 — Expand Scene Library beyond six scenes
 - **Type:** Enhancement (not a bug)
 - **Priority:** P3 — Low / product review
-- **Status:** Open
+- **Status:** Planned for v0.9 (not part of v0.5.1)
 - **Reported in:** v0.5
 - **Observed:** The Scene Library is limited to six scenes.
 - **Desired:** Let users add more scenes when needed, without overwhelming the tablet UI.
 - **Design questions:** Dynamic scene creation/removal? Practical upper limit? Scene duplication? How to display and navigate larger libraries?
 - **Technical considerations:** Review fixed-size assumptions across scene IDs, pattern storage, song chains, rendering, serialization, migrations, and scene switching.
 - **Acceptance (provisional):** Users can create, select, rename, duplicate, arrange, and persist additional scenes beyond the original six; existing projects remain compatible.
-- **Note:** Scope and version placement require a product decision; do not silently expand this during a bugfix pass.
+- **Decision:** Scheduled for v0.9 Expand & Finish. v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
 
 ## v0.5.1 proposed scope
 
 **Fix first:** BUG-001, BUG-003, BUG-004.  
 **Polish:** BUG-002 after collecting concrete visual examples.  
-**Evaluate separately:** ENH-001; include only after confirming its scope.
+**Release identity:** Show the canonical version number and exact credit `Created by .::H∆RBUGΛП::.` discreetly and consistently.  
+**Deferred:** ENH-001 is planned for v0.9, with project-schema preparation in v0.6.
 
 ## Verification log
 
