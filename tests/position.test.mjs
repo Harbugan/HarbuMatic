@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEmptyProject, newBlock } from '../src/core/project.js';
+import { createEmptyProject, newBlock as blockOf, sceneIdAt } from '../src/core/project.js';
+
+let cur = null; // newBlock by scene index for readability
+const newBlock = (sc, reps) => blockOf(sceneIdAt(cur, sc), reps);
+const role = (p, r) => p.slots[['drums', 'bass', 'synth', 'fuzz'].indexOf(r)];
 import { startPosition, advance, isLoopBoundary } from '../src/audio/position.js';
 
 function walk(project, steps, { pendingAt = {}, onStep } = {}) {
@@ -18,13 +22,13 @@ function walk(project, steps, { pendingAt = {}, onStep } = {}) {
 }
 
 test('loop mode repeats the selected scene', () => {
-  const p = createEmptyProject(); p.scene = 2;
+  const p = (cur = createEmptyProject()); p.scene = 2;
   const s = walk(p, 200);
   assert.ok(s.every(x => x.scene === 2));
 });
 
 test('queued scene switches exactly on the next bar line', () => {
-  const p = createEmptyProject();
+  const p = (cur = createEmptyProject());
   const s = walk(p, 64, { pendingAt: { 5: 3 } });
   const first = s.findIndex(x => x.scene === 3);
   assert.equal(first, 16);
@@ -32,11 +36,11 @@ test('queued scene switches exactly on the next bar line', () => {
 });
 
 test('song mode follows the arrangement order, including repeats', () => {
-  const p = createEmptyProject();
+  const p = (cur = createEmptyProject());
   p.songMode = true;
-  p.tracks.synth.patterns.forEach(pt => { pt.len = 32; });
-  p.tracks.bass.patterns.forEach(pt => { pt.len = 16; });
-  p.tracks.fuzz.patterns.forEach(pt => { pt.len = 16; });
+  Object.values(role(p, 'synth').patterns).forEach(pt => { pt.len = 32; });
+  Object.values(role(p, 'bass').patterns).forEach(pt => { pt.len = 16; });
+  Object.values(role(p, 'fuzz').patterns).forEach(pt => { pt.len = 16; });
   p.arrangement = [newBlock(0), newBlock(2, 2), newBlock(1)];
   const s = walk(p, 32 * 5);
   const order = [];
@@ -45,18 +49,18 @@ test('song mode follows the arrangement order, including repeats', () => {
 });
 
 test('song mode uses each scene\'s longest pattern as its length', () => {
-  const p = createEmptyProject();
+  const p = (cur = createEmptyProject());
   p.songMode = true;
   TRACKS_LEN(p, 0, 64); TRACKS_LEN(p, 1, 16);
   p.arrangement = [newBlock(0), newBlock(1)];
   const s = walk(p, 64 + 16 + 1);
   assert.equal(s[63].scene, 0); assert.equal(s[64].scene, 1); assert.equal(s[80].scene, 0);
 });
-function TRACKS_LEN(p, sc, len) { ['drums', 'bass', 'synth', 'fuzz'].forEach(t => { p.tracks[t].patterns[sc].len = len; }); }
+function TRACKS_LEN(p, sc, len) { p.slots.forEach(s => { s.patterns[sceneIdAt(p, sc)].len = len; }); }
 
 test('auto-evolve loop boundary fires on every loop for every pattern length', () => {
   for (const len of [16, 32, 64]) {
-    const p = createEmptyProject();
+    const p = (cur = createEmptyProject());
     const hits = [];
     walk(p, 64 * 3, { onStep: (pos, i) => { if (isLoopBoundary(pos, len)) hits.push(i); } });
     const expected = []; for (let i = len; i < 64 * 3; i += len) expected.push(i);
@@ -65,7 +69,7 @@ test('auto-evolve loop boundary fires on every loop for every pattern length', (
 });
 
 test('the very first step after a start or scene change is not a loop boundary', () => {
-  const p = createEmptyProject();
+  const p = (cur = createEmptyProject());
   const s = walk(p, 40, { pendingAt: { 3: 1 } });
   assert.equal(isLoopBoundary(s[0], 16), false);
   assert.equal(isLoopBoundary(s[16], 16), false, 'scene changed at 16');
@@ -73,7 +77,7 @@ test('the very first step after a start or scene change is not a loop boundary',
 });
 
 test('arrangement edits during playback never crash the walker', () => {
-  const p = createEmptyProject(); p.songMode = true;
+  const p = (cur = createEmptyProject()); p.songMode = true;
   p.arrangement = [newBlock(0), newBlock(1), newBlock(2)];
   let pos = startPosition(p, { fromBlock: 2 });
   p.arrangement.splice(1, 2);

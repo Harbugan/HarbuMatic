@@ -1,8 +1,9 @@
 // Pure playback-position logic (no Web Audio): which scene/step plays next, when queued
 // scene changes happen, how the song arrangement is walked and where loops restart.
+// Positions carry scene *indexes* (what is shown); arrangement blocks reference scenes by id.
 // Kept separate so it can be unit-tested deterministically.
 
-import { maxLen } from '../core/project.js';
+import { maxLen, blockScene } from '../core/project.js';
 import { clamp } from '../core/util.js';
 
 export const BAR = 16;
@@ -18,7 +19,7 @@ export const songActive = project => !!project.songMode && project.arrangement.l
 export function startPosition(project, { fromBlock = 0, scene } = {}) {
   if (songActive(project)) {
     const block = clamp(fromBlock, 0, project.arrangement.length - 1);
-    return { song: true, block, rep: 0, scene: project.arrangement[block].scene, step: 0, fresh: true };
+    return { song: true, block, rep: 0, scene: blockScene(project, project.arrangement[block]), step: 0, fresh: true };
   }
   return { song: false, block: 0, rep: 0, scene: scene ?? project.scene, step: 0, fresh: true };
 }
@@ -28,20 +29,20 @@ export function advance(pos, project, pending = null) {
   let { song, block, rep, scene, step } = pos;
   step++;
   let pendingUsed = false, sceneChanged = false;
-  const arr = project.arrangement;
+  const arr = project.arrangement, sceneOf = k => blockScene(project, arr[k]);
   if (songActive(project)) {
     if (!song) { // song mode switched on while looping: join the song on the next bar line
-      if (step % BAR === 0) { song = true; block = 0; rep = 0; sceneChanged = scene !== arr[0].scene; scene = arr[0].scene; step = 0; }
+      if (step % BAR === 0) { song = true; block = 0; rep = 0; sceneChanged = scene !== sceneOf(0); scene = sceneOf(0); step = 0; }
       else if (step >= LOOP_WRAP) step = 0;
     } else {
       if (block >= arr.length) { block = 0; rep = 0; }
       if (step >= maxLen(project, scene)) {
         step = 0; rep++;
         const b = arr[block];
-        if (rep >= b.reps || b.scene !== scene) {
+        if (rep >= b.reps || sceneOf(block) !== scene) {
           block = (block + 1) % arr.length; rep = 0;
-          sceneChanged = arr[block].scene !== scene;
-          scene = arr[block].scene;
+          sceneChanged = sceneOf(block) !== scene;
+          scene = sceneOf(block);
         }
       }
     }

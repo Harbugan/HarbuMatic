@@ -1,97 +1,148 @@
-// Project schema v5: creation, v0.4 migration and validation.
+// Project schema v6: creation, migration (v4 → v5 → v6), validation and slot/scene accessors.
 //
 // A project is plain JSON (portable, framework-free):
 // {
-//   format: 'harbumatic-project', v: 5, id, name, created, modified,
+//   format: 'harbumatic-project', v: 6, id, name, created, modified,
 //   bpm, swing, key, scale, scene, songMode,
-//   scenes:      [{ name, harmony: null | { degrees: number[], span: number } }]   (6)
-//   arrangement: [{ id, scene, reps }]            ordered scene instances = the song
-//   tracks:      { drums|bass|synth|fuzz: { mute, solo, params, macros, patterns: Pattern[6] } }
+//   scenes:      [{ id: 'scene-01', name, harmony: null | { degrees: number[], span: number } }]
+//   arrangement: [{ id, sceneId, reps }]            ordered scene instances = the song
+//   slots:       [{ id: 'slot-01', type: 'bop', mute, solo, params, macros, patterns: { [sceneId]: Pattern } }]
 //   lab:         { chaos, density, mood, targets }
-//   snaps:       (null | { tracks: Pattern[4], macros: Macros[4] })[4]
+//   snaps:       (null | { slots: { [slotId]: { type, pattern: Pattern, macros } } })[4]
 //   fx:          { fb, dtone, rev, master }
 // }
 // Drum pattern:    { len, steps: { [drumId]: ({ v, p } | null)[] }, locked: { [drumId]: true } }
 // Melodic pattern: { len, notes: [{ s, p, l, v, pr?, o?, slide?, locked? }] }
+//
+// Identity rules
+// - A slot is one instrument instance. Its `id` is stable and never depends on `type`; replacing the
+//   instrument later changes `type`/`params`/`patterns`, never `id`. Two slots may share a type.
+// - Scenes have stable ids. Patterns and arrangement blocks reference scenes by id, so scenes can later
+//   be added, removed or reordered without re-indexing anything. `scene` (the scene being edited) stays
+//   an index into `scenes` because it is view state, not a reference.
+// - Snapshots key their content by slot id and remember the type, so a recall never pours one
+//   instrument's pattern into a different kind of instrument.
 
-import { TRACKS, DRUMS, DRUM_IDS, NSCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_PARAMS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
+import { DRUM_IDS, NSCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
+import {
+  getInstrumentType, hasInstrumentType, isPlayableType, defaultParamsFor, createPatternFor, emptyPatternOfKind,
+  patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS,
+} from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 
 export const FORMAT = 'harbumatic-project';
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
+/** scenes this version can show and play (the schema itself has no fixed count) */
+export const MAX_SCENES = NSCENES;
 
-export function emptyPattern(track, len = 16) {
-  if (track === 'drums') {
-    const steps = {};
-    DRUMS.forEach(d => { steps[d.id] = Array(len).fill(null); });
-    return { len, steps, locked: {} };
-  }
-  return { len, notes: [] };
+/* ---------------------------------------------------------
+   Ids
+   --------------------------------------------------------- */
+const pad2 = n => String(n).padStart(2, '0');
+export const slotIdFor = n => `slot-${pad2(n)}`;
+export const sceneIdFor = n => `scene-${pad2(n)}`;
+const ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
+const validId = v => typeof v === 'string' && ID_RE.test(v);
+function nextId(make, used) { let n = 1; while (used.has(make(n))) n++; return make(n); }
+/** the next free slot id of a project (slot-05 for a new song: reserved for MUNCH) */
+export const nextSlotId = project => nextId(slotIdFor, new Set(project.slots.map(s => s.id)));
+export const nextSceneId = project => nextId(sceneIdFor, new Set(project.scenes.map(s => s.id)));
+
+/* ---------------------------------------------------------
+   Accessors (the only way the rest of the app should reach slot/scene data)
+   --------------------------------------------------------- */
+export const slotById = (project, id) => project.slots.find(s => s.id === id) || null;
+export const typeOfSlot = slot => getInstrumentType(slot.type);
+/** slots whose instrument can sound (and is shown); planned types such as MUNCH are skipped */
+export const playableSlots = project => project.slots.filter(s => isPlayableType(s.type));
+export const sceneIdAt = (project, idx) => (project.scenes[idx] ? project.scenes[idx].id : null);
+export const sceneIndexOf = (project, id) => project.scenes.findIndex(s => s.id === id);
+/** scene index an arrangement block plays (0 if its reference is broken; validation prevents that) */
+export const blockScene = (project, block) => Math.max(0, sceneIndexOf(project, block.sceneId));
+export const patternAt = (project, slotId, sceneIdx = project.scene) => slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)];
+export function setPatternAt(project, slotId, sceneIdx, pattern) { slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)] = pattern; }
+export const anySolo = project => project.slots.some(s => s.solo);
+export const slotAudible = (project, slot) => (anySolo(project) ? slot.solo : !slot.mute);
+/**
+ * Patterns of one scene keyed by musical role ('drums', 'bass', …) for src/music, which reasons in roles.
+ * The first playable slot of each role wins; a missing drum role gets an empty grid so grooves still work.
+ */
+export function rolePatterns(project, sceneIdx) {
+  const out = {};
+  for (const s of playableSlots(project)) { const r = typeOfSlot(s).role; if (r && !out[r]) out[r] = patternAt(project, s.id, sceneIdx); }
+  if (!out.drums) out.drums = emptyPatternOfKind('drum', 16);
+  return out;
 }
 
-export function patternIsEmpty(track, p) {
-  return track === 'drums' ? !DRUM_IDS.some(id => p.steps[id].some(Boolean)) : !p.notes.length;
-}
+/* ---------------------------------------------------------
+   Creation
+   --------------------------------------------------------- */
+export function emptyPattern(type, len) { return createPatternFor(type, len); }
+export function patternIsEmpty(type, p) { return patternKindIsEmpty(getInstrumentType(type).pattern, p); }
 
-export const newBlock = (scene, reps = 1) => ({ id: uid('blk'), scene, reps });
+export const newBlock = (sceneId, reps = 1) => ({ id: uid('blk'), sceneId, reps });
+
+/** one instrument instance with default sound and empty patterns for the given scenes */
+export function createSlot(type, id, sceneIds) {
+  return {
+    id, type, mute: false, solo: false, params: defaultParamsFor(type), macros: DEFAULT_MACROS(),
+    patterns: Object.fromEntries(sceneIds.map(sid => [sid, createPatternFor(type)])),
+  };
+}
 
 /** A genuinely empty song: four instruments, default sounds, no notes, no arrangement. */
 export function createEmptyProject({ name = 'Untitled song', bpm = 120, key = 9, scale = 'minor', mood } = {}) {
   const now = new Date().toISOString();
+  const scenes = SCENE_NAMES.map((n, i) => ({ id: sceneIdFor(i + 1), name: n, harmony: null }));
   const p = {
     format: FORMAT, v: SCHEMA_VERSION, id: uid('song'), name, created: now, modified: now,
     bpm, swing: .08, key, scale, scene: 0, songMode: false,
-    scenes: SCENE_NAMES.map(n => ({ name: n, harmony: null })),
+    scenes,
     arrangement: [],
-    tracks: {},
+    slots: DEFAULT_SLOT_TYPES.map((t, i) => createSlot(t, slotIdFor(i + 1), scenes.map(s => s.id))),
     lab: DEFAULT_LAB(),
     snaps: [null, null, null, null],
     fx: DEFAULT_FX(),
   };
   if (mood) p.lab.mood = mood;
-  TRACKS.forEach(t => {
-    p.tracks[t] = {
-      mute: false, solo: false, params: clone(DEFAULT_PARAMS[t]), macros: DEFAULT_MACROS(),
-      patterns: Array.from({ length: NSCENES }, () => emptyPattern(t, t === 'drums' ? 16 : 32)),
-    };
-  });
   return p;
 }
 
 const chordNotes = (list, len, v) => list.flatMap(([s, ps]) => ps.map(p => ({ s, p, l: len, v })));
 
-/** The v0.4 demo song, rebuilt in schema v5 (A minor, i–VI–III–VII). */
+/** The v0.4 demo song (A minor, i–VI–III–VII); same content as in v0.5. */
 export function createDemoProject() {
   const s = createEmptyProject({ name: 'Demo jam', bpm: 118, key: 9, scale: 'minor', mood: 'dreamy' });
   s.swing = .12; s.scene = 1; s.lab.chaos = .4;
-  s.arrangement = [newBlock(0), newBlock(1, 2), newBlock(2)];
+  s.arrangement = [newBlock(sceneIdAt(s, 0)), newBlock(sceneIdAt(s, 1), 2), newBlock(sceneIdAt(s, 2))];
   const harmony = { degrees: [0, 5, 2, 6], span: 32 };
   s.scenes.forEach((sc, i) => { if (i < 3) sc.harmony = clone(harmony); });
-  const T = s.tracks;
-  const dA = T.drums.patterns[0];
+  const [BOP, GOO, BLIP, FUZZ] = s.slots.map(x => x.id);
+  const get = (slot, i) => patternAt(s, slot, i), put = (slot, i, p) => setPatternAt(s, slot, i, p);
+  const dA = get(BOP, 0);
   [0, 4, 8, 12].forEach(i => { dA.steps.kick[i] = { v: .95, p: 1 }; });
   [2, 6, 10, 14].forEach(i => { dA.steps.ohh[i] = { v: .55, p: 1 }; });
   for (let i = 1; i < 16; i += 2) dA.steps.chh[i] = { v: .35, p: .8 };
-  const fA = T.fuzz.patterns[0]; fA.len = 32; fA.notes = [{ s: 0, p: 69, l: 14, v: .7 }, { s: 16, p: 76, l: 14, v: .6 }];
-  const sA = T.synth.patterns[0];
+  const fA = get(FUZZ, 0); fA.len = 32; fA.notes = [{ s: 0, p: 69, l: 14, v: .7 }, { s: 16, p: 76, l: 14, v: .6 }];
+  const sA = get(BLIP, 0);
   sA.notes = chordNotes([[0, [57, 60, 64]], [8, [53, 57, 60]], [16, [48, 52, 55, 60]], [24, [55, 59, 62]]], 6, .55);
-  const dB = T.drums.patterns[1] = clone(dA);
+  const dB = clone(dA); put(BOP, 1, dB);
   [4, 12].forEach(i => { dB.steps.clap[i] = { v: .85, p: 1 }; });
   for (let i = 0; i < 16; i++) dB.steps.chh[i] = i % 2 ? { v: .3, p: .85 } : (dB.steps.ohh[i] ? null : { v: .5, p: 1 });
   dB.steps.rim[7] = { v: .5, p: .6 }; dB.steps.rim[13] = { v: .45, p: .5 }; dB.steps.kick[14] = { v: .55, p: .5 };
-  const bB = T.bass.patterns[1];
+  const bB = get(GOO, 1);
   bB.notes = [
     { s: 0, p: 33, l: 1, v: .9 }, { s: 2, p: 45, l: 1, v: 1 }, { s: 3, p: 33, l: 1, v: .7, slide: true }, { s: 4, p: 36, l: 1, v: .75 },
     { s: 6, p: 33, l: 1, v: .8 }, { s: 7, p: 40, l: 1, v: .95 }, { s: 8, p: 33, l: 2, v: .8 }, { s: 10, p: 45, l: 1, v: .7, slide: true },
     { s: 11, p: 43, l: 1, v: .75 }, { s: 12, p: 33, l: 1, v: .85 }, { s: 14, p: 36, l: 1, v: 1, slide: true }, { s: 15, p: 38, l: 1, v: .7 },
   ];
-  T.synth.patterns[1] = clone(sA);
-  T.synth.patterns[1].notes.push(
+  put(BLIP, 1, clone(sA));
+  get(BLIP, 1).notes.push(
     { s: 2, p: 76, l: 2, v: .6 }, { s: 6, p: 74, l: 2, v: .55 }, { s: 10, p: 72, l: 2, v: .6 }, { s: 13, p: 69, l: 3, v: .55 },
     { s: 18, p: 72, l: 2, v: .6 }, { s: 22, p: 74, l: 2, v: .55 }, { s: 26, p: 76, l: 2, v: .65 }, { s: 29, p: 79, l: 3, v: .6 });
-  T.fuzz.patterns[1] = clone(fA);
-  T.drums.patterns[2] = clone(dB); T.bass.patterns[2] = clone(bB); T.synth.patterns[2] = clone(T.synth.patterns[1]);
-  T.drums.patterns[2].steps.tom[15] = { v: .7, p: 1 }; T.drums.patterns[2].steps.cow[10] = { v: .4, p: .7 };
+  put(FUZZ, 1, clone(fA));
+  put(BOP, 2, clone(dB)); put(GOO, 2, clone(bB)); put(BLIP, 2, clone(get(BLIP, 1)));
+  get(BOP, 2).steps.tom[15] = { v: .7, p: 1 }; get(BOP, 2).steps.cow[10] = { v: .4, p: .7 };
   return s;
 }
 
@@ -115,14 +166,52 @@ export function migrateV4(old) {
   p.format = FORMAT; p.v = 5;
   p.id = uid('song'); p.name = typeof old.name === 'string' && old.name ? old.name : 'My v0.4 jam';
   p.created = p.created || now; p.modified = now;
-  p.arrangement = (Array.isArray(old.chain) ? old.chain : []).filter(i => Number.isInteger(i)).map(i => newBlock(i, 1));
+  p.arrangement = (Array.isArray(old.chain) ? old.chain : []).filter(i => Number.isInteger(i)).map(i => ({ id: uid('blk'), scene: i, reps: 1 }));
   delete p.chain;
   p.scenes = (Array.isArray(old.scenes) ? old.scenes : []).map(sc => ({ name: sc && sc.name, harmony: null }));
   return p;
 }
 
 /**
- * Turn any parsed JSON into a valid v5 project or throw ProjectError with a friendly message.
+ * v5 → v6: the four fixed tracks become slots slot-01…slot-04 (BOP, GOO, BLIP, FUZZ in v5 track order),
+ * scenes get ids scene-01…scene-06, patterns and arrangement blocks reference scenes by id and snapshots
+ * key their content by slot id. Purely structural and deterministic (no random ids, no timestamps), so
+ * migrating the same file twice gives the same result. Content is copied verbatim; validateProject()
+ * repairs it afterwards exactly as the v5 validator did.
+ */
+export function migrateV5(old) {
+  const src = isObj(old) ? old : {};
+  const p = {};
+  for (const [k, v] of Object.entries(src)) if (!['tracks', 'snaps', 'scenes', 'arrangement'].includes(k)) p[k] = clone(v);
+  p.format = FORMAT; p.v = 6;
+  const oldScenes = Array.isArray(src.scenes) ? src.scenes : [];
+  const sceneIds = Array.from({ length: NSCENES }, (_, i) => sceneIdFor(i + 1)); // v5 always had exactly six scenes
+  p.scenes = sceneIds.map((id, i) => { const sc = isObj(oldScenes[i]) ? oldScenes[i] : {}; return { id, name: sc.name, harmony: sc.harmony == null ? null : clone(sc.harmony) }; });
+  p.arrangement = (Array.isArray(src.arrangement) ? src.arrangement : [])
+    .filter(b => isObj(b) && Number.isInteger(b.scene) && b.scene >= 0 && b.scene < NSCENES)
+    .map(b => ({ id: b.id, sceneId: sceneIds[b.scene], reps: b.reps }));
+  const tracks = isObj(src.tracks) ? src.tracks : {};
+  p.slots = LEGACY_TRACKS.map((t, k) => {
+    const tr = isObj(tracks[t]) ? tracks[t] : {};
+    const pats = Array.isArray(tr.patterns) ? tr.patterns : [];
+    return {
+      id: slotIdFor(k + 1), type: LEGACY_TRACK_TYPES[t], mute: tr.mute, solo: tr.solo,
+      params: clone(tr.params ?? null), macros: clone(tr.macros ?? null),
+      patterns: Object.fromEntries(sceneIds.map((sid, i) => [sid, clone(pats[i] ?? null)])),
+    };
+  });
+  p.snaps = [0, 1, 2, 3].map(i => {
+    const s = Array.isArray(src.snaps) ? src.snaps[i] : null;
+    if (!isObj(s) || !Array.isArray(s.tracks)) return null;
+    const slots = {};
+    LEGACY_TRACKS.forEach((t, k) => { slots[slotIdFor(k + 1)] = { type: LEGACY_TRACK_TYPES[t], pattern: clone(s.tracks[k] ?? null), macros: clone(Array.isArray(s.macros) ? s.macros[k] ?? null : null) }; });
+    return { slots };
+  });
+  return p;
+}
+
+/**
+ * Turn any parsed JSON into a valid v6 project or throw ProjectError with a friendly message.
  * Never silently drops content that can be repaired.
  */
 export function importProject(obj) {
@@ -130,8 +219,10 @@ export function importProject(obj) {
   if (v == null) throw new ProjectError('That file is not a HarbuMatic project.');
   if (v > SCHEMA_VERSION) throw new ProjectError(`This song was made with a newer HarbuMatic (format v${v}). Please update the app.`);
   if (v < 4) throw new ProjectError(`HarbuMatic format v${v} is too old to open.`);
-  const migrated = v === 4 ? migrateV4(obj) : obj;
-  return validateProject(migrated);
+  let p = obj;
+  if (v === 4) p = migrateV4(p);
+  if (v <= 5) p = migrateV5(p);
+  return validateProject(p);
 }
 
 /* ---------------------------------------------------------
@@ -152,10 +243,12 @@ function cleanNote(n, len) {
   if (n.locked) out.locked = true;
   return out;
 }
-export function validatePattern(track, p, defLen = 16) {
-  if (!isObj(p)) return emptyPattern(track, defLen);
+/** repair a pattern of the given type ('bop', 'goo', …) */
+export function validatePattern(type, p, defLen = 16) {
+  const kind = getInstrumentType(type).pattern;
+  if (!isObj(p)) return emptyPatternOfKind(kind, defLen);
   const len = LENGTHS.includes(p.len) ? p.len : defLen;
-  if (track === 'drums') {
+  if (kind === 'drum') {
     const steps = {}, locked = {};
     DRUM_IDS.forEach(id => {
       const row = Array.isArray(p.steps && p.steps[id]) ? p.steps[id] : [];
@@ -168,8 +261,8 @@ export function validatePattern(track, p, defLen = 16) {
   return { len, notes };
 }
 
-function cleanParams(track, params) {
-  const def = DEFAULT_PARAMS[track], out = clone(def);
+function cleanParams(type, params) {
+  const def = getInstrumentType(type).defaultParams, out = defaultParamsFor(type);
   if (!isObj(params)) return out;
   for (const k of Object.keys(def)) {
     const dv = def[k], v = params[k];
@@ -190,10 +283,61 @@ function cleanHarmony(h) {
   const span = LENGTHS.includes(h.span) ? h.span : 32;
   return { degrees, span };
 }
+/** assign ids: keep valid unique ones, give the rest the first free generated id */
+function assignIds(items, make) {
+  const used = new Set(), out = Array(items.length).fill(null);
+  const raw = items.map(it => (isObj(it) && validId(it.id) ? it.id : null));
+  raw.forEach((id, i) => { if (id && !used.has(id)) { used.add(id); out[i] = id; } });
+  return out.map(id => { if (id) return id; const n = nextId(make, used); used.add(n); return n; });
+}
+
+function cleanScenes(input) {
+  const raw = Array.isArray(input.scenes) ? input.scenes : [];
+  if (raw.length > MAX_SCENES) throw new ProjectError(`This song has ${raw.length} scenes; this version of HarbuMatic can open up to ${MAX_SCENES}. Please update the app.`);
+  const list = Array.from({ length: Math.max(NSCENES, raw.length) }, (_, i) => raw[i]);
+  const ids = assignIds(list, sceneIdFor);
+  return list.map((sc, i) => {
+    const fallback = SCENE_NAMES[i] || `Scene ${i + 1}`;
+    return { id: ids[i], name: isObj(sc) && typeof sc.name === 'string' && sc.name.trim() ? sc.name.trim().slice(0, 24) : fallback, harmony: isObj(sc) ? cleanHarmony(sc.harmony) : null };
+  });
+}
+
+function cleanSlots(input, sceneIds) {
+  let raw = (Array.isArray(input.slots) ? input.slots : []).filter(isObj);
+  if (raw.length > MAX_SLOTS) throw new ProjectError(`This song has ${raw.length} instruments; this version of HarbuMatic can open up to ${MAX_SLOTS}. Please update the app.`);
+  const unknown = raw.find(s => !hasInstrumentType(s.type));
+  if (unknown) throw new ProjectError(`This song uses an instrument this version of HarbuMatic does not know (“${String(unknown.type).slice(0, 24)}”). Please update the app.`);
+  if (!raw.length) raw = DEFAULT_SLOT_TYPES.map(type => ({ type }));
+  const ids = assignIds(raw, slotIdFor);
+  return raw.map((s, k) => {
+    const def = getInstrumentType(s.type), pats = isObj(s.patterns) ? s.patterns : {};
+    return {
+      id: ids[k], type: s.type, mute: !!s.mute, solo: !!s.solo,
+      params: cleanParams(s.type, s.params), macros: cleanMacros(s.macros),
+      patterns: Object.fromEntries(sceneIds.map(sid => [sid, validatePattern(s.type, pats[sid], def.defaultLength)])),
+    };
+  });
+}
+
+function cleanSnap(s, slots) {
+  if (!isObj(s) || !isObj(s.slots)) return null;
+  const out = {};
+  for (const slot of slots) {
+    const e = s.slots[slot.id];
+    if (!isObj(e)) continue;
+    const type = hasInstrumentType(e.type) ? e.type : slot.type;
+    out[slot.id] = { type, pattern: validatePattern(type, e.pattern), macros: cleanMacros(e.macros) }; // default length 16, as in v5
+  }
+  return Object.keys(out).length ? { slots: out } : null;
+}
 
 export function validateProject(input) {
   if (!isObj(input)) throw new ProjectError('That file is not a HarbuMatic project.');
+  if (!Array.isArray(input.slots) && isObj(input.tracks)) input = migrateV5(input); // tolerate a v5-shaped object
   const base = createEmptyProject();
+  const scenes = cleanScenes(input), sceneIds = scenes.map(s => s.id);
+  const sceneSet = new Set(sceneIds);
+  const slots = cleanSlots(input, sceneIds);
   const p = {
     format: FORMAT, v: SCHEMA_VERSION,
     id: typeof input.id === 'string' && input.id ? input.id : base.id,
@@ -204,40 +348,31 @@ export function validateProject(input) {
     swing: num(input.swing, .08, 0, .5),
     key: Math.round(num(input.key, 9, 0, 11)),
     scale: SCALES[input.scale] ? input.scale : 'minor',
-    scene: Math.round(num(input.scene, 0, 0, NSCENES - 1)),
+    scene: Math.round(num(input.scene, 0, 0, scenes.length - 1)),
     songMode: !!input.songMode,
-    scenes: SCENE_NAMES.map((n, i) => {
-      const sc = Array.isArray(input.scenes) ? input.scenes[i] : null;
-      return { name: isObj(sc) && typeof sc.name === 'string' && sc.name.trim() ? sc.name.trim().slice(0, 24) : n, harmony: isObj(sc) ? cleanHarmony(sc.harmony) : null };
-    }),
+    scenes,
     arrangement: (Array.isArray(input.arrangement) ? input.arrangement : [])
-      .filter(b => isObj(b) && Number.isInteger(b.scene) && b.scene >= 0 && b.scene < NSCENES)
-      .map(b => ({ id: typeof b.id === 'string' ? b.id : uid('blk'), scene: b.scene, reps: Math.round(num(b.reps, 1, 1, MAX_REPS)) })),
-    tracks: {},
+      .filter(isObj)
+      .map(b => ({ b, sid: typeof b.sceneId === 'string' ? b.sceneId : Number.isInteger(b.scene) ? sceneIds[b.scene] : null }))
+      .filter(({ sid }) => sid && sceneSet.has(sid))
+      .map(({ b, sid }) => ({ id: typeof b.id === 'string' ? b.id : uid('blk'), sceneId: sid, reps: Math.round(num(b.reps, 1, 1, MAX_REPS)) })),
+    slots,
     lab: (() => {
       const L = isObj(input.lab) ? input.lab : {}, d = DEFAULT_LAB();
       const targets = {};
       Object.keys(d.targets).forEach(k => { targets[k] = isObj(L.targets) && typeof L.targets[k] === 'boolean' ? L.targets[k] : d.targets[k]; });
       return { chaos: num(L.chaos, d.chaos, 0, 1), density: num(L.density, d.density, 0, 1), mood: MOODS.includes(L.mood) ? L.mood : d.mood, targets };
     })(),
-    snaps: [0, 1, 2, 3].map(i => {
-      const s = Array.isArray(input.snaps) ? input.snaps[i] : null;
-      if (!isObj(s) || !Array.isArray(s.tracks)) return null;
-      return { tracks: TRACKS.map((t, k) => validatePattern(t, s.tracks[k])), macros: TRACKS.map((t, k) => cleanMacros(Array.isArray(s.macros) ? s.macros[k] : null)) };
-    }),
+    snaps: [0, 1, 2, 3].map(i => cleanSnap(Array.isArray(input.snaps) ? input.snaps[i] : null, slots)),
     fx: (() => { const f = isObj(input.fx) ? input.fx : {}, d = DEFAULT_FX(); return { fb: num(f.fb, d.fb, 0, .85), dtone: num(f.dtone, d.dtone, 0, 1), rev: num(f.rev, d.rev, 0, 1.2), master: num(f.master, d.master, 0, 1) }; })(),
   };
-  TRACKS.forEach(t => {
-    const tr = isObj(input.tracks) && isObj(input.tracks[t]) ? input.tracks[t] : {};
-    p.tracks[t] = {
-      mute: !!tr.mute, solo: !!tr.solo,
-      params: cleanParams(t, tr.params), macros: cleanMacros(tr.macros),
-      patterns: Array.from({ length: NSCENES }, (_, i) => validatePattern(t, Array.isArray(tr.patterns) ? tr.patterns[i] : null, t === 'drums' ? 16 : 32)),
-    };
-  });
   return p;
 }
 
-export const maxLen = (project, sc) => Math.max(...TRACKS.map(t => project.tracks[t].patterns[sc].len));
-export const sceneHasContent = (project, sc) => TRACKS.some(t => !patternIsEmpty(t, project.tracks[t].patterns[sc]));
+/** longest pattern among the playable instruments of a scene (song mode advances after it) */
+export function maxLen(project, sc) {
+  const lens = playableSlots(project).map(s => patternAt(project, s.id, sc).len);
+  return lens.length ? Math.max(...lens) : 16;
+}
+export const sceneHasContent = (project, sc) => playableSlots(project).some(s => !patternIsEmpty(s.type, patternAt(project, s.id, sc)));
 export const clampReps = r => clamp(Math.round(r), 1, MAX_REPS);

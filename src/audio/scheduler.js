@@ -8,8 +8,13 @@
 //
 // The scheduler never touches the DOM. It pushes time-stamped events into `queue` which the
 // UI drains in requestAnimationFrame when their time has come, so visuals match what is heard.
+//
+// Dispatch goes through instrument instances: for every playable slot it reads that slot's pattern for
+// the current scene, decides by the type's pattern kind and capabilities (never by instrument name) and
+// hands each hit to engine.trigger(slotId, …). Event hits are keyed by slot id.
 
-import { DRUMS, TRACKS } from '../core/constants.js';
+import { DRUMS } from '../core/constants.js';
+import { playableSlots, typeOfSlot, sceneIdAt } from '../core/project.js';
 import { startPosition, advance, isLoopBoundary } from './position.js';
 
 const LOOKAHEAD = .12, INTERVAL = 25;
@@ -27,14 +32,16 @@ export function createTransport(engine, getProject, hooks = {}) {
     const project = getProject(), pos = T.pos, sc = pos.scene, sd = engine.stepDur();
     if (hooks.beforeStep) hooks.beforeStep(pos, isLoopBoundary); // e.g. auto-evolve on a loop boundary
     const ev = { time: t, step: pos.step, scene: sc, block: pos.block, song: pos.song, hits: {} };
-    for (const tr of TRACKS) {
-      const p = project.tracks[tr].patterns[sc], ls = pos.step % p.len;
+    const sceneId = sceneIdAt(project, sc);
+    for (const slot of playableSlots(project)) {
+      const def = typeOfSlot(slot), caps = def.capabilities;
+      const p = slot.patterns[sceneId], ls = pos.step % p.len;
       const sw = ls % 2 ? project.swing * sd * .5 : 0, hits = [];
-      const on = engine.audible(tr);
-      if (tr === 'drums') {
+      const on = engine.audible(slot.id);
+      if (def.pattern === 'drum') {
         for (const d of DRUMS) {
           const c = p.steps[d.id][ls];
-          if (c && Math.random() <= c.p) { hits.push({ d: d.id, v: c.v }); if (on) engine.playDrum(d.id, t + sw, c.v); }
+          if (c && Math.random() <= c.p) { hits.push({ d: d.id, v: c.v }); if (on) engine.trigger(slot.id, t + sw, { d: d.id, v: c.v }); }
         }
       } else {
         let starts = null;
@@ -42,17 +49,18 @@ export function createTransport(engine, getProject, hooks = {}) {
           if (n.s !== ls) continue;
           if (n.pr != null && n.pr < 1 && Math.random() > n.pr) continue;
           let slideIn = false, slideOut = false;
-          if (tr === 'bass') {
+          if (caps.slide) {
             starts = starts || new Set(p.notes.map(m => m.s));
             slideIn = p.notes.some(m => m.slide && (m.s + m.l) % p.len === ls);
             slideOut = !!n.slide && starts.has((n.s + n.l) % p.len);
           }
-          const dur = tr === 'bass' && !slideOut ? Math.max(sd * .45, n.l * sd - sd * .45) : n.l * sd * .98;
+          // a mono acid voice gates shorter unless it slides on; everything else holds ~the full length
+          const dur = caps.mono && !slideOut ? Math.max(sd * .45, n.l * sd - sd * .45) : n.l * sd * .98;
           hits.push({ p: n.p, v: n.v, slide: slideIn, acc: n.v > .9 });
-          if (on) engine.playNote(tr, t + sw + (n.o || 0) * sd, n, dur, slideIn, slideOut);
+          if (on) engine.trigger(slot.id, t + sw + (n.o || 0) * sd, { p: n.p, v: n.v, dur, slideIn, slideOut });
         }
       }
-      if (hits.length && on) ev.hits[tr] = hits;
+      if (hits.length && on) ev.hits[slot.id] = hits;
     }
     T.queue.push(ev);
     const r = advance(pos, project, T.pending);

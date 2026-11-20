@@ -1,11 +1,13 @@
-// Transport panel (play/pause, stop, LCD, tempo) + the four instrument cards.
+// Transport panel (play/pause, stop, LCD, tempo) + one instrument card per visible slot.
 
-import { store, P } from '../app/store.js';
+import { store, P, typeOf, visibleSlots, slot } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { TRACKS, META, DRUM_IDS, SCENE_LETTERS } from '../core/constants.js';
+import { DRUM_IDS, SCENE_LETTERS } from '../core/constants.js';
+import { getInstrumentType } from '../core/instruments.js';
+import { patternAt, anySolo } from '../core/project.js';
 import { $, h } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
-import { catSVG, HP, registerCat, CAT } from '../ui/characters.js';
+import { catSVG, registerCat, CAT } from '../ui/characters.js';
 import { playhead } from '../ui/sequencer.js';
 
 /* ---------- transport ---------- */
@@ -45,7 +47,7 @@ const PIX = ['11........11', '111......111', '111111111111', 'H1111111111H', 'H1
 const fbuf = new Uint8Array(128);
 export function drawScreen() {
   const cv = $('#screen'); if (!cv || !cv.offsetParent) return;
-  const g = cv.getContext('2d'), W = cv.width, H = cv.height, sel = store.ui.sel, m = META[sel];
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height, m = typeOf().visual;
   const E = A.engine, playing = A.transport.playing;
   g.fillStyle = '#211f33'; g.fillRect(0, 0, W, H);
   const ph = playing && E.ctx ? (E.ctx.currentTime - playhead.time) / E.stepDur() : 1;
@@ -53,17 +55,17 @@ export function drawScreen() {
   const ox = 4, oy = 12 - (beat ? 2 : 0);
   PIX.forEach((row, y) => [...row].forEach((ch, x) => {
     if (ch === '.') return;
-    g.fillStyle = ch === '1' ? m.c : ch === 'H' ? HP[sel] : '#211f33';
+    g.fillStyle = ch === '1' ? m.color : ch === 'H' ? m.headphones : '#211f33';
     g.fillRect(ox + x * 2, oy + y * 2, 2, 2);
   }));
-  g.fillStyle = HP[sel]; for (let x = 2; x < 22; x += 2) g.fillRect(ox + x, oy - 2 - (x > 6 && x < 16 ? 2 : 0), 2, 2);
+  g.fillStyle = m.headphones; for (let x = 2; x < 22; x += 2) g.fillRect(ox + x, oy - 2 - (x > 6 && x < 16 ? 2 : 0), 2, 2);
   if (playing && playhead.step % 16 < 2) { g.fillStyle = '#F2AFC0'; ['.1.1.', '11111', '11111', '.111.', '..1..'].forEach((r, y) => [...r].forEach((c, x) => c === '1' && g.fillRect(31 + x, 4 + y, 1, 1))); }
   if (E.analyser) {
     E.analyser.getByteFrequencyData(fbuf);
-    const cols = TRACKS.map(t => META[t].c);
+    const cols = visibleSlots().map(s => getInstrumentType(s.type).visual.color);
     for (let b = 0; b < 6; b++) {
       const v = fbuf[Math.floor(Math.pow(b / 6, 1.6) * 60) + 1] / 255, hgt = Math.round(v * 8);
-      for (let k = 0; k < hgt; k++) { g.fillStyle = cols[Math.min(3, k >> 1)]; g.fillRect(31 + b * 5, H - 4 - k * 2, 4, 1); }
+      for (let k = 0; k < hgt; k++) { g.fillStyle = cols[Math.min(cols.length - 1, k >> 1)]; g.fillRect(31 + b * 5, H - 4 - k * 2, 4, 1); }
     }
   }
   const pos = A.transport.position, st = A.transport.state;
@@ -75,52 +77,67 @@ export function drawScreen() {
 }
 
 /* ---------- instrument cards ---------- */
+// One card per visible slot, in slot order. The card count follows the project (four today, room for
+// MUNCH later); `data-t` carries the type's CSS key so the existing colour rules apply unchanged.
+let cardSlots = '';
+/** pitch a type auditions at, transposed from A minor to the song key */
+export const auditionPitch = (def, key = store.project.key, which = 'pitch') => (def.pattern === 'drum' ? def.ui.audition.drum : (def.ui.audition[which] ?? def.ui.audition.pitch) + (key - 9));
 export function buildCards() {
   const host = $('#cards'); host.innerHTML = '';
-  TRACKS.forEach((t, i) => {
-    const m = META[t];
-    const card = h('div', { class: 'card', 'data-t': t, role: 'button', tabindex: 0, 'aria-label': `${m.name} — ${m.type}. Select instrument ${i + 1}` });
+  Object.keys(CAT).forEach(k => delete CAT[k]);
+  const slots = visibleSlots();
+  cardSlots = slots.map(s => `${s.id}:${s.type}`).join();
+  host.dataset.count = String(slots.length);
+  slots.forEach((s, i) => {
+    const id = s.id, m = getInstrumentType(s.type);
+    const card = h('div', { class: 'card', 'data-t': m.visual.css, 'data-slot': id, role: 'button', tabindex: 0, 'aria-label': `${m.name} — ${m.description}. Select instrument ${i + 1}` });
     const led = h('i', { class: 'led' });
-    const catEl = h('div', { class: 'cat ' + t, html: catSVG(t) });
+    const catEl = h('div', { class: 'cat ' + m.visual.css, html: catSVG(s.type) });
     const mute = h('button', { type: 'button', class: 'pill mute', 'aria-pressed': 'false', title: `Mute ${m.name}` }, 'M');
     const solo = h('button', { type: 'button', class: 'pill solo', 'aria-pressed': 'false', title: `Solo ${m.name}` }, 'S');
-    mute.onclick = e => { e.stopPropagation(); A.toggleMute(t); };
-    solo.onclick = e => { e.stopPropagation(); A.toggleSolo(t); };
+    mute.onclick = e => { e.stopPropagation(); A.toggleMute(id); };
+    solo.onclick = e => { e.stopPropagation(); A.toggleSolo(id); };
     const mini = h('div', { class: 'mini-steps' }, Array.from({ length: 16 }, () => h('i')));
     card.append(
       h('div', { class: 'card-cat' }, catEl),
-      h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), led), h('div', { class: 'card-type' }, m.type), h('div', { class: 'card-ms' }, mute, solo)),
+      h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), led), h('div', { class: 'card-type' }, m.description), h('div', { class: 'card-ms' }, mute, solo)),
       mini);
     card.addEventListener('click', e => {
       if (e.target.closest('.pill')) return;
-      A.selectTrack(t);
-      const k = store.project.key;
-      A.engine.audition(t, t === 'drums' ? 'kick' : t === 'bass' ? 33 + (k - 9) : t === 'synth' ? 69 + (k - 9) : 76 + (k - 9), .8);
+      A.selectSlot(id);
+      A.engine.audition(id, auditionPitch(m), .8);
     });
-    card.addEventListener('keydown', e => { if (e.key === 'Enter') A.selectTrack(t); });
+    card.addEventListener('keydown', e => { if (e.key === 'Enter') A.selectSlot(id); });
     host.append(card);
-    registerCat(t, { el: catEl, rig: catEl.querySelector('.rig'), led, card, mute, solo, mini });
+    registerCat(id, { el: catEl, rig: catEl.querySelector('.rig'), led, card, mute, solo, mini, type: s.type });
   });
 }
-export function occupancy(t, sc, cells) {
-  const p = store.project.tracks[t].patterns[sc], out = Array(cells).fill(false), k = cells / p.len;
-  if (t === 'drums') DRUM_IDS.forEach(id => p.steps[id].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));
+/** rebuild the cards only when the set of visible slots (or their types) changed */
+export function syncCards() { if (visibleSlots().map(s => `${s.id}:${s.type}`).join() !== cardSlots) buildCards(); }
+export function occupancy(id, sc, cells) {
+  const s = slot(id), p = patternAt(store.project, id, sc), out = Array(cells).fill(false), k = cells / p.len;
+  if (getInstrumentType(s.type).pattern === 'drum') DRUM_IDS.forEach(d => p.steps[d].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));
   else p.notes.forEach(n => { for (let i = n.s; i < n.s + n.l && i < p.len; i++) out[Math.floor(i * k)] = true; });
   return out;
 }
 export function updateCards() {
-  const pr = store.project, anySolo = TRACKS.some(x => pr.tracks[x].solo);
-  TRACKS.forEach(t => {
-    const c = CAT[t], tr = pr.tracks[t]; if (!c) return;
+  syncCards();
+  const pr = store.project, solo = anySolo(pr);
+  visibleSlots().forEach(tr => {
+    const t = tr.id, c = CAT[t]; if (!c) return;
     c.card.classList.toggle('sel', t === store.ui.sel);
     c.card.setAttribute('aria-pressed', String(t === store.ui.sel));
-    c.card.classList.toggle('silent', anySolo ? !tr.solo : tr.mute);
+    c.card.classList.toggle('silent', solo ? !tr.solo : tr.mute);
     c.mute.classList.toggle('on', tr.mute); c.mute.setAttribute('aria-pressed', String(tr.mute));
     c.solo.classList.toggle('on', tr.solo); c.solo.setAttribute('aria-pressed', String(tr.solo));
     const occ = occupancy(t, pr.scene, 16);
     [...c.mini.children].forEach((i, k) => i.classList.toggle('on', occ[k]));
   });
 }
+/** acid voices wiggle when the resonance is screaming */
 export function updateWiggle() {
-  const c = CAT.bass; if (c) c.el.classList.toggle('wiggle', A.transport.playing && A.engine.audible('bass') && P('bass').res > .85 && store.ui.motion);
+  for (const s of visibleSlots()) {
+    if (!getInstrumentType(s.type).capabilities.slide) continue;
+    const c = CAT[s.id]; if (c) c.el.classList.toggle('wiggle', A.transport.playing && A.engine.audible(s.id) && P(s.id).res > .85 && store.ui.motion);
+  }
 }

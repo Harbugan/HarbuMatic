@@ -1,0 +1,1913 @@
+{
+ "format": "harbumatic-project",
+ "v": 5,
+ "id": "song_mwph9n69ikspl",
+ "name": "Demo jam",
+ "created": "2026-11-20T21:15:02.673Z",
+ "modified": "2026-11-20T21:15:02.673Z",
+ "bpm": 118,
+ "swing": 0.12,
+ "key": 9,
+ "scale": "minor",
+ "scene": 1,
+ "songMode": false,
+ "scenes": [
+  {
+   "name": "Intro",
+   "harmony": {
+    "degrees": [
+     0,
+     5,
+     2,
+     6
+    ],
+    "span": 32
+   }
+  },
+  {
+   "name": "Groove",
+   "harmony": {
+    "degrees": [
+     0,
+     5,
+     2,
+     6
+    ],
+    "span": 32
+   }
+  },
+  {
+   "name": "Variation",
+   "harmony": {
+    "degrees": [
+     0,
+     5,
+     2,
+     6
+    ],
+    "span": 32
+   }
+  },
+  {
+   "name": "Break",
+   "harmony": null
+  },
+  {
+   "name": "Buildup",
+   "harmony": null
+  },
+  {
+   "name": "Drop",
+   "harmony": null
+  }
+ ],
+ "arrangement": [
+  {
+   "id": "blk_mwph9n6917w5h",
+   "scene": 0,
+   "reps": 1
+  },
+  {
+   "id": "blk_mwph9n699xdw5",
+   "scene": 1,
+   "reps": 2
+  },
+  {
+   "id": "blk_mwph9n69fjmm1",
+   "scene": 2,
+   "reps": 1
+  }
+ ],
+ "tracks": {
+  "drums": {
+   "mute": false,
+   "solo": false,
+   "params": {
+    "vol": 0.85,
+    "pan": 0,
+    "kit": "808",
+    "tune": 0,
+    "decay": 1,
+    "tone": 0.5,
+    "drive": 0.35,
+    "driveOn": false,
+    "delayOn": false,
+    "reverbOn": true,
+    "delay": 0.18,
+    "reverb": 0.12
+   },
+   "macros": {
+    "brightness": 0.5,
+    "movement": 0.5,
+    "space": 0.5,
+    "character": 0.5
+   },
+   "patterns": [
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       },
+       null,
+       {
+        "v": 0.35,
+        "p": 0.8
+       }
+      ],
+      "ohh": [
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    },
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       {
+        "v": 0.55,
+        "p": 0.5
+       },
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.85,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.85,
+        "p": 1
+       },
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       }
+      ],
+      "ohh": [
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.5,
+        "p": 0.6
+       },
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.45,
+        "p": 0.5
+       },
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    },
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.95,
+        "p": 1
+       },
+       null,
+       {
+        "v": 0.55,
+        "p": 0.5
+       },
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.85,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.85,
+        "p": 1
+       },
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       {
+        "v": 0.5,
+        "p": 1
+       },
+       {
+        "v": 0.3,
+        "p": 0.85
+       },
+       null,
+       {
+        "v": 0.3,
+        "p": 0.85
+       }
+      ],
+      "ohh": [
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null,
+       null,
+       null,
+       {
+        "v": 0.55,
+        "p": 1
+       },
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.7,
+        "p": 1
+       }
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.5,
+        "p": 0.6
+       },
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.45,
+        "p": 0.5
+       },
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       {
+        "v": 0.4,
+        "p": 0.7
+       },
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    },
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "ohh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    },
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "ohh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    },
+    {
+     "len": 16,
+     "steps": {
+      "kick": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "snare": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "clap": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "chh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "ohh": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "tom": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "rim": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "cow": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ]
+     },
+     "locked": {}
+    }
+   ]
+  },
+  "bass": {
+   "mute": false,
+   "solo": false,
+   "params": {
+    "vol": 0.72,
+    "pan": 0,
+    "wave": "sawtooth",
+    "cutoff": 0.3,
+    "res": 0.62,
+    "env": 0.6,
+    "decay": 0.35,
+    "accent": 0.6,
+    "glide": 0.06,
+    "drive": 0.45,
+    "driveOn": true,
+    "delayOn": true,
+    "reverbOn": false,
+    "delay": 0.16,
+    "reverb": 0.1
+   },
+   "macros": {
+    "brightness": 0.5,
+    "movement": 0.5,
+    "space": 0.5,
+    "character": 0.5
+   },
+   "patterns": [
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 33,
+       "l": 1,
+       "v": 0.9
+      },
+      {
+       "s": 2,
+       "p": 45,
+       "l": 1,
+       "v": 1
+      },
+      {
+       "s": 3,
+       "p": 33,
+       "l": 1,
+       "v": 0.7,
+       "slide": true
+      },
+      {
+       "s": 4,
+       "p": 36,
+       "l": 1,
+       "v": 0.75
+      },
+      {
+       "s": 6,
+       "p": 33,
+       "l": 1,
+       "v": 0.8
+      },
+      {
+       "s": 7,
+       "p": 40,
+       "l": 1,
+       "v": 0.95
+      },
+      {
+       "s": 8,
+       "p": 33,
+       "l": 2,
+       "v": 0.8
+      },
+      {
+       "s": 10,
+       "p": 45,
+       "l": 1,
+       "v": 0.7,
+       "slide": true
+      },
+      {
+       "s": 11,
+       "p": 43,
+       "l": 1,
+       "v": 0.75
+      },
+      {
+       "s": 12,
+       "p": 33,
+       "l": 1,
+       "v": 0.85
+      },
+      {
+       "s": 14,
+       "p": 36,
+       "l": 1,
+       "v": 1,
+       "slide": true
+      },
+      {
+       "s": 15,
+       "p": 38,
+       "l": 1,
+       "v": 0.7
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 33,
+       "l": 1,
+       "v": 0.9
+      },
+      {
+       "s": 2,
+       "p": 45,
+       "l": 1,
+       "v": 1
+      },
+      {
+       "s": 3,
+       "p": 33,
+       "l": 1,
+       "v": 0.7,
+       "slide": true
+      },
+      {
+       "s": 4,
+       "p": 36,
+       "l": 1,
+       "v": 0.75
+      },
+      {
+       "s": 6,
+       "p": 33,
+       "l": 1,
+       "v": 0.8
+      },
+      {
+       "s": 7,
+       "p": 40,
+       "l": 1,
+       "v": 0.95
+      },
+      {
+       "s": 8,
+       "p": 33,
+       "l": 2,
+       "v": 0.8
+      },
+      {
+       "s": 10,
+       "p": 45,
+       "l": 1,
+       "v": 0.7,
+       "slide": true
+      },
+      {
+       "s": 11,
+       "p": 43,
+       "l": 1,
+       "v": 0.75
+      },
+      {
+       "s": 12,
+       "p": 33,
+       "l": 1,
+       "v": 0.85
+      },
+      {
+       "s": 14,
+       "p": 36,
+       "l": 1,
+       "v": 1,
+       "slide": true
+      },
+      {
+       "s": 15,
+       "p": 38,
+       "l": 1,
+       "v": 0.7
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    }
+   ]
+  },
+  "synth": {
+   "mute": false,
+   "solo": false,
+   "params": {
+    "vol": 0.5,
+    "pan": 0,
+    "wave1": "sawtooth",
+    "wave2": "square",
+    "oct2": 0,
+    "detune": 10,
+    "mix": 0.35,
+    "cutoff": 0.5,
+    "res": 0.15,
+    "fenv": 0.35,
+    "attack": 0.004,
+    "decay": 0.35,
+    "sustain": 0.35,
+    "release": 0.45,
+    "lfoRate": 2.5,
+    "lfoDepth": 0.1,
+    "drive": 0.2,
+    "driveOn": false,
+    "delayOn": true,
+    "reverbOn": true,
+    "delay": 0.28,
+    "reverb": 0.32
+   },
+   "macros": {
+    "brightness": 0.5,
+    "movement": 0.5,
+    "space": 0.5,
+    "character": 0.5
+   },
+   "patterns": [
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 64,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 53,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 48,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 52,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 59,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 62,
+       "l": 6,
+       "v": 0.55
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 64,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 53,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 48,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 52,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 59,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 62,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 2,
+       "p": 76,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 6,
+       "p": 74,
+       "l": 2,
+       "v": 0.55
+      },
+      {
+       "s": 10,
+       "p": 72,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 13,
+       "p": 69,
+       "l": 3,
+       "v": 0.55
+      },
+      {
+       "s": 18,
+       "p": 72,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 22,
+       "p": 74,
+       "l": 2,
+       "v": 0.55
+      },
+      {
+       "s": 26,
+       "p": 76,
+       "l": 2,
+       "v": 0.65
+      },
+      {
+       "s": 29,
+       "p": 79,
+       "l": 3,
+       "v": 0.6
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 0,
+       "p": 64,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 53,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 57,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 8,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 48,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 52,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 16,
+       "p": 60,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 55,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 59,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 24,
+       "p": 62,
+       "l": 6,
+       "v": 0.55
+      },
+      {
+       "s": 2,
+       "p": 76,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 6,
+       "p": 74,
+       "l": 2,
+       "v": 0.55
+      },
+      {
+       "s": 10,
+       "p": 72,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 13,
+       "p": 69,
+       "l": 3,
+       "v": 0.55
+      },
+      {
+       "s": 18,
+       "p": 72,
+       "l": 2,
+       "v": 0.6
+      },
+      {
+       "s": 22,
+       "p": 74,
+       "l": 2,
+       "v": 0.55
+      },
+      {
+       "s": 26,
+       "p": 76,
+       "l": 2,
+       "v": 0.65
+      },
+      {
+       "s": 29,
+       "p": 79,
+       "l": 3,
+       "v": 0.6
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    }
+   ]
+  },
+  "fuzz": {
+   "mute": false,
+   "solo": false,
+   "params": {
+    "vol": 0.5,
+    "pan": 0,
+    "tone": 0.45,
+    "noise": 0.35,
+    "crush": 0.25,
+    "shimmer": 0.35,
+    "attack": 0.6,
+    "release": 1.4,
+    "drive": 0.3,
+    "driveOn": false,
+    "delayOn": true,
+    "reverbOn": true,
+    "delay": 0.35,
+    "reverb": 0.6
+   },
+   "macros": {
+    "brightness": 0.5,
+    "movement": 0.5,
+    "space": 0.5,
+    "character": 0.5
+   },
+   "patterns": [
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 69,
+       "l": 14,
+       "v": 0.7
+      },
+      {
+       "s": 16,
+       "p": 76,
+       "l": 14,
+       "v": 0.6
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": [
+      {
+       "s": 0,
+       "p": 69,
+       "l": 14,
+       "v": 0.7
+      },
+      {
+       "s": 16,
+       "p": 76,
+       "l": 14,
+       "v": 0.6
+      }
+     ]
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    },
+    {
+     "len": 32,
+     "notes": []
+    }
+   ]
+  }
+ },
+ "lab": {
+  "chaos": 0.4,
+  "density": 0.55,
+  "mood": "dreamy",
+  "targets": {
+   "pitch": true,
+   "rhythm": true,
+   "velocity": true,
+   "length": false,
+   "sound": false
+  }
+ },
+ "snaps": [
+  null,
+  null,
+  null,
+  null
+ ],
+ "fx": {
+  "fb": 0.4,
+  "dtone": 0.5,
+  "rev": 0.9,
+  "master": 0.85
+ }
+}

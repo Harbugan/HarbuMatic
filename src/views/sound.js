@@ -1,20 +1,20 @@
 // Sound Shapers bar (macros + FX toggles) and the SOUND view (deep parameters).
 
-import { store, P } from '../app/store.js';
+import { store, P, typeOf, slot } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { META, DEFAULT_PARAMS } from '../core/constants.js';
+import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
 import { Knob, Seg } from '../ui/controls.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
 
 let shaperKnobs = {};
 export function renderBottom() {
-  const sel = store.ui.sel, m = store.project.tracks[sel].macros;
+  const sel = store.ui.sel, m = slot(sel).macros, def = typeOf(sel), hints = MACRO_HINT[def.role] || {};
   const host = $('#shapers'); host.innerHTML = '';
-  host.append(h('span', { class: 'shapers-title' }, h('b', {}, 'Sound shapers'), h('small', {}, META[sel].name)));
+  host.append(h('span', { class: 'shapers-title' }, h('b', {}, 'Sound shapers'), h('small', {}, def.name)));
   shaperKnobs = {};
   MACRO_KEYS.forEach(k => {
-    const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${MACRO_HINT[sel][k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
+    const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${hints[k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
     shaperKnobs[k] = kn; host.append(kn.el);
   });
   const fx = $('#fxbar'); fx.innerHTML = '';
@@ -25,18 +25,19 @@ export function renderBottom() {
     fx.append(b);
   });
 }
-export function syncShapers() { const m = store.project.tracks[store.ui.sel].macros; Object.entries(shaperKnobs).forEach(([k, kn]) => kn.set(m[k])); }
+export function syncShapers() { const m = slot().macros; Object.entries(shaperKnobs).forEach(([k, kn]) => kn.set(m[k])); }
 
 const pct = v => Math.round(v * 100) + '%';
 const sec = v => (v < 1 ? Math.round(v * 1000) + 'ms' : v.toFixed(2) + 's');
 const panFmt = v => (Math.abs(v) < .01 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100));
+// deep parameters and presets per instrument type (registry id)
 const SOUNDDEF = {
-  drums: [['Kit', [{ k: 'kit', seg: [['808', '808-ish'], ['909', '909-ish'], ['lofi', 'Lofi']] }, { k: 'tune', l: 'Tune', min: -12, max: 12, step: 1, fmt: v => (v > 0 ? '+' : '') + v + ' st' }, { k: 'decay', l: 'Decay', min: .3, max: 2, fmt: v => v.toFixed(2) + '×' }, { k: 'tone', l: 'Tone' }]]],
-  bass: [
+  bop: [['Kit', [{ k: 'kit', seg: [['808', '808-ish'], ['909', '909-ish'], ['lofi', 'Lofi']] }, { k: 'tune', l: 'Tune', min: -12, max: 12, step: 1, fmt: v => (v > 0 ? '+' : '') + v + ' st' }, { k: 'decay', l: 'Decay', min: .3, max: 2, fmt: v => v.toFixed(2) + '×' }, { k: 'tone', l: 'Tone' }]]],
+  goo: [
     ['Oscillator', [{ k: 'wave', seg: [['sawtooth', 'Saw'], ['square', 'Square']] }, { k: 'glide', l: 'Glide', min: .01, max: .25, fmt: sec }]],
     ['Filter', [{ k: 'cutoff', l: 'Cutoff' }, { k: 'res', l: 'Reso' }, { k: 'env', l: 'Env mod' }, { k: 'decay', l: 'Decay', min: .05, max: 1 }, { k: 'accent', l: 'Accent' }]],
   ],
-  synth: [
+  blip: [
     ['Oscillators', [{ k: 'wave1', seg: [['sawtooth', 'Saw'], ['square', 'Sqr'], ['triangle', 'Tri'], ['sine', 'Sin']] }, { k: 'wave2', seg: [['sawtooth', 'Saw'], ['square', 'Sqr'], ['triangle', 'Tri'], ['sine', 'Sin']] }, { k: 'oct2', l: 'Osc2 oct', min: -1, max: 2, step: 1, fmt: v => (v > 0 ? '+' : '') + v }, { k: 'detune', l: 'Detune', min: 0, max: 40, fmt: v => v.toFixed(0) + 'ct' }, { k: 'mix', l: 'Mix' }]],
     ['Filter', [{ k: 'cutoff', l: 'Cutoff' }, { k: 'res', l: 'Reso' }, { k: 'fenv', l: 'Env amt' }]],
     ['Envelope', [{ k: 'attack', l: 'Attack', min: .002, max: 2, fmt: sec }, { k: 'decay', l: 'Decay', min: .02, max: 2, fmt: sec }, { k: 'sustain', l: 'Sustain' }, { k: 'release', l: 'Release', min: .02, max: 3, fmt: sec }]],
@@ -49,27 +50,27 @@ const SOUNDDEF = {
 };
 const COMMON = [['Channel', [{ k: 'vol', l: 'Volume' }, { k: 'pan', l: 'Pan', min: -1, max: 1, fmt: panFmt }, { k: 'drive', l: 'Drive' }, { k: 'delay', l: 'Delay send', max: .8 }, { k: 'reverb', l: 'Reverb send' }]]];
 export const PRESETS = {
-  drums: { 'Soft Boom': { kit: '808', tune: 0, decay: 1.1, tone: .45, driveOn: false }, 'Club Punch': { kit: '909', tune: 2, decay: .8, tone: .65, driveOn: true, drive: .3 }, 'Dusty Box': { kit: 'lofi', tune: -2, decay: .9, tone: .3, driveOn: true, drive: .65 } },
-  bass: { 'Classic Acid': { wave: 'sawtooth', cutoff: .3, res: .62, env: .6, decay: .35, accent: .6, glide: .06, driveOn: true, drive: .45 }, 'Rubber Sub': { wave: 'square', cutoff: .16, res: .3, env: .25, decay: .25, driveOn: false }, 'Squelch': { wave: 'sawtooth', cutoff: .2, res: .9, env: .85, decay: .5, accent: .9, driveOn: true, drive: .75 }, 'Wobble Worm': { wave: 'square', cutoff: .33, res: .78, env: .5, decay: .7, glide: .14 } },
-  synth: { 'Dream Keys': { wave1: 'sawtooth', wave2: 'square', oct2: 0, detune: 10, mix: .35, cutoff: .5, res: .15, fenv: .35, attack: .004, decay: .35, sustain: .35, release: .45, lfoDepth: .1, lfoRate: 2.5 }, 'Glass Pluck': { wave1: 'triangle', wave2: 'sine', oct2: 1, detune: 4, mix: .4, cutoff: .62, res: .3, fenv: .5, attack: .002, decay: .18, sustain: .05, release: .35, lfoDepth: 0 }, 'Cloud Pad': { wave1: 'sawtooth', wave2: 'sawtooth', oct2: 0, detune: 22, mix: .5, cutoff: .42, res: .1, fenv: .1, attack: .6, decay: 1, sustain: .8, release: 1.6, lfoDepth: .25, lfoRate: .6 }, 'Sugar Lead': { wave1: 'square', wave2: 'sawtooth', oct2: 1, detune: 8, mix: .25, cutoff: .66, res: .35, fenv: .3, attack: .01, decay: .3, sustain: .6, release: .2, lfoDepth: .05, lfoRate: 5.5 } },
+  bop: { 'Soft Boom': { kit: '808', tune: 0, decay: 1.1, tone: .45, driveOn: false }, 'Club Punch': { kit: '909', tune: 2, decay: .8, tone: .65, driveOn: true, drive: .3 }, 'Dusty Box': { kit: 'lofi', tune: -2, decay: .9, tone: .3, driveOn: true, drive: .65 } },
+  goo: { 'Classic Acid': { wave: 'sawtooth', cutoff: .3, res: .62, env: .6, decay: .35, accent: .6, glide: .06, driveOn: true, drive: .45 }, 'Rubber Sub': { wave: 'square', cutoff: .16, res: .3, env: .25, decay: .25, driveOn: false }, 'Squelch': { wave: 'sawtooth', cutoff: .2, res: .9, env: .85, decay: .5, accent: .9, driveOn: true, drive: .75 }, 'Wobble Worm': { wave: 'square', cutoff: .33, res: .78, env: .5, decay: .7, glide: .14 } },
+  blip: { 'Dream Keys': { wave1: 'sawtooth', wave2: 'square', oct2: 0, detune: 10, mix: .35, cutoff: .5, res: .15, fenv: .35, attack: .004, decay: .35, sustain: .35, release: .45, lfoDepth: .1, lfoRate: 2.5 }, 'Glass Pluck': { wave1: 'triangle', wave2: 'sine', oct2: 1, detune: 4, mix: .4, cutoff: .62, res: .3, fenv: .5, attack: .002, decay: .18, sustain: .05, release: .35, lfoDepth: 0 }, 'Cloud Pad': { wave1: 'sawtooth', wave2: 'sawtooth', oct2: 0, detune: 22, mix: .5, cutoff: .42, res: .1, fenv: .1, attack: .6, decay: 1, sustain: .8, release: 1.6, lfoDepth: .25, lfoRate: .6 }, 'Sugar Lead': { wave1: 'square', wave2: 'sawtooth', oct2: 1, detune: 8, mix: .25, cutoff: .66, res: .35, fenv: .3, attack: .01, decay: .3, sustain: .6, release: .2, lfoDepth: .05, lfoRate: 5.5 } },
   fuzz: { 'Cloud': { tone: .45, noise: .35, crush: .1, shimmer: .35, attack: .6, release: 1.4 }, 'Static Rain': { tone: .75, noise: .85, crush: .3, shimmer: .6, attack: .1, release: .8 }, 'Bitmoth': { tone: .6, noise: .3, crush: .75, shimmer: .8, attack: .05, release: .5 } },
 };
 
 let soundKnobs = [];
 export function renderSound() {
   const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = [];
-  const sel = store.ui.sel, m = META[sel], p = P(sel);
-  const hear = () => A.engine.audition(sel, sel === 'drums' ? 'kick' : sel === 'bass' ? 33 + store.project.key - 9 : 69 + store.project.key - 9);
+  const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type;
+  const hear = () => A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch'));
   host.append(h('div', { class: 'view-head' }, h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, 'Sound design')), h('span', { class: 'spacer' }), h('span', { class: 'hint' }, 'Sound shapers below steer these same knobs')));
   const pr = h('div', { class: 'presets' }, h('span', { class: 'sect' }, 'Presets'));
-  Object.entries(PRESETS[sel]).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
+  Object.entries(PRESETS[type] || {}).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
   host.append(pr);
   const groups = h('div', { class: 'sgroups' });
-  [...SOUNDDEF[sel], ...COMMON].forEach(([title, defs]) => {
+  [...(SOUNDDEF[type] || []), ...COMMON].forEach(([title, defs]) => {
     const row = h('div', { class: 'row' });
     defs.forEach(d => {
       if (d.seg) { row.append(h('div', { class: 'wave-pick' }, Seg(d.seg, p[d.k], v => { A.checkpoint(); p[d.k] = v; A.engine.applyParams(sel); A.save(); hear(); }), h('div', { class: 'klbl' }, d.k.replace('wave', 'osc ').toUpperCase()))); return; }
-      const kn = Knob({ label: d.l, min: d.min ?? 0, max: d.max ?? 1, step: d.step || 0, value: p[d.k], def: DEFAULT_PARAMS[sel][d.k], fmt: d.fmt || pct, onChange: v => A.setParam(sel, d.k, v), onEnd: A.sealHistory });
+      const kn = Knob({ label: d.l, min: d.min ?? 0, max: d.max ?? 1, step: d.step || 0, value: p[d.k], def: m.defaultParams[d.k], fmt: d.fmt || pct, onChange: v => A.setParam(sel, d.k, v), onEnd: A.sealHistory });
       kn.k = d.k; soundKnobs.push(kn); row.append(kn.el);
     });
     groups.append(h('div', { class: 'sgroup' }, h('h4', {}, title), row));

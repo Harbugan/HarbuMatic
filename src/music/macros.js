@@ -1,4 +1,7 @@
 // Sound Shapers: each friendly macro drives several real synthesis parameters.
+// Maps and hints are keyed by musical role (see src/core/instruments.js).
+
+import { slotById, typeOfSlot } from '../core/project.js';
 
 export const MACRO_KEYS = ['brightness', 'movement', 'space', 'character'];
 
@@ -36,8 +39,9 @@ export const MACRO_HINT = {
   fuzz: { brightness: 'tone', movement: 'shimmer', space: 'reverb + delay', character: 'crush + noise' },
 };
 
-/** apply one (or all) macros of a track to its params; mutates the project */
-export function applyMacros(project, track, key) {
-  const tr = project.tracks[track];
-  (key ? [key] : MACRO_KEYS).forEach(k => MACRO_MAP[track][k](tr.params, tr.macros[k], project));
+/** apply one (or all) macros of an instrument slot to its params; mutates the project. Maps are keyed by role. */
+export function applyMacros(project, slotId, key) {
+  const slot = slotById(project, slotId), map = MACRO_MAP[typeOfSlot(slot).role];
+  if (!map) return; // types without macros (e.g. the planned sampler)
+  (key ? [key] : MACRO_KEYS).forEach(k => map[k](slot.params, slot.macros[k], project));
 }
