@@ -2,7 +2,7 @@
 
 import { store } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { APP_VERSION, MOODS } from '../core/constants.js';
+import { VERSION_LABEL, APP_CREDIT, MOODS } from '../core/constants.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { dialog, closeDialog, confirmDialog, promptDialog, Switch, Seg } from '../ui/controls.js';
@@ -86,7 +86,8 @@ export function settingsDialog() {
     h('label', { class: 'dlg-l' }, 'Keyboard (optional)'),
     h('div', { class: 'keys' },
       ...[['Space', 'Play / pause'], ['Esc', 'Stop (back to start)'], ['1–4', 'Select BOP · GOO · BLIP · FUZZ'], ['B E L', 'Draw · Erase · Lock'], ['↑ ↓', 'Octave up / down'], ['F', 'Deep edit on/off'], ['G M', 'Generate · Mutate'], ['⌘/Ctrl Z', 'Undo (Shift = redo)']].flatMap(([k, v]) => [h('kbd', {}, k), h('span', {}, v)])),
-    h('p', { class: 'dlg-note' }, `HarbuMatic ${APP_VERSION} · works offline once loaded · songs stay on this device`));
+    h('p', { class: 'dlg-note' }, `HarbuMatic ${VERSION_LABEL} · works offline once loaded · songs stay on this device`),
+    h('p', { class: 'dlg-note credit' }, APP_CREDIT));
   dialog({ title: 'Settings & help', body, actions: [{ label: 'Close', primary: true }] });
 }
 

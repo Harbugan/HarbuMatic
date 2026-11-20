@@ -233,7 +233,8 @@ function down(e) {
   if (y < G.rulerH) { if (u.zoom > 1) RV.drag = { ...base, type: 'scrollX', start: u.scrollX }; return; }
   if (G.drums) {
     const row = G.rowAt(y), id = DRUMS[row].id;
-    if (x < G.keysW) { RV.drag = { ...base, type: 'drumKey', row, id }; return; }
+    // keep the drum id apart from base.id (the pointerId): overwriting it left the drag stuck (BUG-001)
+    if (x < G.keysW) { RV.drag = { ...base, type: 'drumKey', row, drum: id }; return; }
     const s = Math.floor(G.stepAt(x)); if (s < 0 || s >= G.p.len) return;
     const cell = G.p.steps[id][s]; u.drumRow = row;
     A.checkpoint();
@@ -315,12 +316,12 @@ function up(e) {
     if (d.type === 'keys') { A.engine.audition(u.sel, d.q); return; }
     if (d.type === 'drumKey') {
       u.drumRow = d.row;
-      if (u.tool === 'lock') { A.checkpoint(); G.p.locked[d.id] = !G.p.locked[d.id]; A.patternEdited(); }
-      A.engine.audition('drums', d.id, .9); render(); return;
+      if (u.tool === 'lock') { A.checkpoint(); G.p.locked[d.drum] = !G.p.locked[d.drum]; A.patternEdited(); }
+      A.engine.audition('drums', d.drum, .9); render(); return;
     }
     if (d.pending && d.type === 'move') { A.checkpoint(); G.p.notes.splice(G.p.notes.indexOf(d.n), 1); A.patternEdited(); return; } // tap = delete
   }
-  if (d.type === 'scrollX' || d.type === 'keys') return;
+  if (d.type === 'scrollX' || d.type === 'keys' || d.type === 'drumKey') return;
   if (u.sel === 'bass') fixSlides(G.p.notes, G.p.len);
   A.sealHistory();
   done();
@@ -342,6 +343,7 @@ export function mount(canvas) {
   canvas.addEventListener('pointermove', move);
   canvas.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', cancel);
+  canvas.addEventListener('lostpointercapture', cancel); // safety net: never leave a gesture stuck
   canvas.addEventListener('pointerleave', () => { if (!RV.drag && RV.hover) { RV.hover = null; render(); } });
   canvas.addEventListener('wheel', wheel, { passive: false });
   canvas.addEventListener('contextmenu', e => e.preventDefault());

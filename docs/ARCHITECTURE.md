@@ -10,6 +10,10 @@
 - Vite and TypeScript were left out. They would need a build step in CI and give little benefit at ~5k lines. The music core is written so it can be moved to TypeScript later without restructuring. Data shapes are documented in `src/core/project.js`.
 - Tests use Node's built-in `node:test`, so `npm test` needs nothing installed.
 
+## Release identity
+
+`APP_VERSION` in `src/core/constants.js` is the single version source. It feeds the footer on the case bezel, Settings & help and the service-worker cache (`sw.js?v=<version>`). For a release, bump it together with `package.json`; `npm test` fails if the two differ or another shipped file hardcodes the version. `APP_CREDIT` holds the exact creator credit with escaped Unicode.
+
 ## Layers
 
 ```

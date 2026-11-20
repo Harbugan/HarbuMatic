@@ -119,12 +119,12 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .sgroup { background: var(--cream-2); border-radius: 18px; padding: 10px 14px 12px; box-shadow: 0 1px 3px #0000000d inset; }
 .sgroup h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--accent-dd); }
 .sgroup .row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-.wave-pick { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+/* same rows as a knob (2px pad, dial-sized slot, 3px gap) so seg labels line up with knob labels (BUG-002) */
+.wave-pick { display: grid; grid-template-rows: var(--ks, 52px) auto; row-gap: 3px; padding-top: 2px; justify-items: center; align-items: center; }
 .wave-pick .klbl { font-size: 10.5px; letter-spacing: 1.2px; color: #5d5468; font-weight: 900; }
 
 /* ---------- ARRANGE ---------- */
 .arr { overflow-y: auto; padding: 2px 2px 12px; gap: 10px; container-type: inline-size; }
-@container (min-width: 1000px) { .arr-scenes { grid-template-columns: repeat(6, minmax(0, 1fr)); } .atile .btns { flex-direction: column; } }
 .arr-title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; flex: none; padding: 0 4px; }
 .arr-title b { font-family: var(--font-brand); font-size: 20px; color: var(--navy); }
 .arr-title .btn { align-self: center; }
@@ -142,6 +142,9 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .atile .btns { display: flex; gap: 5px; }
 .atile .btns .btn { flex: 1; min-width: 0; padding: 0 4px; gap: 3px; }
 .atile .btns .btn-l { overflow: hidden; text-overflow: ellipsis; }
+/* must follow the base .arr-scenes rule: declared before it, the 6-column override lost the cascade and
+   only the stacked buttons applied, giving 3 wide tiles with full-width buttons (BUG-002) */
+@container (min-width: 1000px) { .arr-scenes { grid-template-columns: repeat(6, minmax(0, 1fr)); } .atile .btns { flex-direction: column; } }
 .map { display: grid; grid-template-rows: repeat(4, 6px); gap: 3px; }
 .map div { display: flex; gap: 1px; }
 .map i { flex: 1; border-radius: 2px; background: #0000000d; }
