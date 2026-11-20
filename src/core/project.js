@@ -29,6 +29,7 @@ import {
   patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
+import { cleanSampleRef, MAX_SLICES } from './samples.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
@@ -85,10 +86,12 @@ export const newBlock = (sceneId, reps = 1) => ({ id: uid('blk'), sceneId, reps 
 
 /** one instrument instance with default sound and empty patterns for the given scenes */
 export function createSlot(type, id, sceneIds) {
-  return {
+  const slot = {
     id, type, mute: false, solo: false, params: defaultParamsFor(type), macros: DEFAULT_MACROS(),
     patterns: Object.fromEntries(sceneIds.map(sid => [sid, createPatternFor(type)])),
   };
+  if (getInstrumentType(type).capabilities.samples) slot.sample = null; // sampler slots reference a sample (src/core/samples.js)
+  return slot;
 }
 
 /** A genuinely empty song: five instrument slots (MUNCH planned), default sounds, no notes, no arrangement. */
@@ -233,7 +236,7 @@ function cleanDrumCell(c) {
   if (!isObj(c)) return null;
   return { v: num(c.v, .8, .05, 1), p: num(c.p, 1, .05, 1) };
 }
-function cleanNote(n, len) {
+function cleanNote(n, len, slices = false) {
   if (!isObj(n)) return null;
   const s = Math.round(num(n.s, -1));
   if (s < 0 || s >= len) return null;
@@ -242,11 +245,12 @@ function cleanNote(n, len) {
   if (typeof n.o === 'number' && n.o) out.o = num(n.o, 0, -.4, .4);
   if (n.slide) out.slide = true;
   if (n.locked) out.locked = true;
+  if (slices && Number.isInteger(n.slice) && n.slice >= 0 && n.slice < MAX_SLICES) out.slice = n.slice; // sampler slice trigger
   return out;
 }
 /** repair a pattern of the given type ('bop', 'goo', …) */
 export function validatePattern(type, p, defLen = 16) {
-  const kind = getInstrumentType(type).pattern;
+  const def = getInstrumentType(type), kind = def.pattern, slices = !!def.capabilities.slices;
   if (!isObj(p)) return emptyPatternOfKind(kind, defLen);
   const len = LENGTHS.includes(p.len) ? p.len : defLen;
   if (kind === 'drum') {
@@ -258,18 +262,19 @@ export function validatePattern(type, p, defLen = 16) {
     });
     return { len, steps, locked };
   }
-  const notes = (Array.isArray(p.notes) ? p.notes : []).map(n => cleanNote(n, len)).filter(Boolean);
+  const notes = (Array.isArray(p.notes) ? p.notes : []).map(n => cleanNote(n, len, slices)).filter(Boolean);
   return { len, notes };
 }
 
 function cleanParams(type, params) {
-  const def = getInstrumentType(type).defaultParams, out = defaultParamsFor(type);
+  const t = getInstrumentType(type), def = t.defaultParams, out = defaultParamsFor(type);
+  const ranges = t.paramRanges || {}, choices = t.paramChoices || {};
   if (!isObj(params)) return out;
   for (const k of Object.keys(def)) {
     const dv = def[k], v = params[k];
-    if (typeof dv === 'number' && typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    if (typeof dv === 'number' && typeof v === 'number' && Number.isFinite(v)) out[k] = ranges[k] ? clamp(v, ranges[k][0], ranges[k][1]) : v;
     else if (typeof dv === 'boolean' && typeof v === 'boolean') out[k] = v;
-    else if (typeof dv === 'string' && typeof v === 'string') out[k] = v;
+    else if (typeof dv === 'string' && typeof v === 'string' && (!choices[k] || choices[k].includes(v))) out[k] = v;
   }
   return out;
 }
@@ -312,11 +317,14 @@ function cleanSlots(input, sceneIds) {
   const ids = assignIds(raw, slotIdFor);
   return raw.map((s, k) => {
     const def = getInstrumentType(s.type), pats = isObj(s.patterns) ? s.patterns : {};
-    return {
+    const out = {
       id: ids[k], type: s.type, mute: !!s.mute, solo: !!s.solo,
       params: cleanParams(s.type, s.params), macros: cleanMacros(s.macros),
       patterns: Object.fromEntries(sceneIds.map(sid => [sid, validatePattern(s.type, pats[sid], def.defaultLength)])),
     };
+    // a sampler keeps its sample reference even when the asset is missing on this device (never dropped silently)
+    if (def.capabilities.samples) out.sample = cleanSampleRef(s.sample);
+    return out;
   });
 }
 
