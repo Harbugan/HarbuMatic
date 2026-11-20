@@ -1,0 +1,47 @@
+/* =========================================================
+   HarbuMatic v0.5 — design tokens + base
+   ========================================================= */
+:root {
+  --cream: #F6EBDC; --cream-2: #FBF4EA; --cream-3: #EFDFCB; --panel: #F8EDE0;
+  --pink: #F2AFC0; --pink-d: #E07D98; --pink-dd: #B85475;
+  --mint: #A5DFCE; --mint-d: #5FBFA3; --mint-dd: #3A8F78;
+  --lav: #C2B0ED; --lav-d: #9A82DD; --lav-dd: #6E56B8;
+  --peach: #F5D19A; --peach-d: #E9AE57; --peach-dd: #B9802C;
+  --navy: #28283F; --navy-2: #33314F; --ink: #343047; --muted: #8a8092; --line: #E6D5C2;
+  --r-xl: 28px; --r-l: 22px; --r-m: 16px; --r-s: 11px;
+  --sh-panel: 0 1px 0 #fff inset, 0 -2px 0 #e8d6c2 inset, 0 10px 24px -14px #a0806066, 0 2px 4px #a0806022;
+  --sh-btn: 0 1px 0 #ffffffcc inset, 0 -3px 0 #00000014 inset, 0 4px 0 var(--btn-edge, #dcc6ad), 0 8px 14px -6px #8a6a4a55;
+  --sh-btn-press: 0 1px 0 #ffffff99 inset, 0 -1px 0 #00000010 inset, 0 1px 0 var(--btn-edge, #dcc6ad), 0 2px 5px -2px #8a6a4a55;
+  --font-ui: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  --font-brand: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+  --accent: var(--pink); --accent-d: var(--pink-d); --accent-dd: var(--pink-dd);
+  --tap: 44px;              /* minimum touch target */
+  --gap: 10px;
+  --right-w: 296px;
+  --sa-t: env(safe-area-inset-top, 0px); --sa-r: env(safe-area-inset-right, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px); --sa-l: env(safe-area-inset-left, 0px);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--font-ui); color: var(--ink); font-weight: 700; font-size: 15px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #fff6ec 0%, transparent 60%),
+    repeating-linear-gradient(135deg, transparent 0 22px, #f4c6cf33 22px 26px),
+    var(--cream);
+  overflow: hidden; overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+button { font-family: inherit; color: inherit; font-size: inherit; }
+select, input { font-family: inherit; }
+input { user-select: text; -webkit-user-select: text; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 3px solid var(--lav-d); outline-offset: 2px; }
+.ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.spacer { flex: 1; }
+.hint { font-size: 12px; color: var(--muted); font-weight: 700; }
+.sect { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); margin: 4px 2px 0; font-weight: 900; }
+.mini-hint { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.35; }
+.glbl { font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); font-weight: 900; }
