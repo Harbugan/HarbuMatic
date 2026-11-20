@@ -29,8 +29,9 @@ export function renderLab() {
   uni.onclick = () => uniReact(.3);
   host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${SCENE_LETTERS[p.scene]}`))));
 
+  const gen = m.capabilities.generate; // MUNCH has no generator: its buttons are shown disabled, never as no-ops
   const act = (k, label, kind, cls = '', sub) => {
-    const b = h('button', { type: 'button', class: 'lbtn ' + cls, title: label }, h('span', { class: 'lbtn-i', html: ico(k) }), h('span', { class: 'lbtn-t' }, label, sub ? h('small', {}, sub) : null));
+    const b = h('button', { type: 'button', class: 'lbtn ' + cls, title: gen ? label : `${label} is not available for ${m.name}`, disabled: !gen }, h('span', { class: 'lbtn-i', html: ico(k) }), h('span', { class: 'lbtn-t' }, label, sub ? h('small', {}, gen ? sub : 'not for ' + m.name) : null));
     b.onclick = () => A.runTransform(kind);
     return b;
   };

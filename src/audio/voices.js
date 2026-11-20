@@ -198,7 +198,7 @@ const EDGE = .004; // fade at a region boundary (s): no click, no bleed into the
 
 function createMunchVoice({ ctx, shared, channel, params, sample }) {
   const active = new Set(); // { src, env, end }
-  const stats = { missed: 0, stolen: 0 };
+  const stats = { played: 0, missed: 0, stolen: 0 };
   function fadeOut(v, at) {
     try { v.env.gain.cancelScheduledValues(at); v.env.gain.setTargetAtTime(0, at, .004); v.src.stop(at + .03); } catch (e) { /* already gone */ }
   }
@@ -232,7 +232,7 @@ function createMunchVoice({ ctx, shared, channel, params, sample }) {
     src.onended = () => { active.delete(v); try { src.disconnect(); env.disconnect(); } catch (e) { /* gone */ } };
     src.start(t, offset);
     src.stop(end + .002);
-    active.add(v);
+    active.add(v); stats.played++;
   }
   return {
     input: channel.bus,
