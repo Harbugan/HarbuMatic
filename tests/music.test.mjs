@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEmptyProject, createDemoProject } from '../src/core/project.js';
+import { createEmptyProject, createDemoProject, patternAt, setPatternAt, typeOfSlot } from '../src/core/project.js';
+
+// patterns by musical role (the music layer reasons in roles; songs store slots)
+const roleSlot = (pr, role) => pr.slots.find(s => typeOfSlot(s).role === role).id;
+const pt = (pr, role, sc = 0) => patternAt(pr, roleSlot(pr, role), sc);
 import { createRng } from '../src/core/rng.js';
 import { buildContext } from '../src/music/context.js';
 import { transformPattern, KINDS } from '../src/music/transform.js';
@@ -19,9 +23,9 @@ function genScene(seed, { mood = 'bouncy', chaos = .3, density = .55, key = 9, s
   const pr = createEmptyProject({ key, scale, mood });
   Object.assign(pr.lab, { mood, chaos, density });
   for (const t of ['drums', 'bass', 'synth', 'fuzz']) {
-    const ctx = buildContext(pr, 0, { rng, forLen: pr.tracks[t].patterns[0].len, ensureHarmony: t !== 'drums' });
+    const ctx = buildContext(pr, 0, { rng, forLen: pt(pr, t).len, ensureHarmony: t !== 'drums' });
     if (ctx.harmonyNew) pr.scenes[0].harmony = ctx.harmony;
-    pr.tracks[t].patterns[0] = transformPattern('generate', t, pr.tracks[t].patterns[0], ctx, rng).pattern;
+    setPatternAt(pr, roleSlot(pr, t), 0, transformPattern('generate', t, pt(pr, t), ctx, rng).pattern);
   }
   return { pr, ctx: buildContext(pr, 0, { rng }) };
 }
@@ -35,7 +39,7 @@ test('rng is deterministic per seed', () => {
 });
 
 test('generation is reproducible with the same seed', () => {
-  assert.deepEqual(genScene(7).pr.tracks, genScene(7).pr.tracks);
+  assert.deepEqual(genScene(7).pr.slots, genScene(7).pr.slots);
 });
 
 test('scale helpers', () => {
@@ -72,7 +76,7 @@ test('harmony: chordsHeard handles loops shorter than the progression', () => {
 
 test('harmony can be inferred from an existing bass line (v0.4 demo groove)', () => {
   const pr = createDemoProject();
-  const pats = { bass: pr.tracks.bass.patterns[1], synth: { notes: [] }, fuzz: { notes: [] } };
+  const pats = { bass: pt(pr, 'bass', 1), synth: { notes: [] }, fuzz: { notes: [] } };
   const h = inferHarmony(9, 'minor', pats, 16, 2);
   assert.equal(h.degrees[0], 0, 'A-rooted bass → tonic chord');
 });
@@ -82,8 +86,8 @@ test('bass and melody share the harmony: strong-beat notes are chord tones', () 
     const synth = [], bass = [];
     for (let s = 1; s <= SEEDS; s++) {
       const { pr, ctx } = genScene(s * 101, { mood, chaos });
-      synth.push(A.chordToneRatio(pr.tracks.synth.patterns[0].notes, ctx, pr.tracks.synth.patterns[0].len));
-      bass.push(A.chordToneRatio(pr.tracks.bass.patterns[0].notes, ctx, pr.tracks.bass.patterns[0].len));
+      synth.push(A.chordToneRatio(pt(pr, 'synth', 0).notes, ctx, pt(pr, 'synth', 0).len));
+      bass.push(A.chordToneRatio(pt(pr, 'bass', 0).notes, ctx, pt(pr, 'bass', 0).len));
     }
     assert.ok(avg(bass) > .9, `${mood}/${chaos} bass chord tones ${avg(bass).toFixed(2)}`);
     assert.ok(avg(synth) > (chaos < .3 ? .9 : .8), `${mood}/${chaos} synth chord tones ${avg(synth).toFixed(2)}`);
@@ -95,7 +99,7 @@ test('melodies are motif based: repetition, smooth contour, resolved endings', (
     const sim = [], smooth = [], res = [];
     for (let s = 1; s <= SEEDS; s++) {
       const { pr, ctx } = genScene(s * 31, { mood, chaos: .2 });
-      const p = pr.tracks.synth.patterns[0];
+      const p = pt(pr, 'synth', 0);
       sim.push(A.unitSimilarity(p.notes, p.len, 8)); smooth.push(A.smoothness(p.notes)); res.push(A.endsResolved(p.notes, ctx, p.len) ? 1 : 0);
     }
     assert.ok(avg(sim) > .8, `${mood} repetition ${avg(sim).toFixed(2)}`);
@@ -105,16 +109,16 @@ test('melodies are motif based: repetition, smooth contour, resolved endings', (
 });
 
 test('chaos controls deviation: more chaos → less repetition, but still mostly in scale', () => {
-  const simAt = chaos => avg(Array.from({ length: SEEDS }, (_, s) => { const p = genScene(s * 17 + 3, { mood: 'bouncy', chaos }).pr.tracks.synth.patterns[0]; return A.unitSimilarity(p.notes, p.len, 8); }));
+  const simAt = chaos => avg(Array.from({ length: SEEDS }, (_, s) => { const p = pt(genScene(s * 17 + 3, { mood: 'bouncy', chaos }).pr, 'synth', 0); return A.unitSimilarity(p.notes, p.len, 8); }));
   assert.ok(simAt(.05) > simAt(.95), 'low chaos repeats more than high chaos');
   for (let s = 1; s <= SEEDS; s++) {
     const { pr, ctx } = genScene(s, { mood: 'weird', chaos: 1 });
-    assert.ok(A.inScaleRatio(pr.tracks.synth.patterns[0].notes, ctx.scale) >= .75);
+    assert.ok(A.inScaleRatio(pt(pr, 'synth', 0).notes, ctx.scale) >= .75);
   }
 });
 
 test('density controls how busy patterns are', () => {
-  const busy = d => avg(Array.from({ length: SEEDS }, (_, s) => { const g = genScene(s * 13 + 1, { density: d }).pr; return A.onsetDensity(g.tracks.synth.patterns[0].notes, 32) + A.drumDensity(g.tracks.drums.patterns[0].steps, 16); }));
+  const busy = d => avg(Array.from({ length: SEEDS }, (_, s) => { const g = genScene(s * 13 + 1, { density: d }).pr; return A.onsetDensity(pt(g, 'synth', 0).notes, 32) + A.drumDensity(pt(g, 'drums', 0).steps, 16); }));
   assert.ok(busy(.9) > busy(.1));
 });
 
@@ -144,7 +148,7 @@ test('bass locks to the kick when using the lock style', () => {
 
 test('GOO stays monophonic and slides only into adjacent notes', () => {
   for (let s = 1; s <= SEEDS; s++) {
-    const p = genScene(s, { mood: 'weird', chaos: .8 }).pr.tracks.bass.patterns[0];
+    const p = pt(genScene(s, { mood: 'weird', chaos: .8 }).pr, 'bass', 0);
     const sorted = [...p.notes].sort((a, b) => a.s - b.s);
     sorted.forEach((n, i) => { const nx = sorted[i + 1]; if (nx) assert.ok(n.s + n.l <= nx.s, 'no overlap'); if (n.slide) assert.ok(sorted.some(m => m.s === (n.s + n.l) % p.len)); });
   }
@@ -153,7 +157,7 @@ test('GOO stays monophonic and slides only into adjacent notes', () => {
 test('every transform keeps notes inside the pattern and respects locks', () => {
   for (const track of ['drums', 'bass', 'synth', 'fuzz']) for (const kind of KINDS) for (let s = 1; s <= 12; s++) {
     const { pr } = genScene(s * 7, { chaos: .9 });
-    const pat = pr.tracks[track].patterns[0];
+    const pat = pt(pr, track, 0);
     if (track === 'drums') { pat.locked.kick = true; pat.locked.chh = true; }
     else pat.notes.forEach((n, i) => { if (i % 3 === 0) n.locked = true; });
     const before = JSON.parse(JSON.stringify(pat));
@@ -176,7 +180,7 @@ test('mutate preserves identity, evolve is subtle', () => {
   const kept = { mutate: [], evolve: [] };
   for (let s = 1; s <= SEEDS; s++) {
     const { pr } = genScene(s * 5, { chaos: .3 });
-    const pat = pr.tracks.synth.patterns[0];
+    const pat = pt(pr, 'synth', 0);
     for (const kind of ['mutate', 'evolve']) {
       const ctx = buildContext(pr, 0, { rng: createRng(s) });
       const out = transformPattern(kind, 'synth', pat, ctx, createRng(s + 99)).pattern;
@@ -193,7 +197,7 @@ test('remix keeps notes on the harmony at their new position', () => {
   const r = [];
   for (let s = 1; s <= SEEDS; s++) {
     const { pr, ctx } = genScene(s * 3, { chaos: .2 });
-    const out = transformPattern('remix', 'synth', pr.tracks.synth.patterns[0], ctx, createRng(s)).pattern;
+    const out = transformPattern('remix', 'synth', pt(pr, 'synth', 0), ctx, createRng(s)).pattern;
     r.push(A.chordToneRatio(out.notes, ctx, out.len));
   }
   assert.ok(avg(r) > .75, `remix chord tones ${avg(r).toFixed(2)}`);
@@ -202,6 +206,6 @@ test('remix keeps notes on the harmony at their new position', () => {
 test('empty pattern + mutate falls back to generate', () => {
   const pr = createEmptyProject();
   const ctx = buildContext(pr, 0, { rng: createRng(1), forLen: 32 });
-  const out = transformPattern('mutate', 'synth', pr.tracks.synth.patterns[0], ctx, createRng(2));
+  const out = transformPattern('mutate', 'synth', pt(pr, 'synth', 0), ctx, createRng(2));
   assert.ok(out.pattern.notes.length > 0);
 });

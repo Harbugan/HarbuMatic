@@ -81,3 +81,26 @@ for (const sc of SCEN) {
 for (const l of logs) if (l.scenario.queue) for (const k of Object.keys(l.scenario.queue)) if (k[0] === '_') delete l.scenario.queue[k];
 writeFileSync(out + '/dispatch-v051.json', JSON.stringify(logs) + '\n');
 console.log(logs.map(l => `${l.name}: ${l.events.length} steps, ${l.calls.length} calls`).join('\n'));
+
+// ---- generator output (Generate on every instrument, seeded) ----
+const { createRng } = await import(root + '/src/core/rng.js');
+const { buildContext } = await import(root + '/src/music/context.js');
+const { transformPattern } = await import(root + '/src/music/transform.js');
+const gen = [];
+for (const mood of ['dreamy', 'bouncy', 'dark', 'weird']) for (const seed of [1, 2, 3]) {
+  const rng = createRng(seed * 31 + mood.length);
+  const pr = P.createEmptyProject({ key: seed + 2, scale: ['minor', 'dorian', 'major'][seed - 1], mood });
+  Object.assign(pr.lab, { mood, chaos: seed / 4, density: .3 + seed / 6 });
+  for (const t of TRACKS) {
+    const ctx = buildContext(pr, 0, { rng, forLen: pr.tracks[t].patterns[0].len, ensureHarmony: t !== 'drums' });
+    if (ctx.harmonyNew) pr.scenes[0].harmony = ctx.harmony;
+    pr.tracks[t].patterns[0] = transformPattern('generate', t, pr.tracks[t].patterns[0], ctx, rng).pattern;
+  }
+  for (const kind of ['mutate', 'remix', 'callresp', 'humanize']) {
+    const ctx = buildContext(pr, 0, { rng, forLen: 32 });
+    pr.tracks.synth.patterns[1] = transformPattern(kind, 'synth', pr.tracks.synth.patterns[0], ctx, rng).pattern;
+  }
+  gen.push({ mood, seed, harmony: pr.scenes[0].harmony, patterns: Object.fromEntries(TRACKS.map(t => [t, pr.tracks[t].patterns[0]])), synth1: pr.tracks.synth.patterns[1] });
+}
+writeFileSync(out + '/generate-v051.json', JSON.stringify(gen) + '\n');
+console.log(`generator: ${gen.length} scenes`);

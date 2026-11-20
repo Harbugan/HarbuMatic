@@ -2,25 +2,25 @@
 // into — key, scale, harmony, groove (kick/snare placement), mood, density and chaos.
 // Generators never read global state; they get a context + an rng.
 
-import { TRACKS, MELODIC } from '../core/constants.js';
+import { MELODIC } from '../core/constants.js';
+import { rolePatterns } from '../core/project.js';
 import { clamp } from '../core/util.js';
 import { makeScale } from './theory.js';
 import { chooseHarmony, inferHarmony } from './harmony.js';
 
 export function harmonySpanFor(patterns, forLen = 16) {
-  const lens = MELODIC.filter(t => patterns[t].notes.length).map(t => patterns[t].len);
+  const lens = MELODIC.filter(t => patterns[t] && patterns[t].notes.length).map(t => patterns[t].len);
   return clamp(Math.max(forLen, ...lens, 32), 16, 64);
 }
 
 /**
- * @param project  v5 project
+ * @param project  v6 project (patterns are looked up by musical role, see rolePatterns)
  * @param sceneIdx scene to write into
  * @param opts     { rng, forLen, ensureHarmony, overrides: { mood, chaos, density } }
  */
 export function buildContext(project, sceneIdx, { rng, forLen = 16, ensureHarmony = true, overrides = {} } = {}) {
   const lab = { ...project.lab, ...overrides };
-  const patterns = {};
-  TRACKS.forEach(t => { patterns[t] = project.tracks[t].patterns[sceneIdx]; });
+  const patterns = rolePatterns(project, sceneIdx);
   let harmony = project.scenes[sceneIdx].harmony, harmonyNew = false;
   if (!harmony && ensureHarmony) {
     const span = harmonySpanFor(patterns, forLen);
