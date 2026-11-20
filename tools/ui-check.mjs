@@ -8,6 +8,7 @@
 
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
+const { VERSION_LABEL, APP_CREDIT } = await import('../src/core/constants.js');
 let chromium;
 try { ({ chromium } = require('playwright')); } catch (e) { console.error('Playwright not found. Install it with: npm i -D playwright && npx playwright install chromium'); process.exit(2); }
 
@@ -57,9 +58,22 @@ async function layoutAudit(page) {
       const ix = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left), iy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
       if (ix > 4 && iy > 4) out.overlaps.push(`${name(a)} ↔ ${name(b)}`);
     }
+    // controls that spill out of the card, tile or group that holds them (BUG-002)
+    out.spill = [];
+    els.forEach(el => {
+      const box = el.parentElement && el.parentElement.closest('.card, .atile, .sgroup, .transport, .cblock, .hdr');
+      if (!box) return;
+      const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+      if (Math.max(b.left - r.left, r.right - b.right, b.top - r.top, r.bottom - b.bottom) > 1) out.spill.push(`${name(el)} in .${box.classList[0]}`);
+    });
     return out;
   });
 }
+
+/** geometry of the persistent app shell (header + transport/instrument strip) */
+const shell = page => page.evaluate(() => ['.hdr', '.brand', '.modes', '.hdr-r', '.strip', '.transport', '#cards', '#ident'].map(s => {
+  const r = document.querySelector(s).getBoundingClientRect(); return `${s}:${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)}`;
+}).join(' '));
 
 const state = page => page.evaluate(() => {
   const { store, A } = window.__harbu, p = store.project;
@@ -93,10 +107,25 @@ async function rollPoint(page, step, rowOrPitch) {
       const a = await layoutAudit(page);
       ok(!a.offscreen.length, `${w}×${h} ${mode}: nothing clipped off-screen${a.offscreen.length ? ' — ' + a.offscreen.slice(0, 6).join(', ') : ''}`);
       ok(!a.overlaps.length, `${w}×${h} ${mode}: no overlapping controls${a.overlaps.length ? ' — ' + a.overlaps.slice(0, 4).join('; ') : ''}`);
+      ok(!a.spill.length, `${w}×${h} ${mode}: controls stay inside their card/tile${a.spill.length ? ' — ' + a.spill.slice(0, 4).join('; ') : ''}`);
+      if (mode === 'arrange') { // the scene library uses 6 columns once its container is at least 1000 px wide (BUG-002)
+        const lib = await page.evaluate(() => { const el = document.querySelector('.arr-scenes'); return { cols: getComputedStyle(el).gridTemplateColumns.split(' ').length, w: document.querySelector('#viewArr').clientWidth }; });
+        ok(lib.cols === (lib.w >= 1000 ? 6 : 3), `${w}×${h} arrange: scene library has ${lib.w >= 1000 ? 6 : 3} columns (got ${lib.cols})`);
+      }
+      if (mode === 'sound') { // labels under segment pickers line up with knob labels in the same row (BUG-002)
+        const off = await page.evaluate(() => [...document.querySelectorAll('#viewSound .sgroup .row')].map(row => { const t = [...row.querySelectorAll(':scope > .knob > .klbl, :scope > .wave-pick > .klbl')].map(l => Math.round(l.getBoundingClientRect().top)); return t.length ? Math.max(...t) - Math.min(...t) : 0; }));
+        ok(off.every(d => d <= 1), `${w}×${h} sound: control labels share one baseline per row${off.some(d => d > 1) ? ' — off by ' + Math.max(...off) + 'px' : ''}`);
+      }
       if (a.small.length) console.log(`    note: small targets: ${a.small.slice(0, 6).join(', ')}`);
       ok(!errors.length, `${w}×${h} ${mode}: no console errors${errors.length ? ' — ' + errors[0] : ''}`);
       await ctx.close();
     }
+    // the header and transport/instrument strip must not move or resize when switching modes (BUG-004)
+    const { ctx, page } = await open(browser, w, h);
+    const geo = {};
+    for (const m of ['jam', 'sound', 'arrange', 'jam']) { await page.evaluate(m => window.__harbu.A.setMode(m), m); await page.waitForTimeout(150); geo[m] = geo[m] || await shell(page); }
+    ok(geo.jam === geo.sound && geo.jam === geo.arrange, `${w}×${h}: header + strip identical in JAM, SOUND and ARRANGE${geo.jam === geo.arrange ? '' : ' — ' + geo.arrange}`);
+    await ctx.close();
   }
 
   console.log('\n— Interaction flows (1180×820, touch emulation) —');
@@ -111,6 +140,58 @@ async function rollPoint(page, step, rowOrPitch) {
   ok((await state(page)).kicks === before + 1, 'tap on an empty drum cell adds a hit');
   await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(80);
   ok((await state(page)).kicks === before, 'tapping the hit again removes it');
+
+  // BUG-001: tapping a drum label must never block step editing (stopped and playing, touch and mouse)
+  const labelPt = async row => ({ x: await page.evaluate(() => document.querySelector('#roll').getBoundingClientRect().left + 40), y: (await rollPoint(page, 0, row)).y });
+  for (const playing of [false, true]) {
+    if (playing) await page.evaluate(() => window.__harbu.A.transport.play());
+    const lab = await labelPt(0), k0 = (await state(page)).kicks;
+    await page.touchscreen.tap(lab.x, lab.y); await page.waitForTimeout(60);
+    await page.touchscreen.tap(lab.x, lab.y); await page.waitForTimeout(60);
+    ok(await page.evaluate(() => window.__harbu.store.ui.drumRow) === 0, `drum label tap selects the row${playing ? ' (playing)' : ''}`);
+    pt = await rollPoint(page, 1, 0);
+    await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(60);
+    ok((await state(page)).kicks === k0 + 1, `after tapping a drum label, tapping a cell still adds a hit${playing ? ' (playing)' : ''}`);
+    await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(60);
+    ok((await state(page)).kicks === k0, `…and tapping it again removes it${playing ? ' (playing)' : ''}`);
+    await page.mouse.click(lab.x, lab.y); await page.waitForTimeout(60);
+    await page.mouse.click(pt.x, pt.y); await page.waitForTimeout(60);
+    ok((await state(page)).kicks === k0 + 1, `mouse: label click then cell click adds a hit${playing ? ' (playing)' : ''}`);
+    await page.mouse.click(pt.x, pt.y); await page.waitForTimeout(60);
+    if (playing) await page.evaluate(() => window.__harbu.A.stop());
+  }
+  { // drag-painting across a row still works after a label tap
+    const lab = await labelPt(0), k0 = (await state(page)).kicks;
+    await page.touchscreen.tap(lab.x, lab.y); await page.waitForTimeout(60);
+    const a = await rollPoint(page, 1, 0), b = await rollPoint(page, 3, 0);
+    await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(60);
+    ok((await state(page)).kicks === k0 + 3, 'drag-painting a drum row works after a label tap');
+    await page.click('#hUndo'); await page.waitForTimeout(60);
+    ok((await state(page)).kicks === k0, 'the paint stroke undoes as one step');
+  }
+
+  // BUG-003: dragging a knob rotates only the indicator; the lit cap and its shadow stay put
+  {
+    const knob = page.locator('#shapers .knob').first(), box = await knob.boundingBox();
+    const read = () => knob.evaluate(k => ({ v: k.getAttribute('aria-valuenow'), cap: getComputedStyle(k.querySelector('.cap')).transform, ind: k.querySelector('.ind').style.transform }));
+    const k0 = await read();
+    await page.mouse.move(box.x + box.width / 2, box.y + 25); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2, box.y - 25, { steps: 5 }); await page.mouse.up();
+    const k1 = await read();
+    ok(k1.v !== k0.v && k1.ind !== k0.ind, 'knob drag changes the value and rotates the indicator');
+    ok(k0.cap === 'none' && k1.cap === 'none', 'knob cap (lighting + shadow) never rotates');
+    await page.click('#hUndo'); await page.waitForTimeout(60);
+  }
+
+  // release identity: one footer line, exact credit, never on top of a control
+  {
+    const id = await page.evaluate(() => {
+      const f = document.querySelector('#ident'), r = f.getBoundingClientRect();
+      const hit = [...document.querySelectorAll('button, .knob, canvas#roll, .panel')].filter(e => { const b = e.getBoundingClientRect(); return b.width && Math.min(r.right, b.right) - Math.max(r.left, b.left) > 0 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 0; });
+      return { text: f.textContent, visible: r.width > 0 && r.bottom <= innerHeight, over: hit.length };
+    });
+    ok(id.text === `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`, `footer shows version and exact credit (${id.text})`);
+    ok(id.visible && id.over === 0, 'footer is visible and covers no control');
+  }
 
   // melodic: tap empty adds, tap the note removes (no right-click needed)
   await page.evaluate(() => { const { A } = window.__harbu; A.selectTrack('synth'); });
@@ -170,6 +251,11 @@ async function rollPoint(page, step, rowOrPitch) {
   await page.click('#hSong'); await page.click('text=Open…');
   await page.click('.proj:not(.cur) .btn.primary'); await page.waitForTimeout(200);
   ok((await state(page)).name === 'Demo jam', 'Open brings back the previous song');
+
+  // Settings & help shows the same version and credit
+  await page.click('#hSong'); await page.click('text=Settings & help'); await page.waitForTimeout(80);
+  ok(await page.isVisible(`.dialog >> text=HarbuMatic ${VERSION_LABEL}`) && await page.isVisible(`.dialog >> text=${APP_CREDIT}`), 'Settings & help shows version and credit');
+  await page.click('.dialog .dbtn.primary'); await page.waitForTimeout(80);
 
   // arrange: add, drag to reorder, duplicate, repeat, remove
   await page.click('.mode[data-mode=arrange]'); await page.waitForTimeout(150);
