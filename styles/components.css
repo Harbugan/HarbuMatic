@@ -72,6 +72,7 @@ body.coarse .btn.icon { width: var(--tap); min-width: var(--tap); }
 .led.hit { background: #fff; box-shadow: 0 0 0 2px var(--cd), 0 0 10px 3px #fff; }
 .pill { --btn-edge: color-mix(in srgb, var(--cd) 80%, #fff); border: 0; cursor: pointer; flex: none; width: var(--tap); height: 38px; border-radius: 12px; font-weight: 900; font-size: 13px; letter-spacing: 1px; padding: 0;
   background: linear-gradient(180deg, #fffaf6, color-mix(in srgb, var(--c) 30%, #fff)); box-shadow: var(--sh-btn); transition: transform .06s, box-shadow .06s; }
+.card-ms .pill { flex-shrink: 1; min-width: 38px; } /* shrink a little rather than spill out of a narrow card */
 .pill:active { transform: translateY(3px); box-shadow: var(--sh-btn-press); }
 .pill.on { background: linear-gradient(180deg, #fff, var(--cd)); color: #fff; text-shadow: 0 1px 0 #0003; }
 .pill.mute.on { background: linear-gradient(180deg, #8f86a0, #5e5672); }

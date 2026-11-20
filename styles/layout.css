@@ -88,12 +88,13 @@
   .brand .wordmark { display: none; }
   .hdr { gap: 8px; padding: 0 4px; }
   .mode { padding: 0 12px; letter-spacing: .6px; }
-  .songbtn { max-width: 170px; }
-  .songbtn-t span { max-width: 96px; }
-  .cat { width: 62px; height: 56px; }
-  .card { padding-left: 4px; gap: 2px 4px; }
-  .card-ms { gap: 4px; }
-  .card-name { font-size: 18px; }
+  /* .device raises specificity: components.css loads later and its base rules used to win (BUG-002) */
+  .device .songbtn { max-width: 170px; }
+  .device .songbtn-t span { max-width: 96px; }
+  .device .cat { width: 62px; height: 56px; }
+  .device .card { padding-left: 4px; gap: 2px 4px; }
+  .device .card-ms { gap: 4px; }
+  .device .card-name { font-size: 18px; }
 }
 
 /* shorter landscape screens (iPad 10–11" in Safari with toolbars) */
@@ -116,6 +117,7 @@
   .transport { grid-template-columns: 58px 50px minmax(0, 1fr); }
   .mode { padding: 0 13px; }
   .brand .wordmark { font-size: 24px; }
+  .device .cat { width: 70px; height: 62px; } /* leaves room for M + S on ~1024 px wide landscape (BUG-002) */
 }
 @media (max-width: 980px) and (orientation: landscape) {
   .brand .wordmark { display: none; }
@@ -133,6 +135,6 @@
   .transport .bpm { grid-row: 2; grid-column: 1 / 3; }
 }
 @media (max-width: 800px) and (orientation: portrait) {
-  .cat { width: 52px; height: 48px; }
-  .pill { width: 42px; }
+  .device .cat { width: 52px; height: 48px; }
+  .device .pill { width: 42px; }
 }
