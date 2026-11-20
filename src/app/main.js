@@ -2,7 +2,7 @@
 
 import { store, on } from './store.js';
 import * as A from './actions.js';
-import { META, TRACKS } from '../core/constants.js';
+import { META, TRACKS, APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
 import { $, $$ } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { toast, dialogOpen, closeDialog } from '../ui/controls.js';
@@ -20,7 +20,9 @@ function applyLayout() {
   const u = store.ui, d = $('#device');
   d.dataset.mode = u.mode;
   d.classList.toggle('expanded', u.expanded && u.mode === 'jam');
-  d.classList.toggle('compact', (u.expanded && u.mode === 'jam') || u.mode === 'arrange');
+  // the app shell (header + transport/instrument strip) stays identical across JAM, SOUND and ARRANGE;
+  // only Deep edit, a JAM sub-mode the player opts into, compacts the strip (BUG-004)
+  d.classList.toggle('compact', u.expanded && u.mode === 'jam');
   d.classList.toggle('drawer-open', u.drawer);
   $('#scrim').classList.toggle('show', u.drawer || dialogOpen() || $('#menu').classList.contains('open'));
   $$('.mode').forEach(b => { const on = b.dataset.mode === u.mode; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
@@ -126,6 +128,7 @@ function keys(e) {
 /* ---------- boot ---------- */
 function init() {
   const { fresh } = A.bootProject();
+  $('#ident').textContent = `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`;
   $('#hUndo').innerHTML = ico('undo'); $('#hRedo').innerHTML = ico('redo');
   $('#hUndo').onclick = A.undo; $('#hRedo').onclick = A.redo;
   $('#hSong').onclick = e => { e.stopPropagation(); openMenu(); };
@@ -158,7 +161,7 @@ function init() {
   };
   $('#startNew').onclick = () => { A.engine.init(); $('#start').classList.add('hide'); newSongDialog(); };
   requestAnimationFrame(frame);
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(APP_VERSION)}`).catch(() => {});
   window.__harbu = { store, A }; // handy for debugging and automated UI tests
 }
 init();

@@ -85,7 +85,7 @@ body.coarse .btn.icon { width: var(--tap); min-width: var(--tap); }
 .cat .eyes-alt { display: none; }
 .cat.joy .eyes { display: none; } .cat.joy .eyes-alt { display: inline; }
 
-/* compact cards (Deep edit + Arrange): cat + name + M/S, nothing else */
+/* compact cards (Deep edit): cat + name + M/S, nothing else */
 .device.compact .card { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto; padding: 4px 8px 4px 2px; gap: 0 6px; }
 .device.compact .card-type, .device.compact .mini-steps, .device.compact .led { display: none; }
 .device.compact .cat { width: 48px; height: 44px; }
