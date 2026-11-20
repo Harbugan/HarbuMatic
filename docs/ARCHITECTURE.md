@@ -44,20 +44,18 @@ HarbuMatic separates *what kind of instrument* something is from *which instrume
   - `engine`: the id of the audio voice factory in `src/audio/voices.js`, or `null` when the type has no sound engine yet. The registry only names it, so `core` stays free of Web Audio.
   The registry is frozen pure data. It is not a plugin framework.
 - **Slots** (`project.slots`). Each slot is one **instrument instance** with a stable id (`slot-01` …) that never depends on its type. It owns its parameters, macros, patterns (one per scene) and mute/solo. Two slots may share a type, and replacing an instrument later changes a slot's `type`/`params`/`patterns` in place while its id, position and snapshot keys stay.
-- **Status.** Types with `status: 'ready'` and an engine are *playable*: they get a card, a channel and scheduler dispatch. `munch` is `planned`: every song holds a MUNCH slot and keeps its data, but it is never scheduled, has no channel, is ignored by solo, scene length, "has content" and the generators, cannot be selected (`selectSlot` refuses it) and has no card outside the dev preview.
+- **Status.** Types with `status: 'ready'` and an engine are *playable*: they get a card, a channel and scheduler dispatch. `munch` is `preview`: it has an engine (Phase 3) but is playable only while previews are enabled (`?munch=dev` → `setPreviewInstruments(true)`). Otherwise it behaves as a planned type: every song holds a MUNCH slot and keeps its data, but it is never scheduled, has no channel, is ignored by solo, scene length, "has content" and the generators, cannot be selected (`selectSlot` refuses it) and has no card outside the dev preview.
 - **Five slots (v0.6 Phase 2).** New songs get `slot-01` BOP, `slot-02` GOO, `slot-03` BLIP, `slot-04` FUZZ, `slot-05` MUNCH (`DEFAULT_SLOT_TYPES`). Older songs gain the MUNCH slot when they are opened (see Migration). There is no slot creation, deletion or instrument replacement in the UI.
 - **Access.** Code reaches instrument data only through accessors in `src/core/project.js` (`slotById`, `typeOfSlot`, `playableSlots`, `patternAt`/`setPatternAt`, `slotAudible`, `rolePatterns`, `blockScene`, …) and their UI wrappers in `src/app/store.js` (`slot()`, `typeOf()`, `isDrumSlot()`, `visibleSlots()`, `pat()`). `store.ui.sel` is a slot id. No module outside the registry, the role-keyed music tables and the character artwork branches on an instrument name.
 
-### Making MUNCH playable (Phase 3+)
+### MUNCH sample engine (Phase 3)
 
-Every song already holds the MUNCH slot, and the engine, scheduler and card strip handle five playable instances (tested with a second BLIP standing in for MUNCH). What remains:
+MUNCH has a working sample engine. See **`docs/SAMPLES.md`** for the data model, storage, voice, limits, `.hbn` plan and iPad test plan. In short:
 
-1. **Voice factory.** Add `munch: createMunchVoice` to `VOICE_FACTORIES` in `src/audio/voices.js` with the contract documented there (`input`, `apply`, `trigger`, `silence`, `dispose`). Then set `engine: 'munch'` and `status: 'ready'` in the registry. That alone gives MUNCH its own mixer channel (volume, pan, drive, delay and reverb sends), transport gates, scene/song playback, audition (`engine.audition`) and mute/solo; nothing in the engine or scheduler branches on it.
-2. **Sample store** outside the scheduler (decode, keep, reference by id). The voice receives ready buffers, e.g. through `shared` or a resolver passed to the factory. Persisting samples needs storage beyond `localStorage` (IndexedDB, later `.hbn`).
-3. **Pattern kind.** `notes` is provisional and covers both performance modes: the melodic keyboard plays pitches of one sample; slice pads can map slice *n* to a fixed note row (a pad grid). Only a genuinely different pattern would need a new kind in `validatePattern`, `emptyPatternOfKind` and the sequencer.
-4. **UI layers.** The registry names the agreed layers in `ui.layers` (`play`, `chop`, `twist`): PLAY (record, import, melodic keys), CHOP (slice pads, MAGIC CHOP), TWIST (waveform, pitch, reverse, loop). They are expected to live in the SOUND view (`SOUNDDEF`/`PRESETS` have no MUNCH entry yet) and the sequencer tools (`ui.tools`). The character artwork in `catSVG` and the `data-t=munch` card colours are provisional placeholders.
-5. **Musical role.** MUNCH has `role: null`, `generate: false` and no `MACRO_MAP` entry, so the Lab, macros and Auto-evolve leave it alone. Decide whether Generate should ever touch it.
-6. **Layout.** `#cards[data-count="5"]` switches to five columns and, below ~190 px per card, a stacked card (cat + name, then a full-width M/S row). Check it with `?preview=five` (see UI structure) and on a real iPad.
+- `src/core/samples.js` (pure): `slot.sample` reference (content-hash id, metadata, slice boundaries), slice and trim regions, pitch → playback rate. Notes may carry `slice: k`; without it they are melodic.
+- `src/samples/`: IndexedDB store (original bytes + metadata), decoded-buffer bank (bounded LRU, reversed copies, load states) and the MediaRecorder recorder. The scheduler never touches them.
+- `createMunchVoice` in `src/audio/voices.js` asks the bank for a ready buffer when a hit is due. `createEngine(getProject, { samples })` hands the bank to voices and attaches the AudioContext for decoding. The scheduler only forwards a note's `slice`.
+- MUNCH is a **preview** instrument: playable only with `?munch=dev` (`setPreviewInstruments`). Phase 4 sets it to `ready` together with the PLAY/CHOP/TWIST UI.
 
 ## Project data (schema v6)
 
@@ -115,7 +113,7 @@ All generators take a **shared context** built by `buildContext(project, scene)`
 
 - **Engine identity.** The engine (`src/audio/engine.js`) keeps one mixer channel per playable slot, keyed by slot id: bus → colour → drive → volume·mute → pan, plus delay and reverb sends. Each channel's voice comes from the factory its type names (`registry.engine` → `src/audio/voices.js`). A factory builds independent per-instance state: the mono acid oscillator, the BLIP LFO, the open-hat choke and the FUZZ crusher. Two slots of one type therefore never share a voice. The synthesis code itself is unchanged from v0.5. `syncSlots()` keeps channels in step with the song (new song, undo, a future slot change).
 - **Dispatch.** For every playable slot the scheduler reads that slot's pattern for the current scene. It decides by pattern kind and capabilities (`slide` → slide detection, `mono` → acid gate length), never by instrument name. It calls `engine.trigger(slotId, time, hit)`. UI events carry hits keyed by slot id.
-- **Future sampler.** A sample engine registers as another voice factory. Sample decoding and storage stay outside the scheduler: the voice receives playable buffers, and the scheduler keeps dispatching hits as it does for the synths.
+- **Sampler.** MUNCH registers as another voice factory (`createMunchVoice`). Sample decoding and storage stay outside the scheduler: the voice reads ready buffers from the sample bank, and the scheduler dispatches its hits as it does for the synths (passing a note's `slice` on). See `docs/SAMPLES.md`.
 
 - **Transport.** Play starts from Stopped. Pause freezes the musical position and Resume continues from it. Stop returns to the beginning.
 - **No stale events.** Each play session routes voices through fresh per-slot gain gates. Pause, Stop and project switches close the gates, which cuts notes the 120 ms lookahead had already scheduled. Reverb and delay tails still ring out naturally.
@@ -130,6 +128,7 @@ All generators take a **shared context** built by `buildContext(project, scene)`
 
 - **Standard JAM** shows Draw and Erase, octave buttons, Clear and Deep edit. You can add and remove notes by tapping, and move or resize them by dragging.
 - **Deep edit** (the expanded JAM) uses the same sequencer and state. It adds Velocity, Chance, Slide, Lock, bar length, ×2, zoom, the scale fold ("In key") and the velocity lane. Cards shrink to cat, name and M/S, the bottom bar hides, and the Lab becomes a drawer.
+- **MUNCH test bench** (`?munch=dev`, temporary): MUNCH becomes the fifth playable card. In SOUND it has Pitch, Trim and Play knobs, plus a test bench (`src/views/munch-dev.js`) for import, record, eight slice pads and a slice step grid. Sound shapers and Lab generators are shown as unavailable for MUNCH.
 - **Dev preview** `?preview=five` (read once in `main.js`, `store.ui.previewPlanned`) adds an inert placeholder card for the planned MUNCH slot so the five-card layout can be checked before MUNCH is playable. The card has no actions, cannot be selected or auditioned, and is ignored by keyboard shortcuts, the LCD and audio. Without the parameter the UI shows the four playable cards only.
 - **Layout** responds to available space:
   - Landscape tablets get a side Lab panel.

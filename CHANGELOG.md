@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — v0.6 Phase 3: MUNCH sample engine
+
+MUNCH can import, record, store and play samples, melodically and as eight slices, through the normal transport. It is a **dev preview**: playable only with `?munch=dev`. Without the flag nothing changes for players. The version stays 0.5.1.
+
+### Added
+- **Sample store** (`src/samples/store.js`): IndexedDB with original bytes and metadata, SHA-256 content ids (identical files stored once; a missing sample is restored by importing the same file), atomic writes, clear errors for empty, unsupported, too large (> 32 MB), too long (> 30 s), quota and unavailable storage. Nothing is deleted automatically.
+- **Sample bank** (`src/samples/bank.js`): decoded AudioBuffers with a 96 MB LRU budget (the current song's samples are pinned), reversed copies built ahead of time, explicit load states.
+- **Recorder** (`src/samples/recorder.js`): MediaRecorder in the browser's own format, 30 s limit, permission and hardware errors, the mic is always released, cancelled when the page is hidden.
+- **MUNCH voice** (`createMunchVoice`): AudioBufferSourceNode playback through MUNCH's mixer channel; pitch as playback rate around a root (default C4); oneshot, gate and loop; reverse; non-destructive trim; attack/release; velocity; 8-voice pool with stealing; every source stopped and disconnected.
+- **Slices**: eight equal slices by default, stored as normalized boundaries, validated and movable through the data model; notes trigger a slice with an explicit `slice` field.
+- **Test bench** in SOUND (dev preview): import, record, sample state, slice pads, slice step grid; Pitch, Trim and Play knobs.
+- `docs/SAMPLES.md`: design, schema, limits, `.hbn` packaging plan, iPad Safari test plan.
+
+### Changed
+- Registry: MUNCH has `engine: 'munch'` and the new `status: 'preview'` (playable only while previews are enabled), plus clamped params (`paramRanges`/`paramChoices`, MUNCH only).
+- Schema v6 (additive): `slot.sample` on sampler slots; optional `slice` on sampler notes.
+- Export warns when a song references samples: the JSON file is not portable yet.
+- Lab generators and sound shapers are shown as unavailable for an instrument without them (only MUNCH).
+
 ## Unreleased — v0.6 Phase 2: five instrument slots
 
 Structure only. The four instruments sound, look and behave exactly as before, the normal UI still shows four cards, and the version stays 0.5.1.
