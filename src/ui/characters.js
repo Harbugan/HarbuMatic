@@ -1,12 +1,12 @@
 // The band: BOP, GOO, BLIP, FUZZ (cats in headphones) and UNI the unicorn.
-// SVG artwork and reactions are unchanged from v0.4; only moved into a module.
+// SVG artwork and reactions are unchanged from v0.4. Characters are chosen by the instrument type's
+// `visual.character` and coloured from the registry; reactions are registered per slot id.
 
-import { META } from '../core/constants.js';
+import { getInstrumentType } from '../core/instruments.js';
 import { h } from './dom.js';
 import { store } from '../app/store.js';
 
 const INK = '#4A3F5C';
-export const HP = { drums: '#86D3BD', bass: '#B39DEB', synth: '#F49AB2', fuzz: '#B9A6EA' };
 export const STAR = 'M0 -6 L1.7 -1.7 L6 0 L1.7 1.7 L0 6 L-1.7 1.7 L-6 0 L-1.7 -1.7Z';
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -23,11 +23,12 @@ function eyePair(x1, x2, y, rx = 4, ry = 5) {
   return `<g class="eyes"><ellipse cx="${x1}" cy="${y}" rx="${rx}" ry="${ry}" fill="${INK}"/><ellipse cx="${x2}" cy="${y}" rx="${rx}" ry="${ry}" fill="${INK}"/>
   <circle cx="${x1 + 1.4}" cy="${y - 1.8}" r="1.5" fill="#fff"/><circle cx="${x2 + 1.4}" cy="${y - 1.8}" r="1.5" fill="#fff"/></g>`;
 }
-export function catSVG(tr) {
-  const m = META[tr], C = m.c, D = m.d, hp = HP[tr], st = `stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"`;
+/** character artwork for an instrument type ('bop', 'goo', …) */
+export function catSVG(type) {
+  const v = getInstrumentType(type).visual, tr = v.character, C = v.color, D = v.dark, hp = v.headphones, st = `stroke="${INK}" stroke-width="2.5" stroke-linejoin="round"`;
   const shadow = `<ellipse cx="60" cy="105" rx="30" ry="4" fill="#5a3f4f" opacity=".13"/>`;
   let body = '';
-  if (tr === 'drums') body = `
+  if (tr === 'bop') body = `
     <path d="M80 94 Q97 92 94 76" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/><path d="M80 94 Q97 92 94 76" fill="none" stroke="${C}" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M40 101 Q38 80 60 78 Q82 80 80 101 Z" fill="${C}" ${st}/>
     <ellipse cx="50" cy="101" rx="7" ry="4" fill="${C}" ${st}/><ellipse cx="70" cy="101" rx="7" ry="4" fill="${C}" ${st}/>
@@ -39,7 +40,7 @@ export function catSVG(tr) {
     <g class="eyes-alt"><path d="M42 56 Q47 49 52 56" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M68 56 Q73 49 78 56" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/></g>
     <ellipse cx="38" cy="63" rx="5.5" ry="3.2" fill="${D}" opacity=".55"/><ellipse cx="82" cy="63" rx="5.5" ry="3.2" fill="${D}" opacity=".55"/>
     <path d="M54 62 Q57 66.5 60 62 Q63 66.5 66 62" stroke="${INK}" stroke-width="2.3" fill="none" stroke-linecap="round"/>`;
-  if (tr === 'bass') body = `
+  if (tr === 'goo') body = `
     <path d="M100 90 Q118 88 114 72 Q111 62 104 67" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/><path d="M100 90 Q118 88 114 72 Q111 62 104 67" fill="none" stroke="${C}" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M33 44 Q28 22 47 32 Z" fill="${C}" ${st}/><path d="M87 44 Q92 22 73 32 Z" fill="${C}" ${st}/>
     <path d="M16 97 Q7 64 27 46 Q41 32 60 32 Q79 32 93 46 Q113 64 104 97 Q60 107 16 97Z" fill="${C}" ${st}/>
@@ -51,7 +52,7 @@ export function catSVG(tr) {
     <ellipse cx="37" cy="72" rx="5.5" ry="3" fill="${D}" opacity=".55"/><ellipse cx="83" cy="72" rx="5.5" ry="3" fill="${D}" opacity=".55"/>
     <path d="M57.5 73 Q60 80 62.5 73 Z" fill="#F49AB2" stroke="${INK}" stroke-width="1.8"/>
     <path d="M54 70 Q57 74.5 60 70 Q63 74.5 66 70" stroke="${INK}" stroke-width="2.3" fill="none" stroke-linecap="round"/>`;
-  if (tr === 'synth') body = `
+  if (tr === 'blip') body = `
     <path d="M44 101 Q42 84 60 82 Q78 84 76 101 Z" fill="${C}" ${st}/>
     <ellipse cx="52" cy="101" rx="6" ry="3.6" fill="${C}" ${st}/><ellipse cx="68" cy="101" rx="6" ry="3.6" fill="${C}" ${st}/>
     <path d="M27 50 Q14 2 54 28 Z" fill="${C}" ${st}/><path d="M32 41 Q26 17 46 30Z" fill="${D}" opacity=".5"/>
@@ -105,29 +106,31 @@ export function uniSVG() {
 }
 
 /* ---------- reactions ---------- */
-export const CAT = {};   // track → { el, rig, led, card }
+export const CAT = {};   // slot id → { el, rig, led, card, mute, solo, mini, type }
+const charOf = c => getInstrumentType(c.type).visual.character;
 export function registerCat(t, refs) { CAT[t] = refs; }
 
 function anim(el, frames, opts) { if (!store.ui.motion || !el || !el.animate) return; el.animate(frames, { duration: 180, easing: 'cubic-bezier(.3,1.4,.5,1)', ...opts }); }
 function flashLed(tr) { const l = CAT[tr] && CAT[tr].led; if (!l) return; l.classList.add('hit'); setTimeout(() => l.classList.remove('hit'), 90); }
 
-export function catReact(tr, hits) {
-  flashLed(tr);
-  const c = CAT[tr]; if (!c || !store.ui.motion || !hits || !hits.length) return;
-  if (tr === 'drums') {
+export function catReact(id, hits) {
+  flashLed(id);
+  const c = CAT[id]; if (!c || !store.ui.motion || !hits || !hits.length) return;
+  const tr = charOf(c), v = getInstrumentType(c.type).visual;
+  if (tr === 'bop') {
     if (hits.some(x => x.d === 'kick')) anim(c.rig, [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(-9px) scale(1.04,.96)' }, { transform: 'translateY(0) scale(1)' }], { duration: 200 });
     else anim(c.rig, [{ transform: 'rotate(0)' }, { transform: 'rotate(-4deg)' }, { transform: 'rotate(0)' }], { duration: 160 });
-  } else if (tr === 'bass') {
+  } else if (tr === 'goo') {
     const h0 = hits[0];
     if (h0.slide) anim(c.rig, [{ transform: 'scale(1,1)' }, { transform: 'scale(1.14,.9)' }, { transform: 'scale(1,1)' }], { duration: 260 });
     else anim(c.rig, [{ transform: 'scale(1,1)' }, { transform: 'scale(1.06,.94)' }, { transform: 'scale(1,1)' }], { duration: 140 });
     if (h0.acc) { c.el.classList.add('joy'); clearTimeout(c.jt); c.jt = setTimeout(() => c.el.classList.remove('joy'), 160); }
-  } else if (tr === 'synth') {
+  } else if (tr === 'blip') {
     anim(c.rig, [{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }], { duration: 170 });
-    if (hits.length >= 2) sparks(c.el, 3, META.synth.d);
+    if (hits.length >= 2) sparks(c.el, 3, v.dark);
   } else if (tr === 'fuzz') {
     anim(c.rig, [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: 600, easing: 'ease-in-out', composite: 'add' });
-    puff(c.el);
+    puff(c.el, v.dark);
   }
 }
 export function setCatsIdle() { Object.values(CAT).forEach(c => c.el.classList.remove('joy', 'wiggle')); }
@@ -143,9 +146,9 @@ export function sparks(el, n, color, spread = 46) {
     s.animate([{ transform: 'translate(0,0) scale(.4) rotate(0)', opacity: 1 }, { transform: `translate(${dx}px,${dy}px) scale(1.1) rotate(${rand(-90, 90)}deg)`, opacity: 0 }], { duration: rand(500, 900), easing: 'cubic-bezier(.2,.8,.3,1)' }).onfinish = () => s.remove();
   }
 }
-function puff(el) {
+function puff(el, color) {
   const r = el.getBoundingClientRect(); if (!r.width) return;
-  const s = h('div', { class: 'spark', html: `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="${META.fuzz.d}" stroke-width="2"/></svg>` });
+  const s = h('div', { class: 'spark', html: `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="none" stroke="${color}" stroke-width="2"/></svg>` });
   s.style.left = (r.left + r.width / 2 + rand(-20, 20)) + 'px'; s.style.top = (r.top + r.height * .4) + 'px';
   document.body.append(s);
   s.animate([{ transform: 'translateY(0) scale(.5)', opacity: .8 }, { transform: `translate(${rand(-20, 20)}px,-40px) scale(2)`, opacity: 0 }], { duration: 1200, easing: 'ease-out' }).onfinish = () => s.remove();
@@ -165,9 +168,9 @@ export function startIdleLife() {
   setInterval(() => {
     if (!store.ui.motion) return;
     const keys = Object.keys(CAT); if (!keys.length) return;
-    const t = pick(keys), c = CAT[t];
+    const c = CAT[pick(keys)], t = charOf(c);
     const eyes = c.el.querySelector('.eyes');
-    if (t === 'synth' && Math.random() < .4) anim(eyes, [{ transform: 'translateX(0)' }, { transform: `translateX(${pick([-3, 3])}px)` }, { transform: `translateX(${pick([-3, 3])}px)` }, { transform: 'translateX(0)' }], { duration: 1400, easing: 'ease-in-out' });
+    if (t === 'blip' && Math.random() < .4) anim(eyes, [{ transform: 'translateX(0)' }, { transform: `translateX(${pick([-3, 3])}px)` }, { transform: `translateX(${pick([-3, 3])}px)` }, { transform: 'translateX(0)' }], { duration: 1400, easing: 'ease-in-out' });
     else if (t !== 'fuzz') anim(eyes, [{ transform: 'scaleY(1)' }, { transform: 'scaleY(.1)' }, { transform: 'scaleY(1)' }], { duration: 150, easing: 'linear' });
   }, 1300);
 }

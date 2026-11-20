@@ -1,8 +1,10 @@
 // Bootstrap: build the UI, wire events to renders, run the animation loop.
 
-import { store, on } from './store.js';
+import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P } from './store.js';
 import * as A from './actions.js';
-import { META, TRACKS, APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
+import { APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
+import { getInstrumentType } from '../core/instruments.js';
+import { sceneHasContent } from '../core/project.js';
 import { $, $$ } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { toast, dialogOpen, closeDialog } from '../ui/controls.js';
@@ -34,8 +36,8 @@ function applyLayout() {
   if (u.mode === 'jam') { renderJamBar(); requestAnimationFrame(() => { Seq.resize(); }); }
 }
 function setAccent() {
-  const m = META[store.ui.sel], r = document.documentElement.style;
-  r.setProperty('--accent', m.c); r.setProperty('--accent-d', m.d); r.setProperty('--accent-dd', m.dd);
+  const m = typeOf().visual, r = document.documentElement.style;
+  r.setProperty('--accent', m.color); r.setProperty('--accent-d', m.dark); r.setProperty('--accent-dd', m.darker);
 }
 function updateUndo() { $('#hUndo').disabled = !A.history.canUndo; $('#hRedo').disabled = !A.history.canRedo; }
 
@@ -56,9 +58,9 @@ function wire() {
   on('selection', () => { setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') renderSound(); });
   on('scene', () => { Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderScenes(); renderLab(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
-  on('params', t => { if (t === store.ui.sel) { syncShapers(); if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
+  on('params', id => { if (id === store.ui.sel) { syncShapers(); if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
-  on('tempo', () => { renderTransport(); if (store.ui.mode === 'sound') refreshSoundKnobs(); if (store.ui.sel === 'drums') syncShapers(); });
+  on('tempo', () => { renderTransport(); if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
   on('lab', renderLab);
   on('arrangement', () => { if (store.ui.mode === 'arrange') renderArrange(); renderScenes(); });
   on('transport', () => {
@@ -69,17 +71,18 @@ function wire() {
   on('evolved', () => { /* UI catches up in the next frame via 'pattern' */ });
   on('library', () => {});
 }
-function renderBottomFx() { $$('#fxbar .fxbtn').forEach(b => { const on = !!store.project.tracks[store.ui.sel].params[b.dataset.fx + 'On']; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
+function renderBottomFx() { $$('#fxbar .fxbtn').forEach(b => { const on = !!P(store.ui.sel)[b.dataset.fx + 'On']; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
 
 let audT = [];
 function auditionPattern() { // when stopped, give a tiny taste of the new idea
   audT.forEach(clearTimeout); audT = [];
-  const t = store.ui.sel; if (t === 'drums') return;
-  const p = store.project.tracks[t].patterns[store.project.scene];
+  const t = store.ui.sel; if (isDrumSlot(t)) return;
+  const p = pat(t);
   [...p.notes].sort((a, b) => a.s - b.s).slice(0, 4).forEach((n, i) => audT.push(setTimeout(() => { A.engine.audition(t, n.p, n.v); catReact(t, [{ p: n.p, v: n.v }]); }, i * 120)));
 }
 
 /* ---------- animation loop: drain scheduler events at their audio time ---------- */
+const drumCat = () => { const s = visibleSlots().find(x => getInstrumentType(x.type).pattern === 'drum'); return s ? CAT[s.id] : null; };
 let lastBar = -1, lastScene = -1;
 function frame() {
   const E = A.engine, tr = A.transport;
@@ -92,7 +95,7 @@ function frame() {
       for (const t in ev.hits) catReact(t, ev.hits[t]);
       if (ev.scene !== lastScene) { lastScene = ev.scene; changedScene = true; }
       const bar = Math.floor(ev.step / 16);
-      if (ev.step % 16 === 0 && bar !== lastBar) { lastBar = bar; const c = CAT.drums; if (c && store.ui.motion) c.el.classList.toggle('joy', bar % 4 === 3); }
+      if (ev.step % 16 === 0 && bar !== lastBar) { lastBar = bar; const c = drumCat(); if (c && store.ui.motion) c.el.classList.toggle('joy', bar % 4 === 3); }
     }
     if (changedScene) { renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); }
     if (store.ui.mode === 'arrange') markPlayingBlock();
@@ -114,15 +117,15 @@ function keys(e) {
   if (mod) return;
   if (e.target.closest('.knob') && e.key.startsWith('Arrow')) return;
   if (k === ' ') { e.preventDefault(); A.togglePlay(); }
-  else if ('1234'.includes(k) && k.length === 1) A.selectTrack(TRACKS[+k - 1]);
+  else if (/^[1-9]$/.test(k) && visibleSlots()[+k - 1]) A.selectSlot(visibleSlots()[+k - 1].id);
   else if (k === 'f') A.setExpanded(!store.ui.expanded);
   else if (k === 'b') A.setTool('draw');
   else if (k === 'e') A.setTool('erase');
   else if (k === 'l') { if (!store.ui.expanded) A.setExpanded(true); A.setTool('lock'); }
   else if (k === 'g') A.runTransform('generate');
   else if (k === 'm') A.runTransform('mutate');
-  else if (e.key === 'ArrowUp' && store.ui.sel !== 'drums') { e.preventDefault(); Seq.octave(1); }
-  else if (e.key === 'ArrowDown' && store.ui.sel !== 'drums') { e.preventDefault(); Seq.octave(-1); }
+  else if (e.key === 'ArrowUp' && !isDrumSlot()) { e.preventDefault(); Seq.octave(1); }
+  else if (e.key === 'ArrowDown' && !isDrumSlot()) { e.preventDefault(); Seq.octave(-1); }
 }
 
 /* ---------- boot ---------- */
@@ -150,13 +153,12 @@ function init() {
   startIdleLife();
   renderAll(); Seq.fitView();
   // start overlay: one tap unlocks audio (required by iOS) and starts the groove
-  const sc = $('#startCats'); TRACKS.forEach(t => { const c = document.createElement('div'); c.className = 'cat ' + t; c.innerHTML = catSVG(t); sc.append(c); });
+  const sc = $('#startCats'); visibleSlots().forEach(s => { const c = document.createElement('div'); c.className = 'cat ' + getInstrumentType(s.type).visual.css; c.innerHTML = catSVG(s.type); sc.append(c); });
   $('#startSong').textContent = fresh ? 'Starting with the demo jam' : `Continue “${store.project.name}”`;
   $('#startBtn').onclick = () => {
     A.engine.init(); A.engine.applyAll();
     $('#start').classList.add('hide');
-    const hasContent = TRACKS.some(t => { const p = store.project.tracks[t].patterns[store.project.scene]; return t === 'drums' ? Object.values(p.steps).some(r => r.some(Boolean)) : p.notes.length; });
-    if (hasContent) A.transport.play();
+    if (sceneHasContent(store.project, store.project.scene)) A.transport.play();
     uniReact(.5);
   };
   $('#startNew').onclick = () => { A.engine.init(); $('#start').classList.add('hide'); newSongDialog(); };

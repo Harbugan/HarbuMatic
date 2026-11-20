@@ -1,7 +1,8 @@
 // Application state container + a tiny event bus.
 // `project` is the portable song data; `ui` is view state that never goes into the song file.
+// Instruments are addressed by slot id ('slot-01' …), never by instrument name.
 
-import { TRACKS } from '../core/constants.js';
+import { slotById, typeOfSlot, patternAt, playableSlots } from '../core/project.js';
 
 const listeners = new Map();
 export const on = (evt, fn) => { if (!listeners.has(evt)) listeners.set(evt, new Set()); listeners.get(evt).add(fn); return () => listeners.get(evt).delete(fn); };
@@ -13,16 +14,16 @@ const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)
 export const store = {
   project: null,
   ui: {
-    sel: 'drums',           // selected instrument
+    sel: 'slot-01',         // selected instrument slot
     mode: 'jam',            // jam | arrange | sound
     expanded: false,        // Deep edit (expanded JAM)
     drawer: false,          // Lab drawer open (portrait / expanded)
     rtab: 'lab',            // lab | scenes
     tool: 'draw',
     zoom: 1, scrollX: 0,
-    top: { bass: 45, synth: 79, fuzz: 86 },  // highest visible pitch per melodic track
+    top: {},                // highest visible pitch per melodic slot (defaults: registry ui.viewTop)
     fold: true,             // show only in-scale rows
-    lastLen: { bass: 1, synth: 2, fuzz: 8 },
+    lastLen: {},            // last drawn note length per slot (defaults: registry ui.noteLength)
     drumRow: 0,
     motion: !reducedMotion,
     coarse,
@@ -32,6 +33,18 @@ export const store = {
     libSel: null,           // selected scene in the arrange library
   },
 };
-export const P = t => store.project.tracks[t].params;
-export const pat = (t = store.ui.sel, sc = store.project.scene) => store.project.tracks[t].patterns[sc];
-export { TRACKS };
+export const slot = (id = store.ui.sel) => slotById(store.project, id);
+/** registry definition of a slot's instrument type */
+export const typeOf = (id = store.ui.sel) => typeOfSlot(slot(id));
+export const isDrumSlot = (id = store.ui.sel) => typeOf(id).pattern === 'drum';
+export const P = id => slot(id).params;
+export const pat = (id = store.ui.sel, sc = store.project.scene) => patternAt(store.project, id, sc);
+/** the instrument slots shown and played (planned types such as MUNCH are left out) */
+export const visibleSlots = () => playableSlots(store.project);
+export function uiTop(id = store.ui.sel) { const u = store.ui; if (u.top[id] == null) u.top[id] = typeOf(id).ui.viewTop ?? 79; return u.top[id]; }
+export function uiLastLen(id = store.ui.sel) { const u = store.ui; if (u.lastLen[id] == null) u.lastLen[id] = typeOf(id).ui.noteLength ?? 1; return u.lastLen[id]; }
+/** keep the selection on a visible slot after a project change */
+export function ensureSelection() {
+  const vis = visibleSlots();
+  if (vis.length && !vis.some(s => s.id === store.ui.sel)) store.ui.sel = vis[0].id;
+}

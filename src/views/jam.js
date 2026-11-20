@@ -1,9 +1,9 @@
 // JAM toolbar. Standard = Play & Create (draw/erase + expand). Expanded = Deep Edit
 // (every editing tool, length, zoom, scale fold, octave). Both drive the same sequencer.
 
-import { store, pat } from '../app/store.js';
+import { store, pat, typeOf, isDrumSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { META, SCENE_LETTERS } from '../core/constants.js';
+import { SCENE_LETTERS } from '../core/constants.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg } from '../ui/controls.js';
@@ -11,12 +11,9 @@ import * as Seq from '../ui/sequencer.js';
 import { occupancy } from './strip.js';
 import { playhead } from '../ui/sequencer.js';
 
-const TOOLS = {
-  drums: [['draw', 'Draw'], ['erase', 'Erase'], ['vel', 'Velocity'], ['prob', 'Chance'], ['lock', 'Lock row']],
-  bass: [['draw', 'Draw'], ['erase', 'Erase'], ['vel', 'Velocity'], ['prob', 'Chance'], ['slide', 'Slide'], ['lock', 'Lock']],
-  synth: [['draw', 'Draw'], ['erase', 'Erase'], ['vel', 'Velocity'], ['prob', 'Chance'], ['lock', 'Lock']],
-  fuzz: [['draw', 'Draw'], ['erase', 'Erase'], ['vel', 'Velocity'], ['prob', 'Chance'], ['lock', 'Lock']],
-};
+// which tools an instrument offers comes from the registry (ui.tools); labels live here
+const TOOL_LABEL = { draw: 'Draw', erase: 'Erase', vel: 'Velocity', prob: 'Chance', slide: 'Slide', lock: 'Lock' };
+const toolsFor = def => def.ui.tools.map(k => [k, k === 'lock' && def.pattern === 'drum' ? 'Lock row' : TOOL_LABEL[k]]);
 const HINTS = {
   draw: { drums: 'Tap cells to add or remove hits · drag to paint', mel: 'Tap to add · tap a note to remove · drag to move · drag its right edge to resize' },
   erase: 'Tap or drag over notes to remove them',
@@ -25,17 +22,17 @@ const HINTS = {
   slide: 'Tap a GOO note to glide into the next one',
   lock: 'Locked notes and rows survive Generate, Mutate & friends',
 };
-export const hintFor = () => { const t = store.ui.tool, x = HINTS[t] || ''; return typeof x === 'string' ? x : x[store.ui.sel === 'drums' ? 'drums' : 'mel']; };
+export const hintFor = () => { const t = store.ui.tool, x = HINTS[t] || ''; return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel']; };
 
 export function renderJamBar() {
-  const u = store.ui, sel = u.sel, m = META[sel], p = pat(), drums = sel === 'drums';
+  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', TOOLS = toolsFor(m);
   const bar = $('#jamBar'); bar.innerHTML = '';
   const sc = store.project.scene;
   if (!u.expanded && !['draw', 'erase'].includes(u.tool)) u.tool = 'draw'; // standard mode: simple tools only
-  if (!TOOLS[sel].some(([k]) => k === u.tool)) u.tool = 'draw';
+  if (!TOOLS.some(([k]) => k === u.tool)) u.tool = 'draw';
   bar.append(h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${SCENE_LETTERS[sc]} · ${store.project.scenes[sc].name}`)));
   const tools = h('div', { class: 'tgroup' });
-  (u.expanded ? TOOLS[sel] : TOOLS[sel].slice(0, 2)).forEach(([k, label]) => tools.append(btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) })));
+  (u.expanded ? TOOLS : TOOLS.slice(0, 2)).forEach(([k, label]) => tools.append(btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) })));
   bar.append(tools);
   if (u.expanded) {
     bar.append(h('div', { class: 'tgroup' }, h('span', { class: 'glbl' }, 'Bars'),

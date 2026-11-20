@@ -75,19 +75,22 @@ const shell = page => page.evaluate(() => ['.hdr', '.brand', '.modes', '.hdr-r',
   const r = document.querySelector(s).getBoundingClientRect(); return `${s}:${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)}`;
 }).join(' '));
 
-const state = page => page.evaluate(() => {
+// slot ids of the four classic instruments (slot-01 … slot-04)
+const SLOT = { drums: 'slot-01', bass: 'slot-02', synth: 'slot-03', fuzz: 'slot-04' };
+const state = page => page.evaluate(SLOT => {
   const { store, A } = window.__harbu, p = store.project;
+  const pt = id => p.slots.find(s => s.id === id).patterns[p.scenes[p.scene].id];
   return { sel: store.ui.sel, scene: p.scene, expanded: store.ui.expanded, transport: A.transport.state, pos: A.transport.position && { ...A.transport.position },
-    notes: Object.fromEntries(['bass', 'synth', 'fuzz'].map(t => [t, p.tracks[t].patterns[p.scene].notes.length])),
-    kicks: p.tracks.drums.patterns[p.scene].steps.kick.filter(Boolean).length, arrangement: p.arrangement.map(b => `${b.scene}x${b.reps}`), name: p.name, songs: A.library.list().length };
-});
+    notes: Object.fromEntries(['bass', 'synth', 'fuzz'].map(t => [t, pt(SLOT[t]).notes.length])),
+    kicks: pt(SLOT.drums).steps.kick.filter(Boolean).length, arrangement: p.arrangement.map(b => `${p.scenes.findIndex(s => s.id === b.sceneId)}x${b.reps}`), name: p.name, songs: A.library.list().length };
+}, SLOT);
 
 async function rollPoint(page, step, rowOrPitch) {
   return page.evaluate(([s, r]) => {
     const cv = document.querySelector('#roll'), b = cv.getBoundingClientRect();
-    const { store } = window.__harbu; const drums = store.ui.sel === 'drums';
+    const { store } = window.__harbu; const drums = store.ui.sel === 'slot-01';
     const keysW = drums ? (store.ui.coarse ? 96 : 92) : 54, rulerH = store.ui.coarse ? 28 : 24;
-    const p = store.project.tracks[store.ui.sel].patterns[store.project.scene];
+    const p = store.project.slots.find(x => x.id === store.ui.sel).patterns[store.project.scenes[store.project.scene].id];
     const stepW = (b.width - keysW) / (p.len / store.ui.zoom);
     const rowH = drums ? (b.height - rulerH) / 8 : (store.ui.coarse ? 26 : 19);
     return { x: b.left + keysW + (s + .5) * stepW, y: b.top + rulerH + (r + .5) * rowH };
@@ -133,7 +136,7 @@ async function rollPoint(page, step, rowOrPitch) {
   await page.evaluate(() => window.__harbu.A.stop());
 
   // drums: tap a cell to add, tap again to remove
-  await page.evaluate(() => window.__harbu.A.selectTrack('drums'));
+  await page.evaluate(id => window.__harbu.A.selectSlot(id), SLOT.drums);
   const before = (await state(page)).kicks;
   let pt = await rollPoint(page, 1, 0);
   await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(80);
@@ -194,7 +197,7 @@ async function rollPoint(page, step, rowOrPitch) {
   }
 
   // melodic: tap empty adds, tap the note removes (no right-click needed)
-  await page.evaluate(() => { const { A } = window.__harbu; A.selectTrack('synth'); });
+  await page.evaluate(id => window.__harbu.A.selectSlot(id), SLOT.synth);
   const n0 = (await state(page)).notes.synth;
   pt = await rollPoint(page, 30, 1);
   await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(80);
@@ -204,9 +207,10 @@ async function rollPoint(page, step, rowOrPitch) {
 
   // drag a note (mouse path = same pointer events)
   await page.touchscreen.tap(pt.x, pt.y); await page.waitForTimeout(80);
-  const moved = await page.evaluate(() => { const { store } = window.__harbu; return store.project.tracks.synth.patterns[store.project.scene].notes.find(n => n.s === 30); });
+  const synthNotes = () => page.evaluate(id => { const { store } = window.__harbu, p = store.project; return p.slots.find(s => s.id === id).patterns[p.scenes[p.scene].id].notes; }, SLOT.synth);
+  const moved = (await synthNotes()).find(n => n.s === 30);
   await page.mouse.move(pt.x, pt.y); await page.mouse.down(); await page.mouse.move(pt.x - 60, pt.y + 30, { steps: 6 }); await page.mouse.up();
-  const after = await page.evaluate(() => { const { store } = window.__harbu; return store.project.tracks.synth.patterns[store.project.scene].notes.filter(n => n.s === 30).length; });
+  const after = (await synthNotes()).filter(n => n.s === 30).length;
   ok(moved && after === 0, 'dragging a note moves it');
 
   // undo/redo
@@ -243,7 +247,7 @@ async function rollPoint(page, step, rowOrPitch) {
   await page.click('.dbtn.primary'); await page.waitForTimeout(200);
   let s = await state(page);
   ok(s.name === 'Test song' && s.songs === 2 && s.notes.synth === 0 && s.kicks === 0 && !s.arrangement.length, 'New Song creates an empty song and keeps the old one');
-  await page.evaluate(() => window.__harbu.A.selectTrack('bass'));
+  await page.evaluate(id => window.__harbu.A.selectSlot(id), SLOT.bass);
   await page.click('.lbtn.big'); await page.waitForTimeout(100);
   ok((await state(page)).notes.bass > 0, 'Generate creates a bass line in the empty song');
 
@@ -289,9 +293,61 @@ async function rollPoint(page, step, rowOrPitch) {
   // export downloads a file
   const [dl] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__harbu.A.exportProject())]);
   ok(/harbumatic-.*\.json$/.test(dl.suggestedFilename()), 'Export produces a .json file');
+  { // the exported file is a v6 song with stable slot ids, and importing it again restores it
+    const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await dl.path(), 'utf8'));
+    ok(exported.v === 6 && exported.slots.map(x => x.id).join() === 'slot-01,slot-02,slot-03,slot-04' && !exported.tracks, 'Export writes schema v6 with slot ids');
+    const before = await state(page);
+    await page.setInputFiles('#fileIn', { name: 'again.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+    await page.waitForTimeout(250);
+    const again = await state(page);
+    ok(again.songs === before.songs + 1 && JSON.stringify(again.arrangement) === JSON.stringify(before.arrangement) && again.kicks === before.kicks, 'importing the exported file restores the song as a new entry');
+  }
+
+  // instrument slots: four cards with stable slot ids, keyboard 1–4 selects them, no MUNCH card yet
+  {
+    const cards = await page.evaluate(() => [...document.querySelectorAll('#cards .card')].map(c => `${c.dataset.slot}:${c.dataset.t}:${c.querySelector('.card-name').textContent}`));
+    ok(cards.join() === 'slot-01:drums:BOP,slot-02:bass:GOO,slot-03:synth:BLIP,slot-04:fuzz:FUZZ', `cards show BOP, GOO, BLIP, FUZZ in slots 01–04 (${cards.join(' ')})`);
+    for (const [k, id] of [['2', 'slot-02'], ['4', 'slot-04'], ['1', 'slot-01']]) { await page.keyboard.press(k); await page.waitForTimeout(40); ok((await state(page)).sel === id, `key ${k} selects ${id}`); }
+    await page.keyboard.press('5'); await page.waitForTimeout(40);
+    ok((await state(page)).sel === 'slot-01', 'key 5 does nothing while there are four instruments');
+    // a song that already holds a MUNCH slot (future sampler) keeps it but shows only the four playable cards
+    const withMunch = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); p.slots.push({ id: 'slot-05', type: 'munch', patterns: {} }); return p; });
+    await page.setInputFiles('#fileIn', { name: 'munch.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(withMunch)) });
+    await page.waitForTimeout(250);
+    const after = await page.evaluate(() => ({ cards: document.querySelectorAll('#cards .card').length, slots: window.__harbu.store.project.slots.map(x => x.type).join() }));
+    ok(after.cards === 4 && after.slots === 'bop,goo,blip,fuzz,munch', 'a stored MUNCH slot is kept but not shown as an instrument');
+    await page.click('#play'); await page.waitForTimeout(300); await page.click('#stop');
+  }
+
+  // a v0.5 song file opens through Import with its content intact
+  {
+    const v5 = (await import('node:fs/promises')).readFile(new globalThis.URL('../tests/fixtures/v5-edge.json', import.meta.url), 'utf8');
+    await page.setInputFiles('#fileIn', { name: 'edge.json', mimeType: 'application/json', buffer: Buffer.from(await v5) });
+    await page.waitForTimeout(250);
+    const e = await page.evaluate(() => { const p = window.__harbu.store.project; return { v: p.v, name: p.name, muted: p.slots.filter(x => x.mute).map(x => x.id).join(), blocks: p.arrangement.map(b => `${b.sceneId}x${b.reps}`).join(), snaps: p.snaps.map(x => (x ? Object.keys(x.slots).length : 0)).join() }; });
+    ok(e.v === 6 && e.name === 'Edge case' && e.muted === 'slot-03' && e.blocks === 'scene-05x2,scene-01x1,scene-06x3,scene-05x1' && e.snaps === '4,0,4,0', `v0.5 import keeps mute, arrangement and snapshots (${JSON.stringify(e)})`);
+  }
 
   ok(!errors.length, `no console errors during flows${errors.length ? ' — ' + errors.join(' | ') : ''}`);
   await ctx.close();
+
+  console.log('\n— Upgrade from a v0.5 library in this browser —');
+  {
+    const fs = await import('node:fs/promises');
+    const edge = await fs.readFile(new globalThis.URL('../tests/fixtures/v5-edge.json', import.meta.url), 'utf8'), id = JSON.parse(edge).id;
+    const ctx2 = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true });
+    const page2 = await ctx2.newPage(); const errs = []; page2.on('pageerror', e => errs.push(e.message));
+    await page2.goto(URL);
+    await page2.evaluate(([edge, id]) => { localStorage.clear(); localStorage.setItem(`harbumatic.v5.song.${id}`, edge); localStorage.setItem('harbumatic.v5.index', JSON.stringify({ current: id, projects: { [id]: { name: 'Edge case', modified: 'x' } } })); }, [edge, id]);
+    await page2.reload(); await page2.click('#startBtn'); await page2.waitForTimeout(300);
+    await page2.evaluate(() => window.__harbu.A.toggleMute('slot-01')); await page2.evaluate(() => window.__harbu.A.flushSave());
+    const r = await page2.evaluate(id => ({ name: window.__harbu.store.project.name, v: window.__harbu.store.project.v, transport: window.__harbu.A.transport.state, v5: localStorage.getItem(`harbumatic.v5.song.${id}`), v6: JSON.parse(localStorage.getItem(`harbumatic.v6.song.${id}`) || 'null') }), id);
+    ok(r.name === 'Edge case' && r.v === 6 && r.transport === 'playing', 'the current v0.5 song opens (as v6) and plays');
+    ok(r.v5 === edge, 'the v0.5 copy in localStorage is left byte-for-byte untouched (older builds on this origin keep working)');
+    ok(r.v6 && r.v6.v === 6 && r.v6.slots[0].mute === true, 'edits are saved to the v6 library');
+    ok(!errs.length, `no errors during the upgrade${errs.length ? ' — ' + errs[0] : ''}`);
+    await ctx2.close();
+  }
   await browser.close();
   console.log(failures ? `\n${failures} check(s) failed` : '\nAll UI checks passed');
   process.exit(failures ? 1 : 0);

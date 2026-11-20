@@ -1,8 +1,9 @@
 // Right panel: Happy Accident Lab (Experiment) and the Scenes list.
 
-import { store } from '../app/store.js';
+import { store, typeOf, visibleSlots } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { META, NOTE, SCALES, SCENE_LETTERS, TRACKS, MOODS } from '../core/constants.js';
+import { NOTE, SCALES, SCENE_LETTERS, MOODS } from '../core/constants.js';
+import { getInstrumentType } from '../core/instruments.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Knob, Seg, Switch } from '../ui/controls.js';
@@ -23,7 +24,7 @@ function section(key, title, build) {
 
 export function renderLab() {
   const host = $('#rLab'); const scroll = host.scrollTop; host.innerHTML = '';
-  const p = store.project, L = p.lab, sel = store.ui.sel, m = META[sel];
+  const p = store.project, L = p.lab, m = typeOf();
   const uni = h('div', { class: 'uni', id: 'uni', 'data-face': 'idle', title: 'UNI — keeper of happy accidents', html: uniSVG() });
   uni.onclick = () => uniReact(.3);
   host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${SCENE_LETTERS[p.scene]}`))));
@@ -90,7 +91,7 @@ export function renderScenes() {
   host.append(h('p', { class: 'mini-hint' }, tr.playing ? (song ? 'Song mode is playing the arrangement — tap to edit a scene' : 'Tap a scene: it starts on the next bar') : 'Tap a scene to edit it'));
   const list = h('div', { class: 'scene-list' });
   p.scenes.forEach((sc, i) => {
-    const dots = h('span', { class: 'dots' }, TRACKS.map(t => { const d = h('i', { class: occupancy(t, i, 16).some(Boolean) ? 'on' : '' }); d.style.background = META[t].d; return d; }));
+    const dots = h('span', { class: 'dots' }, visibleSlots().map(s => { const d = h('i', { class: occupancy(s.id, i, 16).some(Boolean) ? 'on' : '' }); d.style.background = getInstrumentType(s.type).visual.dark; return d; }));
     const playing = tr.state !== 'stopped' && pos && pos.scene === i;
     const b = h('button', { type: 'button', class: 'scene' + (p.scene === i ? ' cur' : '') + (playing ? ' playing' : '') + (tr.pending === i ? ' queued' : ''), 'aria-pressed': String(p.scene === i) },
       h('span', { class: 'L' }, SCENE_LETTERS[i]), h('span', { class: 'nm' }, sc.name), dots);

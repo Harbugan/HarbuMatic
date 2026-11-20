@@ -2,10 +2,11 @@
 // Direct manipulation: drag blocks to reorder; tap a block for its contextual actions
 // (move, repeat, duplicate, remove, edit, play from here) — the button fallback for drag.
 
-import { store } from '../app/store.js';
+import { store, visibleSlots } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { TRACKS, META, SCENE_LETTERS, MAX_REPS } from '../core/constants.js';
-import { maxLen, sceneHasContent } from '../core/project.js';
+import { SCENE_LETTERS, MAX_REPS } from '../core/constants.js';
+import { getInstrumentType } from '../core/instruments.js';
+import { maxLen, sceneHasContent, blockScene } from '../core/project.js';
 import { $, $$, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg, promptDialog, confirmDialog } from '../ui/controls.js';
@@ -13,7 +14,7 @@ import { harmonyLabel } from '../music/harmony.js';
 import { occupancy } from './strip.js';
 
 function miniMap(sc, cells = 16) {
-  return h('div', { class: 'map', 'aria-hidden': 'true' }, TRACKS.map(t => h('div', {}, occupancy(t, sc, cells).map(o => { const c = h('i'); if (o) c.style.background = META[t].d; return c; }))));
+  return h('div', { class: 'map', 'aria-hidden': 'true' }, visibleSlots().map(s => h('div', {}, occupancy(s.id, sc, cells).map(o => { const c = h('i'); if (o) c.style.background = getInstrumentType(s.type).visual.dark; return c; }))));
 }
 const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
@@ -21,7 +22,7 @@ export function renderArrange() {
   const host = $('#viewArr'); const scroll = host.scrollTop; host.innerHTML = '';
   const p = store.project, u = store.ui, arr = p.arrangement;
   if (u.libSel == null) u.libSel = p.scene;
-  const totalSteps = arr.reduce((a, b) => a + maxLen(p, b.scene) * b.reps, 0);
+  const totalSteps = arr.reduce((a, b) => a + maxLen(p, blockScene(p, b)) * b.reps, 0);
   host.append(h('div', { class: 'view-head' },
     h('div', { class: 'chip lav' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, 'ARRANGE'), h('span', { class: 'chip-scene' }, 'scenes → song')),
     h('span', { class: 'spacer' }),
@@ -37,14 +38,14 @@ export function renderArrange() {
   if (!arr.length) lane.append(h('div', { class: 'chain-empty' }, h('b', {}, 'Your song is empty'), h('span', {}, 'Pick a scene above and press “+ Add” — scenes can appear as many times as you like.')));
   const pos = A.transport.position;
   arr.forEach((b, k) => {
-    const sc = p.scenes[b.scene];
+    const bs = blockScene(p, b), sc = p.scenes[bs];
     const now = A.transport.state !== 'stopped' && pos && pos.song && pos.block === k;
-    const el = h('div', { class: 'cblock' + (u.arrSel === b.id ? ' sel' : '') + (now ? ' now' : ''), 'data-id': b.id, 'data-k': k, role: 'button', tabindex: 0, 'aria-label': `Block ${k + 1}: scene ${SCENE_LETTERS[b.scene]} ${sc.name}, ${b.reps} time${b.reps > 1 ? 's' : ''}` },
+    const el = h('div', { class: 'cblock' + (u.arrSel === b.id ? ' sel' : '') + (now ? ' now' : ''), 'data-id': b.id, 'data-k': k, role: 'button', tabindex: 0, 'aria-label': `Block ${k + 1}: scene ${SCENE_LETTERS[blockScene(p, b)]} ${sc.name}, ${b.reps} time${b.reps > 1 ? 's' : ''}` },
       h('span', { class: 'grip', html: ico('grab') }),
-      h('span', { class: 'L' }, SCENE_LETTERS[b.scene]),
+      h('span', { class: 'L' }, SCENE_LETTERS[blockScene(p, b)]),
       h('small', {}, sc.name),
       b.reps > 1 ? h('span', { class: 'reps' }, `×${b.reps}`) : null,
-      miniMap(b.scene, 8));
+      miniMap(blockScene(p, b), 8));
     attachDrag(el, b.id);
     el.onkeydown = e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); u.arrSel = u.arrSel === b.id ? null : b.id; renderArrange(); }
@@ -65,7 +66,7 @@ export function renderArrange() {
   if (k >= 0) {
     const b = arr[k];
     host.append(h('div', { class: 'ctxbar', role: 'toolbar', 'aria-label': 'Block actions' },
-      h('span', { class: 'ctx-title' }, `Block ${k + 1} · ${SCENE_LETTERS[b.scene]}`),
+      h('span', { class: 'ctx-title' }, `Block ${k + 1} · ${SCENE_LETTERS[blockScene(p, b)]}`),
       btn({ icon: ico('left'), label: 'Move', cls: 'mini', disabled: k === 0, onClick: () => A.moveBlock(b.id, k - 1) }),
       btn({ icon: ico('right'), label: 'Move', cls: 'mini', disabled: k === arr.length - 1, onClick: () => A.moveBlock(b.id, k + 1) }),
       h('span', { class: 'reps-ctl' },
@@ -74,7 +75,7 @@ export function renderArrange() {
         btn({ icon: ico('plus'), label: '', cls: 'mini icon', title: 'More repeats', disabled: b.reps >= MAX_REPS, onClick: () => A.setReps(b.id, b.reps + 1) })),
       btn({ icon: ico('dup'), label: 'Duplicate', cls: 'mini', onClick: () => A.duplicateBlock(b.id) }),
       btn({ icon: ico('play'), label: 'Play from here', cls: 'mini', onClick: () => A.playFromBlock(b.id) }),
-      btn({ icon: ico('edit'), label: 'Edit scene', cls: 'mini', onClick: () => { A.selectScene(b.scene); A.setMode('jam'); } }),
+      btn({ icon: ico('edit'), label: 'Edit scene', cls: 'mini', onClick: () => { A.selectScene(blockScene(p, b)); A.setMode('jam'); } }),
       btn({ icon: ico('trash'), label: 'Remove', cls: 'mini danger', onClick: () => A.removeBlock(b.id) })));
   }
   // --- library

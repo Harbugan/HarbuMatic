@@ -8,8 +8,8 @@
 //   Vel/Chance/Slide/Lock – tap a note or drum cell
 //   Keys column – tap to hear, drag up/down to scroll · Ruler – drag sideways when zoomed
 
-import { store, pat } from '../app/store.js';
-import { DRUMS, META, NOTE } from '../core/constants.js';
+import { store, pat, typeOf, isDrumSlot, uiTop, uiLastLen } from '../app/store.js';
+import { DRUMS, NOTE } from '../core/constants.js';
 import { clamp } from '../core/util.js';
 import { makeScale } from '../music/theory.js';
 import { fixSlides } from '../music/generate.js';
@@ -19,14 +19,14 @@ const RV = { cv: null, g: null, W: 0, H: 0, dpr: 1, drag: null, hover: null };
 export const playhead = { step: -1, time: 0, scene: -1 };
 const LO = 21, HI = 108;
 
-function rowsFor(track) {
+function rowsFor() {
   const p = store.project, sc = makeScale(p.key, p.scale), out = [];
   for (let q = HI; q >= LO; q--) if (!store.ui.fold || sc.inScale(q)) out.push(q);
   return { list: out, sc };
 }
 
 export function geo() {
-  const u = store.ui, p = pat(), drums = u.sel === 'drums';
+  const u = store.ui, p = pat(), drums = isDrumSlot();
   const coarse = u.coarse;
   const keysW = drums ? (coarse ? 96 : 92) : 54, rulerH = coarse ? 28 : 24;
   const velH = !drums && u.expanded ? 56 : 0;
@@ -39,11 +39,12 @@ export function geo() {
     G.rowAt = y => clamp(Math.floor((y - gridTop) / G.rowH), 0, DRUMS.length - 1);
     return G;
   }
-  const { list, sc } = rowsFor(u.sel);
+  const { list, sc } = rowsFor();
   G.rowH = coarse ? 26 : 19;
   G.rows = Math.max(1, Math.floor((gridBot - gridTop) / G.rowH));
-  let topIdx = list.indexOf(u.top[u.sel]);
-  if (topIdx < 0) topIdx = list.findIndex(q => q <= u.top[u.sel]);
+  const top = uiTop(u.sel);
+  let topIdx = list.indexOf(top);
+  if (topIdx < 0) topIdx = list.findIndex(q => q <= top);
   topIdx = clamp(topIdx, 0, Math.max(0, list.length - G.rows));
   u.top[u.sel] = list[topIdx];
   Object.assign(G, { list, sc, topIdx,
@@ -57,16 +58,16 @@ export function geo() {
 
 /** scroll the piano roll so the current notes are in view */
 export function fitView() {
-  const u = store.ui; if (u.sel === 'drums' || !RV.W) return;
+  const u = store.ui; if (isDrumSlot() || !RV.W) return;
   const notes = pat().notes;
   const G = geo();
-  const center = notes.length ? notes.reduce((a, n) => a + n.p, 0) / notes.length : { bass: 38, synth: 69, fuzz: 76 }[u.sel];
+  const center = notes.length ? notes.reduce((a, n) => a + n.p, 0) / notes.length : typeOf().ui.viewCenter;
   const ci = G.idxOf(Math.round(center));
   const topIdx = clamp(ci - Math.floor(G.rows / 2), 0, Math.max(0, G.list.length - G.rows));
   u.top[u.sel] = G.list[topIdx];
 }
 export function scrollRows(n) {
-  const u = store.ui; if (u.sel === 'drums') return;
+  const u = store.ui; if (isDrumSlot()) return;
   const G = geo(); const i = clamp(G.topIdx + n, 0, Math.max(0, G.list.length - G.rows)); u.top[u.sel] = G.list[i]; render();
 }
 export const octave = dir => scrollRows(-dir * (store.ui.fold ? makeScale(store.project.key, store.project.scale).intervals.length : 12));
@@ -83,7 +84,7 @@ function rr(g, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); g.be
 
 export function render() {
   if (!RV.g || !RV.W || !RV.H) return;
-  const g = RV.g, G = geo(), u = store.ui, m = META[u.sel];
+  const g = RV.g, G = geo(), u = store.ui, m = typeOf().visual;
   g.setTransform(RV.dpr, 0, 0, RV.dpr, 0, 0);
   g.fillStyle = '#28283F'; g.fillRect(0, 0, RV.W, RV.H);
   const s0 = Math.floor(u.scrollX), s1 = Math.ceil(u.scrollX + G.vis);
@@ -127,15 +128,15 @@ export function render() {
   if (G.drums) {
     DRUMS.forEach((d, r) => {
       const y = G.gridTop + r * G.rowH, sel = r === u.drumRow;
-      rr(g, 5, y + 3, G.keysW - 10, G.rowH - 6, 9); g.fillStyle = sel ? m.c : '#3A3858'; g.fill();
+      rr(g, 5, y + 3, G.keysW - 10, G.rowH - 6, 9); g.fillStyle = sel ? m.color : '#3A3858'; g.fill();
       g.fillStyle = sel ? '#28283F' : '#D9D2F2'; g.font = `800 ${u.coarse ? 13 : 12}px Nunito, system-ui`; g.fillText(d.name, 14, y + G.rowH / 2 + 1);
-      if (G.p.locked[d.id]) { g.fillStyle = sel ? '#28283F' : m.c; g.font = '900 12px Nunito'; g.fillText('🔒︎', G.keysW - 26, y + G.rowH / 2 + 1); }
+      if (G.p.locked[d.id]) { g.fillStyle = sel ? '#28283F' : m.color; g.font = '900 12px Nunito'; g.fillText('🔒︎', G.keysW - 26, y + G.rowH / 2 + 1); }
     });
   } else {
     for (let i = 0; i < G.rows; i++) {
       const q = G.rowPitch(i); if (q == null) break;
       const y = G.gridTop + i * G.rowH, black = [1, 3, 6, 8, 10].includes(q % 12), root = ((q - key) % 12 + 12) % 12 === 0;
-      g.fillStyle = root ? m.c : black && !u.fold ? '#4A4565' : '#F6EBDC';
+      g.fillStyle = root ? m.color : black && !u.fold ? '#4A4565' : '#F6EBDC';
       rr(g, 3, y + 1, G.keysW - (black && !u.fold ? 16 : 6), G.rowH - 2, 4); g.fill();
       if (u.fold || root || q % 12 === 0) {
         g.fillStyle = black && !u.fold ? '#fff' : '#4A3F5C'; g.font = `800 ${u.coarse ? 11 : 9.5}px Nunito, system-ui`;
@@ -149,7 +150,7 @@ export function render() {
       G.p.notes.forEach(n => {
         if (n.s < s0 - 1 || n.s > s1) return;
         const x = G.x(n.s) + 2, hh = (G.velH - 8) * n.v;
-        rr(g, x, vy + G.velH - 4 - hh, Math.max(5, Math.min(12, G.stepW * .45)), hh, 3); g.fillStyle = n.locked ? '#fff' : m.c; g.fill();
+        rr(g, x, vy + G.velH - 4 - hh, Math.max(5, Math.min(12, G.stepW * .45)), hh, 3); g.fillStyle = n.locked ? '#fff' : m.color; g.fill();
       });
     }
   }
@@ -176,7 +177,7 @@ export function render() {
 
 function drawNotes(g, G, m, s0, s1) {
   const p = G.p, u = store.ui, topQ = G.rowPitch(0), botQ = G.rowPitch(G.rows - 1) ?? G.list[G.list.length - 1];
-  if (u.sel === 'bass') p.notes.forEach(n => {
+  if (typeOf().capabilities.slide) p.notes.forEach(n => {
     if (!n.slide) return; const nx = p.notes.find(q => q.s === (n.s + n.l) % p.len); if (!nx) return;
     const x1 = G.x(n.s + n.l) - 2, y1 = G.y(n.p) + G.rowH / 2, x2 = G.x(nx.s + (nx.s < n.s ? p.len : 0)) + 6, y2 = G.y(nx.p) + G.rowH / 2;
     g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.lineCap = 'round'; g.beginPath(); g.moveTo(x1, y1); g.bezierCurveTo(x1 + 8, y1, x2 - 8, y2, x2, y2); g.stroke();
@@ -187,11 +188,11 @@ function drawNotes(g, G, m, s0, s1) {
     if (x + w < G.keysW || x > RV.W) return;
     const off = !G.sc.inScale(n.p);
     rr(g, x, y, w, hh, 6);
-    g.globalAlpha = .55 + n.v * .45; g.fillStyle = m.c; g.fill(); g.globalAlpha = 1;
+    g.globalAlpha = .55 + n.v * .45; g.fillStyle = m.color; g.fill(); g.globalAlpha = 1;
     if (off) { g.strokeStyle = '#F5D19A'; g.lineWidth = 2; g.stroke(); }
     if (n === RV.hover || (RV.drag && RV.drag.n === n)) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); }
     g.fillStyle = '#ffffff70'; rr(g, x + 3, y + 2, Math.max(0, w - 6), 3, 2); g.fill();
-    if (n.v > .9 && u.sel === 'bass') { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText('!', x + 5, y + hh / 2 + 1); }
+    if (n.v > .9 && typeOf().capabilities.accent) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText('!', x + 5, y + hh / 2 + 1); }
     if (n.pr != null && n.pr < 1) { g.fillStyle = '#28283F'; g.font = '900 9px Nunito'; if (w > 26) g.fillText(Math.round(n.pr * 100) + '%', x + w - 26, y + hh / 2 + 1); else { g.beginPath(); g.arc(x + w - 6, y + hh / 2, 2.5, 0, 7); g.fill(); } }
     if (n.locked) { g.setLineDash([3, 3]); g.strokeStyle = '#fff'; g.lineWidth = 1.5; rr(g, x - 1, y - 1, w + 2, hh + 2, 7); g.stroke(); g.setLineDash([]); }
     g.fillStyle = '#28283F66'; g.fillRect(x + w - 5, y + 4, 2, hh - 8); // resize grip
@@ -206,7 +207,7 @@ function drawDrums(g, G, m, s0, s1) {
       const c = p.steps[d.id][s], x = G.x(s), pad = Math.min(4, G.stepW * .12), w = G.stepW - pad * 2, hh = G.rowH - pad * 2;
       rr(g, x + pad, y + pad, w, hh, Math.min(8, w / 3));
       if (!c) { g.fillStyle = s % 4 === 0 ? '#ffffff14' : '#ffffff08'; g.fill(); continue; }
-      g.globalAlpha = .45 + c.v * .55; g.fillStyle = m.c; g.fill(); g.globalAlpha = 1;
+      g.globalAlpha = .45 + c.v * .55; g.fillStyle = m.color; g.fill(); g.globalAlpha = 1;
       if (c.v > .9) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); }
       if (locked) { g.setLineDash([3, 3]); g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.stroke(); g.setLineDash([]); }
       g.fillStyle = '#ffffff80'; rr(g, x + pad + 3, y + pad + 3, Math.max(0, w - 6), 3, 2); g.fill();
@@ -239,11 +240,11 @@ function down(e) {
     const cell = G.p.steps[id][s]; u.drumRow = row;
     A.checkpoint();
     if (tool === 'lock') { G.p.locked[id] = !G.p.locked[id]; done(); A.patternEdited(); return; }
-    if (tool === 'vel') { G.p.steps[id][s] = cell ? { ...cell, v: cycle(cell.v > .9 ? 1 : cell.v > .6 ? .75 : .45, [.45, .75, 1]) } : { v: .75, p: 1 }; A.engine.audition('drums', id, G.p.steps[id][s].v); A.patternEdited(); return; }
+    if (tool === 'vel') { G.p.steps[id][s] = cell ? { ...cell, v: cycle(cell.v > .9 ? 1 : cell.v > .6 ? .75 : .45, [.45, .75, 1]) } : { v: .75, p: 1 }; A.engine.audition(u.sel, id, G.p.steps[id][s].v); A.patternEdited(); return; }
     if (tool === 'prob') { G.p.steps[id][s] = cell ? { ...cell, p: cycle(cell.p, [1, .75, .5, .25]) } : { v: .75, p: .75 }; A.patternEdited(); return; }
     const val = tool === 'erase' ? false : !cell;
     G.p.steps[id][s] = val ? { v: .8, p: 1 } : null;
-    if (val) A.engine.audition('drums', id, .8);
+    if (val) A.engine.audition(u.sel, id, .8);
     RV.drag = { ...base, type: 'paint', val };
     A.patternEdited(); return;
   }
@@ -264,7 +265,7 @@ function down(e) {
     if (!edge) A.engine.audition(u.sel, hit.p, hit.v);
   } else {
     A.checkpoint();
-    const n = { s, p: q, l: Math.min(u.lastLen[u.sel], G.p.len - s), v: .8 };
+    const n = { s, p: q, l: Math.min(uiLastLen(u.sel), G.p.len - s), v: .8 };
     G.p.notes.push(n); A.engine.audition(u.sel, q);
     RV.drag = { ...base, type: 'resize', n, fresh: true };
     A.patternEdited();
@@ -317,12 +318,12 @@ function up(e) {
     if (d.type === 'drumKey') {
       u.drumRow = d.row;
       if (u.tool === 'lock') { A.checkpoint(); G.p.locked[d.drum] = !G.p.locked[d.drum]; A.patternEdited(); }
-      A.engine.audition('drums', d.drum, .9); render(); return;
+      A.engine.audition(u.sel, d.drum, .9); render(); return;
     }
     if (d.pending && d.type === 'move') { A.checkpoint(); G.p.notes.splice(G.p.notes.indexOf(d.n), 1); A.patternEdited(); return; } // tap = delete
   }
   if (d.type === 'scrollX' || d.type === 'keys' || d.type === 'drumKey') return;
-  if (u.sel === 'bass') fixSlides(G.p.notes, G.p.len);
+  if (typeOf().capabilities.slide) fixSlides(G.p.notes, G.p.len);
   A.sealHistory();
   done();
   A.patternEdited();
