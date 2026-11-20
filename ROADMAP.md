@@ -14,7 +14,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 - **iPad/tablet first:** touch, landscape-first composition, and an excellent iPad Safari experience; desktop is secondary.
 - **Play first, tweak forever:** immediate results, with advanced controls available when wanted.
 - **Musically useful surprises:** controlled chaos, coherent rhythms, harmony, and instrument interplay.
-- **Four slots, always:** four simultaneously active instruments; future versions may allow swapping which instruments occupy them.
+- **Five instruments in v0.6:** BOP, GOO, BLIP, FUZZ and MUNCH are available together. Slot identity is independent of instrument type; user-facing replacement and slot management are deferred.
 - **Personality matters:** warm tactile UI, kawaii headphone-wearing characters, small reactive animations, and UNI.
 - **Portable foundation:** modular audio/music/state/UI boundaries, versioned project data, and a credible future native-app path.
 - **Create and keep:** easy projects, eventual audio export, and offline-first use where feasible.
@@ -25,10 +25,10 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, consistent navigation, alignment, version and creator signature | **In review** — fixes implemented, iPad verification pending |
-| **v0.6** | Sample Playground | Import/record samples, waveform editing, chopping/looping, .hbn, initial WAV export | Proposed scope |
+| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Direction decided; phased implementation |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
-| **v0.9** | Expand & Finish | Swappable instruments, Dynamic Scene Library, automation, stronger finishing/export tools | Scene Library placement decided; other scope proposed |
+| **v0.9** | Expand & Finish | User-facing instrument replacement, Dynamic Scene Library, automation, stronger finishing/export tools | Replacement and Scene Library placement decided; other scope proposed |
 | **v1.0** | The Little Music Machine | Stable, polished, installable tablet music app | Target |
 
 The roadmap is directional, **not** a promise of release dates or a locked implementation order.
@@ -67,7 +67,11 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 ## v0.6 — Sample Playground
 
-**Confirmed direction:** sampling is a major future capability. Version placement is provisional.
+**Decided direction:** MUNCH is a dedicated fifth instrument, always available alongside BOP, GOO, BLIP and FUZZ. Five fixed slots in v0.6; instrument type and slot identity are separate. The Instrument Registry and versioned schema are prepared in Phase 1 (PR #6, subject to merge/verification). No user-facing replacement or adding/removing slots in v0.6.
+
+**Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
+
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration; (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
@@ -81,7 +85,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
   - Preserve a migration path from existing JSON projects.
   - Prefer a portable container format if sample assets make plain JSON impractical.
 
-**Open design decision:** Sampling should probably be a shared capability, with a dedicated sampler instrument becoming an optional slot later. This is a proposal, **not yet decided**.
+**Scope guardrails:** No instrument swapping UI or unlimited slots in v0.6. No advanced time-stretch, transient detection, full parameter-lock system or full jungle break engine in v0.6. MAGIC CHOP must create musically useful, editable patterns with Undo; avoid arbitrary note soup. Verify iPad Safari recording, timing, touch and sample memory limits before release.
 
 **Exit criterion:** A user can record/import a sound, creatively manipulate it, use it in music, and save the work in a portable project.
 
@@ -117,9 +121,9 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 ## v0.9 — Expand & Finish
 
-**Confirmed direction:** exactly four active instrument slots, with the ability to replace an instrument in a slot.
+**Confirmed direction:** five fixed active slots from v0.6, with user-facing replacement of an instrument type in a slot introduced later.
 
-- Select alternative instrument engines without adding a fifth simultaneous slot.
+- Select alternative instrument engines within the existing five-slot layout; do not silently erase existing patterns or instrument state.
 - Candidate future engines: sampler, FM synth, or other characterful instruments (**examples, not commitments**).
 - Define behavior when replacing an instrument with existing patterns/automation.
 - **Dynamic Scene Library (ENH-001):** create, select, rename, duplicate, delete, reorder and persist more than six scenes, with touch-friendly navigation and a sensible technical limit.
@@ -143,7 +147,7 @@ A cohesive, reliable, installable tablet-first groovebox:
 
 These are **forward-looking constraints**, not requests to build every future feature in v0.5.
 
-1. **Instrument slot abstraction:** four slots; separate slot identity from instrument engine identity.
+1. **Instrument slot abstraction:** five slots from v0.6; separate stable slot identity from instrument type/engine identity, preparing for future replacement.
 2. **Audio source abstraction:** synthesis now, sample playback/recording later.
 3. **Transport/sync abstraction:** internal clock now, external MIDI Clock/Link integration later.
 4. **Versioned project schema:** plan for .hbn, embedded sample assets, and migrations.
@@ -157,9 +161,13 @@ These are **forward-looking constraints**, not requests to build every future fe
 | --- | --- |
 | Product direction: Playful Groovebox with Musical Toy personality | **Decided** |
 | Primary platform: iPad/tablet | **Decided** |
-| Four simultaneous instrument slots | **Decided** |
-| Future ability to swap instruments in those slots | **Decided** |
+| Five simultaneous instrument slots (BOP, GOO, BLIP, FUZZ, MUNCH) from v0.6 | **Decided; supersedes four-slot rule** |
+| Future ability to swap instruments in those slots (UI deferred beyond v0.6) | **Decided** |
 | Import and record samples; chop and loop them | **Decided** |
+| MUNCH standalone fifth instrument; shared sample engine | **Decided** |
+| MUNCH PLAY/CHOP/TWIST, melodic keys and slice pads | **Decided for v0.6 scope** |
+| CHOMPI-like first interaction; Flip-like deeper editing | **Decided design direction** |
+| MAGIC CHOP: musically guided, editable variations | **Decided goal; exact algorithm pending** |
 | Dedicated jungle/breakbeat creation feature | **Decided** |
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
@@ -168,7 +176,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Dynamic Scene Library (ENH-001) scheduled for v0.9 | **Decided placement** |
 | v0.6 .hbn schema supports variable scene counts ahead of the v0.9 UI | **Decided architectural requirement** |
 | Exact versions for other future features | **Provisional** |
-| Sampling shared across instruments vs. sampler slot | **Open** |
+| Sampling shared across instruments vs. sampler slot | **Resolved: shared engine with standalone MUNCH instrument** |
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |
 | Final instrument names | **Open** |
 | PWA-only vs. native wrapper for external sync | **Open** |
