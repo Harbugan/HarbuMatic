@@ -86,7 +86,7 @@ export function bootProject() {
   store.project = p;
   ensureSelection();
   if (fresh) save(true);
-  return { fresh };
+  return { fresh, warning: library.migrationWarning() };
 }
 export function newSong({ name, bpm, mood }) { adopt(createEmptyProject({ name: name || 'Untitled song', bpm: bpm || 120, mood }), `“${name || 'Untitled song'}” — a fresh canvas`); }
 export function loadDemo() { adopt(createDemoProject(), 'Demo jam loaded — your other songs are in Open'); }

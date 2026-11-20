@@ -61,7 +61,8 @@ export const sceneIndexOf = (project, id) => project.scenes.findIndex(s => s.id 
 export const blockScene = (project, block) => Math.max(0, sceneIndexOf(project, block.sceneId));
 export const patternAt = (project, slotId, sceneIdx = project.scene) => slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)];
 export function setPatternAt(project, slotId, sceneIdx, pattern) { slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)] = pattern; }
-export const anySolo = project => project.slots.some(s => s.solo);
+/** solo only counts on playable slots: a planned instrument (e.g. MUNCH) has no engine and must not silence the others */
+export const anySolo = project => project.slots.some(s => s.solo && isPlayableType(s.type));
 export const slotAudible = (project, slot) => (anySolo(project) ? slot.solo : !slot.mute);
 /**
  * Patterns of one scene keyed by musical role ('drums', 'bass', …) for src/music, which reasons in roles.

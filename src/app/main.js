@@ -130,7 +130,8 @@ function keys(e) {
 
 /* ---------- boot ---------- */
 function init() {
-  const { fresh } = A.bootProject();
+  const { fresh, warning } = A.bootProject();
+  const warn = () => { if (warning) toast(warning, 8000); }; // shown once the start overlay is gone, where the toast is visible
   $('#ident').textContent = `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`;
   $('#hUndo').innerHTML = ico('undo'); $('#hRedo').innerHTML = ico('redo');
   $('#hUndo').onclick = A.undo; $('#hRedo').onclick = A.redo;
@@ -157,11 +158,11 @@ function init() {
   $('#startSong').textContent = fresh ? 'Starting with the demo jam' : `Continue “${store.project.name}”`;
   $('#startBtn').onclick = () => {
     A.engine.init(); A.engine.applyAll();
-    $('#start').classList.add('hide');
+    $('#start').classList.add('hide'); warn();
     if (sceneHasContent(store.project, store.project.scene)) A.transport.play();
     uniReact(.5);
   };
-  $('#startNew').onclick = () => { A.engine.init(); $('#start').classList.add('hide'); newSongDialog(); };
+  $('#startNew').onclick = () => { A.engine.init(); $('#start').classList.add('hide'); warn(); newSongDialog(); };
   requestAnimationFrame(frame);
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register(`./sw.js?v=${encodeURIComponent(APP_VERSION)}`).catch(() => {});
   window.__harbu = { store, A }; // handy for debugging and automated UI tests

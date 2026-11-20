@@ -4,12 +4,13 @@
 // keys:  harbumatic.v6.index      → { current: id, projects: { [id]: { name, modified } }, v5Adopted, legacyAdopted }
 //        harbumatic.v6.song.<id>  → project JSON (schema v6)
 //        harbumatic.v5.index / harbumatic.v5.song.<id>
-//                                 → the v0.5 library: copied into the v6 keys once (songs migrated to v6),
-//                                   then left untouched, so an older build on the same origin (e.g. the
+//                                 → the v0.5 library: copied into the v6 keys (songs migrated to v6), never written to or
+//                                   deleted from by this module, so it is always available for a retry, so an older build on the same origin (e.g. the
 //                                   live site next to a PR preview) keeps opening its songs
 //        harbumatic.v4            → legacy v0.4 autosave (read once for migration, never deleted)
 
 import { importProject, ProjectError } from './project.js';
+import { uid } from './util.js';
 
 const INDEX = 'harbumatic.v6.index';
 const SONG = id => `harbumatic.v6.song.${id}`;
@@ -24,31 +25,73 @@ export function memoryStorage() {
 
 export function createLibrary(storage) {
   const parse = key => { try { const j = JSON.parse(storage.getItem(key) || 'null'); if (j && j.projects) return j; } catch (e) { /* corrupt index */ } return null; };
-  const writeIndex = idx => { try { storage.setItem(INDEX, JSON.stringify(idx)); return true; } catch (e) { return false; } };
+  const writeIndex = idx => { try { storage.setItem(INDEX, JSON.stringify(idx)); if (unsaved === idx) unsaved = null; return true; } catch (e) { return false; } };
 
-  /** first run of the v6 library: copy (and migrate) every v0.5 song, keep the v0.5 keys as they are */
-  function adoptV5() {
-    const idx = { current: null, projects: {}, v5Adopted: true };
-    const old = parse(V5_INDEX);
+  /** classify a failed storage call: quota/unavailable (a retry can succeed) vs. anything else */
+  const storageFailure = e => !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.name === 'SecurityError'
+    || e.code === 22 || e.code === 1014 || /quota|storage|full/i.test(String(e.message)));
+  const failure = (name, reason, detail) => ({ name: String(name ?? ''), reason, detail });
+
+  /**
+   * Copy every v0.5 song that is not in the v6 library yet. Mutates idx, never touches a v0.5 key, never overwrites a
+   * song that already has a v6 entry, and records each failure per project so the next launch can retry exactly those.
+   */
+  function migrateV5Songs(idx, first) {
+    const ledger = idx.v5Migration && typeof idx.v5Migration === 'object' ? idx.v5Migration : {};
+    const mig = { complete: false, migrated: { ...ledger.migrated }, failed: {} };
+    idx.v5Adopted = true;
+    let raw = null;
+    try { raw = storage.getItem(V5_INDEX); } catch (e) { mig.indexError = failure('', storageFailure(e) ? 'storage' : 'corrupt', String(e && e.message)); }
+    const old = raw == null ? null : parse(V5_INDEX);
+    if (raw != null && !old && !mig.indexError) mig.indexError = failure('', 'corrupt', 'the v0.5 song list cannot be read');
     if (old) {
-      if (old.legacyAdopted) idx.legacyAdopted = true;
+      if (first && old.legacyAdopted) idx.legacyAdopted = true;
       for (const [id, meta] of Object.entries(old.projects)) {
+        const name = meta && meta.name;
+        if (mig.migrated[id]) continue; // copied once: never overwrite it (it may have been edited) and never resurrect it if the user deleted it
+        let data;
         try {
-          const raw = storage.getItem(V5_SONG(id));
-          if (!raw) continue;
-          const p = importProject(JSON.parse(raw));
-          storage.setItem(SONG(p.id), JSON.stringify(p));
-          idx.projects[p.id] = { name: p.name, modified: p.modified ?? meta.modified };
-        } catch (e) { /* unreadable song: stays in the v0.5 keys, untouched */ }
+          const text = storage.getItem(V5_SONG(id));
+          if (text == null) { mig.failed[id] = failure(name, 'corrupt', 'the song data is missing'); continue; }
+          data = importProject(JSON.parse(text));
+        } catch (e) {
+          mig.failed[id] = failure(name, storageFailure(e) && !(e instanceof SyntaxError || e instanceof ProjectError) ? 'storage' : 'corrupt', String(e && e.message));
+          continue;
+        }
+        if (idx.projects[data.id]) data.id = uid('song'); // an unrelated v6 song already owns this id: keep both
+        try {
+          storage.setItem(SONG(data.id), JSON.stringify(data));
+        } catch (e) { mig.failed[id] = failure(name, 'storage', String(e && e.message)); continue; }
+        idx.projects[data.id] = { name: data.name, modified: data.modified ?? (meta && meta.modified) };
+        mig.migrated[id] = data.id;
+        if (first && old.current === id && !idx.current) idx.current = data.id;
       }
-      if (old.current && idx.projects[old.current]) idx.current = old.current;
     }
-    writeIndex(idx);
+    mig.complete = !Object.keys(mig.failed).length && !mig.indexError;
+    idx.v5Migration = mig;
+    return idx;
+  }
+
+  let checked = false;   // the v0.5 ledger is reconciled once per launch (= per library instance)
+  let unsaved = null;    // index we could not persist after a migration: used as the truth for this session
+  function adoptV5() {
+    checked = true;
+    const idx = migrateV5Songs({ current: null, projects: {} }, true);
+    if (!writeIndex(idx)) unsaved = idx;
     return idx;
   }
   const readIndex = () => {
+    if (unsaved) return unsaved;
     const idx = parse(INDEX);
-    if (idx) return idx;
+    if (idx) {
+      // an index from before the ledger existed (v5Adopted without v5Migration) or an incomplete migration: reconcile / retry once
+      if (!checked) {
+        checked = true;
+        const m = idx.v5Migration;
+        if (!m || !m.complete) { migrateV5Songs(idx, false); if (!writeIndex(idx)) unsaved = idx; }
+      }
+      return idx;
+    }
     if (storage.getItem(INDEX) == null) return adoptV5(); // never created yet
     return { current: null, projects: {}, v5Adopted: true }; // corrupt index: rebuild, never re-import
   };
@@ -60,6 +103,22 @@ export function createLibrary(storage) {
         .sort((a, b) => String(b.modified).localeCompare(String(a.modified)));
     },
     currentId: () => readIndex().current,
+    /** state of the v0.5 → v6 copy: { complete, failed: [{ id, name, reason, detail }], storage, corrupt } */
+    migrationStatus() {
+      const m = readIndex().v5Migration || { complete: true, failed: {} };
+      const failed = Object.entries(m.failed || {}).map(([id, f]) => ({ id, ...f }));
+      if (m.indexError) failed.push({ id: '', ...m.indexError });
+      return { complete: !!m.complete, failed, storage: failed.filter(f => f.reason === 'storage').length, corrupt: failed.filter(f => f.reason === 'corrupt').length };
+    },
+    /** one-line warning for the user when some v0.5 songs could not be copied (null when everything is in) */
+    migrationWarning() {
+      const st = lib.migrationStatus();
+      if (!st.failed.length) return null;
+      const n = st.failed.length, songs = n === 1 ? '1 song' : `${n} songs`;
+      const why = st.storage && st.corrupt ? 'storage is full or damaged data'
+        : st.storage ? 'browser storage is full or unavailable' : 'damaged data';
+      return `${songs} from the previous version could not be copied (${why}). The originals are untouched; we will retry next time you open HarbuMatic.`;
+    },
     /** persist a project; returns false when storage is full/unavailable */
     save(project) {
       try {
