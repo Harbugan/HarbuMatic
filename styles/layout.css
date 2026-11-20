@@ -14,6 +14,9 @@
 .screw { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff, #d8c3ab); box-shadow: 0 1px 1px #0002 inset; }
 .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 4.5px; height: 1.5px; background: #a88d72; transform: rotate(35deg); border-radius: 2px; }
 .screw.tl { left: 14px; top: 14px; } .screw.tr { right: 14px; top: 14px; } .screw.bl { left: 14px; bottom: 14px; } .screw.br { right: 14px; bottom: 14px; }
+/* version + creator credit, engraved on the case's bottom bezel: always visible, never over a control */
+.ident { position: absolute; left: 50%; bottom: calc(1px + var(--sa-b)); transform: translateX(-50%); max-width: calc(100% - 80px);
+  font-size: 9px; line-height: 10px; letter-spacing: .8px; color: #9b8571; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .panel { border-radius: var(--r-xl); background: var(--panel); box-shadow: var(--sh-panel); padding: 10px; min-height: 0; min-width: 0; }
 
 /* ---------- header ---------- */
@@ -99,7 +102,8 @@
 
 /* shorter landscape screens (iPad 10–11" in Safari with toolbars) */
 @media (max-height: 760px) and (orientation: landscape) {
-  .device { gap: 8px; padding-top: calc(8px + var(--sa-t)); padding-bottom: calc(8px + var(--sa-b)); }
+  .device { gap: 8px; padding-top: calc(8px + var(--sa-t)); padding-bottom: calc(11px + var(--sa-b)); }
+  .ident { bottom: var(--sa-b); } /* the bezel line fits in the slimmer bottom padding */
   .hdr { min-height: 46px; }
   .wordmark { font-size: 24px; }
   .transport { grid-template-rows: 48px 40px; gap: 6px; padding: 8px; }

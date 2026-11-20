@@ -1,7 +1,8 @@
 // HarbuMatic service worker: network-first with an offline fallback cache.
 // Network-first keeps every deploy (and PR previews under the same origin) fresh while online;
 // once loaded, the app shell and modules keep working offline.
-const CACHE = 'harbumatic-v0.5';
+// The page registers sw.js?v=<APP_VERSION> (src/core/constants.js), so each release gets its own cache.
+const CACHE = 'harbumatic-v' + (new URL(self.location.href).searchParams.get('v') || 'dev');
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon.svg'];
 
 self.addEventListener('install', e => {
