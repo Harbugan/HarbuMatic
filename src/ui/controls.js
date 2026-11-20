@@ -11,15 +11,16 @@ export function Knob({ label, min = 0, max = 1, value, def, size = '', color, fm
   def = def ?? value;
   const el = h('div', { class: 'knob ' + size, tabindex: 0, role: 'slider', 'aria-label': label, 'aria-valuemin': min, 'aria-valuemax': max, title: title || `${label} — drag, double-tap to reset` });
   if (color) el.style.setProperty('--kc', color);
-  const dial = h('div', { class: 'dial', html: `<svg class="ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#00000014" stroke-width="2.6" pathLength="100" stroke-dasharray="75 100" stroke-linecap="round"/><circle class="arc" cx="20" cy="20" r="18" fill="none" stroke="var(--kc)" stroke-width="2.6" pathLength="100" stroke-dasharray="0 100" stroke-linecap="round"/></svg><div class="cap"><i class="tick"></i></div>` });
+  const dial = h('div', { class: 'dial', html: `<svg class="ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="#00000014" stroke-width="2.6" pathLength="100" stroke-dasharray="75 100" stroke-linecap="round"/><circle class="arc" cx="20" cy="20" r="18" fill="none" stroke="var(--kc)" stroke-width="2.6" pathLength="100" stroke-dasharray="0 100" stroke-linecap="round"/></svg><div class="cap"><div class="ind"><i class="tick"></i></div></div>` });
   const lbl = h('div', { class: 'klbl' }, label), val = h('div', { class: 'kval' });
   el.append(dial, lbl, val);
-  const cap = dial.querySelector('.cap'), arc = dial.querySelector('.arc');
+  // .cap carries the fixed lighting and cast shadow; only .ind (the indicator layer) rotates (BUG-003)
+  const ind = dial.querySelector('.ind'), arc = dial.querySelector('.arc');
   const f = fmt || (v => Math.round((v - min) / (max - min) * 100) + '%');
   let v = value;
   const draw = () => {
     const n = (v - min) / (max - min);
-    cap.style.transform = `rotate(${-135 + 270 * n}deg)`;
+    ind.style.transform = `rotate(${-135 + 270 * n}deg)`;
     arc.setAttribute('stroke-dasharray', `${(75 * n).toFixed(2)} 100`);
     val.textContent = f(v);
     el.setAttribute('aria-valuenow', (+v).toFixed(2)); el.setAttribute('aria-valuetext', f(v));
