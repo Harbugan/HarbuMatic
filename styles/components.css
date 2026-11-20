@@ -60,6 +60,9 @@ body.coarse .btn.icon { width: var(--tap); min-width: var(--tap); }
 .card[data-t=bass] { --c: var(--mint); --cd: var(--mint-d); --cdd: var(--mint-dd); }
 .card[data-t=synth] { --c: var(--lav); --cd: var(--lav-d); --cdd: var(--lav-dd); }
 .card[data-t=fuzz] { --c: var(--peach); --cd: var(--peach-d); --cdd: var(--peach-dd); }
+.card[data-t=munch] { --c: var(--sky); --cd: var(--sky-d); --cdd: var(--sky-dd); }
+.card.planned { cursor: default; } /* dev preview placeholder (?preview=five): looks like a card, does nothing */
+.card.planned .pill { cursor: default; }
 .card.sel { transform: translateY(-2px); box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--cd), 0 2px 0 #ffffffaa inset, 0 -4px 0 color-mix(in srgb, var(--cd) 55%, transparent) inset, 0 14px 22px -10px var(--cdd); }
 .card.silent { filter: saturate(.35) brightness(.98); }
 .card-cat { grid-row: 1; grid-column: 1; display: grid; place-items: center; }
@@ -93,6 +96,41 @@ body.coarse .btn.icon { width: var(--tap); min-width: var(--tap); }
 .device.compact .card-name { font-size: 16px; }
 .device.compact .card-ms { margin-top: 2px; gap: 4px; }
 .device.compact .pill { width: 42px; height: 38px; font-size: 12px; }
+
+/* five cards (#cards[data-count="5"]): only these rules know about a fifth card, so the four-card layout is
+   untouched. The strip measures itself; when a card gets narrower than its cat + name + M/S row (≈ 190 px,
+   e.g. 1024–1194 px landscape and portrait) the card stacks: cat + name on top, a full-width M/S row, then
+   the mini steps. M/S keep the usual 38 px height and get wider; a long description ends in an ellipsis
+   (the full text stays in the card's aria-label). The strip never gets taller than with four cards. */
+.cards[data-count="5"] { container: cards / inline-size; }
+@container cards (max-width: 989px) {
+  .device .cards[data-count="5"] .card { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto auto; grid-template-areas: "cat head" "cat type" "ms ms" "mini mini"; gap: 2px 6px; padding: 5px 8px 6px; align-items: center; align-content: center; }
+  .device .cards[data-count="5"] .card-info { display: contents; }
+  .device .cards[data-count="5"] .card-cat { grid-area: cat; }
+  .device .cards[data-count="5"] .card-head { grid-area: head; min-width: 0; align-self: end; padding-right: 12px; }
+  .device .cards[data-count="5"] .led { position: absolute; top: 8px; right: 8px; margin: 0; } /* out of the name's way */
+  .device .cards[data-count="5"] .card-type { grid-area: type; align-self: start; }
+  .device .cards[data-count="5"] .card-ms { grid-area: ms; margin-top: 2px; gap: 6px; }
+  .device .cards[data-count="5"] .card-ms .pill { flex: 1 1 0; width: auto; height: 38px; }
+  .device .cards[data-count="5"] .mini-steps { grid-area: mini; padding: 0 2px; }
+  .device .cards[data-count="5"] .cat { width: 48px; height: 42px; }
+  .device .cards[data-count="5"] .card-name { font-size: 18px; letter-spacing: .5px; }
+  .device .cards[data-count="5"] .card-type { font-size: 9.5px; letter-spacing: .8px; }
+  /* Deep edit: a small cat beside the name, M/S underneath */
+  .device.compact .cards[data-count="5"] .card { grid-template-rows: auto auto; grid-template-areas: "cat head" "ms ms"; padding: 4px 6px 5px; gap: 2px 4px; }
+  .device.compact .cards[data-count="5"] .cat { width: 30px; height: 27px; }
+  .device.compact .cards[data-count="5"] .card-name { font-size: 15px; }
+  .device.compact .cards[data-count="5"] .card-ms .pill { height: 36px; }
+}
+@container cards (max-width: 989px) and (min-width: 790px) {
+  /* compact strip with room to spare: keep Deep edit's usual one-row card (cat · name · M/S) */
+  .device.compact .cards[data-count="5"] .card { grid-template-rows: auto; grid-template-areas: none; grid-template-columns: auto minmax(0, 1fr); padding: 4px 8px 4px 2px; gap: 0 6px; }
+  .device.compact .cards[data-count="5"] .card-info { display: flex; }
+  .device.compact .cards[data-count="5"] .card-cat, .device.compact .cards[data-count="5"] .card-head, .device.compact .cards[data-count="5"] .card-ms { grid-area: auto; }
+  .device.compact .cards[data-count="5"] .cat { width: 48px; height: 44px; }
+  .device.compact .cards[data-count="5"] .card-name { font-size: 16px; }
+  .device.compact .cards[data-count="5"] .card-ms .pill { flex: none; width: 42px; height: 38px; }
+}
 
 /* ---------- knobs ---------- */
 .knob { display: flex; flex-direction: column; align-items: center; gap: 3px; touch-action: none; cursor: ns-resize; outline: none; border-radius: 12px; --kc: var(--accent-d); min-width: 56px; padding: 2px; }

@@ -10,7 +10,7 @@ import {
   createEmptyProject, createDemoProject, importProject, newBlock, clampReps, ProjectError,
   playableSlots, patternAt, setPatternAt, sceneIdAt, typeOfSlot,
 } from '../core/project.js';
-import { createPatternFor } from '../core/instruments.js';
+import { createPatternFor, isPlayableType } from '../core/instruments.js';
 import { createRng, randomSeed } from '../core/rng.js';
 import { buildContext } from '../music/context.js';
 import { transformPattern } from '../music/transform.js';
@@ -130,7 +130,7 @@ export async function importFile(file) {
 
 /* ---------- selection / modes ---------- */
 export function selectSlot(id) {
-  if (store.ui.sel === id || !slot(id)) return;
+  if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments (MUNCH) cannot be selected
   const u = store.ui;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
   if (!typeOf(id).ui.tools.includes(u.tool)) u.tool = 'draw'; // e.g. Slide exists only where slides do

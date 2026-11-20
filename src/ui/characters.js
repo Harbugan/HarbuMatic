@@ -80,6 +80,18 @@ export function catSVG(type) {
     <path d="M56.5 63 Q60 66 63.5 63" stroke="${INK}" stroke-width="2.3" fill="none" stroke-linecap="round"/>
     <g class="zz" opacity=".55" stroke="${INK}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M100 12 h7 l-7 8 h7"/><path d="M110 2 h5 l-5 6 h5"/></g>`;
   }
+  // provisional placeholder art (seen only in the dev preview for now): a round sound-eater with a big mouth
+  if (tr === 'munch') body = `
+    <ellipse cx="49" cy="101" rx="7" ry="4" fill="${C}" ${st}/><ellipse cx="71" cy="101" rx="7" ry="4" fill="${C}" ${st}/>
+    <path d="M38 34 Q36 16 52 27 Z" fill="${C}" ${st}/><path d="M82 34 Q84 16 68 27 Z" fill="${C}" ${st}/>
+    <ellipse cx="60" cy="61" rx="38" ry="37" fill="${C}" ${st}/>
+    ${phones('M22 60 Q19 17 60 17 Q101 17 98 60', [12, 48], [92, 48], hp)}
+    ${eyePair(47, 73, 48, 3.8, 4.8)}
+    <g class="eyes-alt"><path d="M42 50 Q47 44 52 50" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M68 50 Q73 44 78 50" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+    <ellipse cx="36" cy="60" rx="5" ry="3" fill="${D}" opacity=".55"/><ellipse cx="84" cy="60" rx="5" ry="3" fill="${D}" opacity=".55"/>
+    <path d="M42 64 Q60 60 78 64 Q76 88 60 89 Q44 88 42 64 Z" fill="${INK}"/>
+    <path d="M49 82 Q60 74 71 82 Q66 88 60 88 Q54 88 49 82 Z" fill="#F49AB2"/>
+    <path d="M47 63.6 L50 69 L53 62.8 Z M67 62.8 L70 69 L73 63.6 Z" fill="#fff"/>`;
   return `<svg viewBox="0 0 120 110" aria-hidden="true">${shadow}<g class="rig">${body}</g></svg>`;
 }
 

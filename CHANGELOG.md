@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — v0.6 Phase 2: five instrument slots
+
+Structure only. The four instruments sound, look and behave exactly as before, the normal UI still shows four cards, and the version stays 0.5.1.
+
+### Changed
+- **Five slots in every song**: new songs hold `slot-01` BOP, `slot-02` GOO, `slot-03` BLIP, `slot-04` FUZZ and `slot-05` MUNCH. MUNCH stays `planned`: kept in the song, never played, soloed, timed, generated or selected.
+- **Migration**: v4, v5 and four-slot v6 songs gain one empty MUNCH slot when opened (`slot-05`, or the next free id if another instrument owns it). Existing slots are never changed, existing MUNCH slots are kept, and repeated imports are idempotent. The schema stays v6.
+- **Selection**: `selectSlot` refuses planned instruments.
+- **Layout**: `#cards[data-count="5"]` has a five-column strip with a stacked card for narrow widths. It is only used by the dev preview `?preview=five`, which shows MUNCH as an inert placeholder card (provisional artwork and colours).
+- **MUNCH integration points**: `ui.layers` (`play`, `chop`, `twist`) in the registry, and the voice-factory route for a future sampler documented in `docs/ARCHITECTURE.md`.
+
+### Tests
+- New `tests/five-slots.test.mjs`; existing slot tests updated for five slots.
+- `npm run test:ui` checks the five-card preview at twelve viewports in four modes and the four-slot import.
+
 ## Unreleased — v0.6 Phase 1: instrument foundation
 
 Architecture only. The four instruments sound, look and behave exactly as in 0.5.1, and nothing new is visible in the UI. The version stays 0.5.1 until v0.6 is released.

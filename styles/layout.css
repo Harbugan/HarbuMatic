@@ -39,6 +39,7 @@
 .transport .lcd { grid-row: 1; grid-column: 3; }
 .transport .bpm { grid-row: 2; grid-column: 1 / 4; }
 .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+.cards[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* ---------- main ---------- */
 .main { display: grid; grid-template-columns: minmax(0, 1fr) var(--right-w); gap: var(--gap); min-height: 0; }

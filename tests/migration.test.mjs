@@ -9,12 +9,26 @@ import {
   importProject, migrateV5, validateProject, detectVersion, SCHEMA_VERSION, ProjectError,
   patternAt, sceneIndexOf, slotById, createDemoProject,
 } from '../src/core/project.js';
-import { LEGACY_TRACKS, LEGACY_TRACK_TYPES } from '../src/core/instruments.js';
+import { LEGACY_TRACKS, LEGACY_TRACK_TYPES, defaultParamsFor } from '../src/core/instruments.js';
+import { DEFAULT_MACROS } from '../src/core/constants.js';
 import { createLibrary, memoryStorage } from '../src/core/persistence.js';
 
 const fx = f => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const V5 = ['v5-demo.json', 'v5-edge.json', 'v5-from-v4.json'];
 const slotFor = k => `slot-0${k + 1}`;
+
+/** slot-05 is an empty, unmuted, unsoloed MUNCH slot with default parameters and an empty pattern per scene */
+function assertMunchPlaceholder(p, label) {
+  const m = slotById(p, 'slot-05');
+  assert.ok(m, `${label}: has slot-05`);
+  assert.equal(m.type, 'munch', `${label}: slot-05 is MUNCH`);
+  assert.equal(p.slots.filter(s => s.type === 'munch').length, 1, `${label}: exactly one MUNCH slot`);
+  assert.equal(m.mute, false); assert.equal(m.solo, false);
+  assert.deepEqual(m.params, defaultParamsFor('munch'));
+  assert.deepEqual(m.macros, DEFAULT_MACROS());
+  assert.deepEqual(Object.keys(m.patterns), p.scenes.map(sc => sc.id));
+  Object.values(m.patterns).forEach(pt => assert.deepEqual(pt, { len: 16, notes: [] }));
+}
 
 /** assert that a v6 project carries exactly the content of a (v0.5.1-validated) v5 project */
 function assertSameSong(v6, v5, label) {
@@ -28,7 +42,9 @@ function assertSameSong(v6, v5, label) {
     assert.deepEqual(v6.scenes[i].harmony, sc.harmony, `${label}: scene ${i} harmony`);
   });
   assert.deepEqual(v6.arrangement.map(b => [b.id, sceneIndexOf(v6, b.sceneId), b.reps]), v5.arrangement.map(b => [b.id, b.scene, b.reps]), `${label}: arrangement`);
-  assert.equal(v6.slots.length, LEGACY_TRACKS.length);
+  // the four v5 tracks become slot-01…slot-04, followed by one empty MUNCH placeholder (v0.6 Phase 2)
+  assert.equal(v6.slots.length, LEGACY_TRACKS.length + 1);
+  assertMunchPlaceholder(v6, label);
   LEGACY_TRACKS.forEach((t, k) => {
     const s = v6.slots[k], tr = v5.tracks[t];
     assert.equal(s.id, slotFor(k)); assert.equal(s.type, LEGACY_TRACK_TYPES[t]);
