@@ -166,9 +166,10 @@ export function render() {
       g.beginPath(); g.arc(x, G.rulerH / 2, 5, 0, 7); g.fillStyle = '#F2AFC0'; g.fill();
     }
   }
-  if (!G.drums && !G.p.notes.length) {
-    g.fillStyle = '#ffffff55'; g.font = `800 ${u.coarse ? 15 : 13}px Nunito, system-ui`; g.textAlign = 'center';
-    g.fillText('Tap the grid to add notes — or press Generate in the Lab', G.keysW + (RV.W - G.keysW) / 2, G.gridTop + (G.gridBot - G.gridTop) / 2);
+  const empty = G.drums ? !DRUMS.some(d => G.p.steps[d.id].some(Boolean)) : !G.p.notes.length;
+  if (empty) {
+    g.fillStyle = '#ffffff66'; g.font = `800 ${u.coarse ? 15 : 13}px Nunito, system-ui`; g.textAlign = 'center';
+    g.fillText(G.drums ? 'Tap cells to add hits — or press Generate in the Lab' : 'Tap the grid to add notes — or press Generate in the Lab', G.keysW + (RV.W - G.keysW) / 2, G.gridTop + (G.gridBot - G.gridTop) / 2 + (G.drums ? G.rowH / 2 : 0));
     g.textAlign = 'left';
   }
 }

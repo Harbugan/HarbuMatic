@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find . -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.ico' -o -name '*.glb' -o -name '*.gltf' -o -name '*.bin' -o -name '*.mp3' -o -name '*.ogg' -o -name '*.wav' \) -not -path './.git/*' -not -path './.github/*' -print0 |
+          find . -type f \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.webp' -o -name '*.ico' -o -name '*.glb' -o -name '*.gltf' -o -name '*.bin' -o -name '*.mp3' -o -name '*.ogg' -o -name '*.wav' \) -not -path './.git/*' -not -path './.github/*' -not -path './node_modules/*' -not -path './tests/*' -not -path './tools/*' -not -name 'package.json' -print0 |
           while IFS= read -r -d '' file; do
             relative="${file#./}"
             directory="${relative%/*}"
