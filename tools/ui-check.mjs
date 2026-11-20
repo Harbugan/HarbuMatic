@@ -387,6 +387,127 @@ async function rollPoint(page, step, rowOrPitch) {
   ok(!errors.length, `no console errors during flows${errors.length ? ' — ' + errors.join(' | ') : ''}`);
   await ctx.close();
 
+  console.log('\n— MUNCH sample engine (dev preview ?munch=dev, fake microphone) —');
+  {
+    const fs = await import('node:fs/promises');
+    const { makeWav } = await import('../tests/helpers/audio.mjs');
+    const fixture = f => fs.readFile(new globalThis.URL(`../tests/fixtures/audio/${f}`, import.meta.url));
+    // a normal session never shows MUNCH and never opens the sample database
+    {
+      const { ctx: c0, page: p0 } = await open(browser, 1180, 820);
+      const r = await p0.evaluate(async () => ({ cards: document.querySelectorAll('#cards .card').length, dbs: indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : [] }));
+      ok(r.cards === 4 && !r.dbs.includes('harbumatic-samples'), `without ?munch=dev: four cards, no sample storage opened (${r.cards} cards)`);
+      await c0.close();
+    }
+    const mb = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
+    for (const [w, h] of [[1180, 820], [1024, 768], [1376, 1032], [820, 1180]]) { // the test bench must not break the layout
+      const c = await mb.newContext({ viewport: { width: w, height: h }, hasTouch: true });
+      const pg = await c.newPage(); const errs = []; pg.on('pageerror', e => errs.push(e.message));
+      await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(200);
+      await pg.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); });
+      await pg.setInputFiles('[data-testid=munch-file]', { name: 'tone.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 1 })) });
+      await pg.waitForSelector('.md-status[data-status=ready]', { timeout: 5000 }).catch(() => {});
+      for (const mode of ['sound', 'jam']) {
+        await pg.evaluate(m => window.__harbu.A.setMode(m), mode); await pg.waitForTimeout(200);
+        const a = await layoutAudit(pg);
+        const over = await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+        ok(!over && !a.offscreen.length && !a.overlaps.length && !a.spill.length, `${w}×${h} MUNCH ${mode}: five cards and the test bench fit${[...a.offscreen, ...a.overlaps, ...a.spill].length ? ' — ' + [...a.offscreen, ...a.overlaps, ...a.spill].slice(0, 4).join('; ') : ''}`);
+      }
+      ok(!errs.length, `${w}×${h} MUNCH: no errors${errs.length ? ' — ' + errs[0] : ''}`);
+      await c.close();
+    }
+    const mctx = await mb.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, permissions: ['microphone'] });
+    const pg = await mctx.newPage(); const errs = [];
+    pg.on('pageerror', e => errs.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+    await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(300);
+    const H = fn => pg.evaluate(fn);
+    const cards = await H(() => [...document.querySelectorAll('#cards .card')].map(c => c.dataset.slot).join());
+    ok(cards === 'slot-01,slot-02,slot-03,slot-04,slot-05', `MUNCH is the fifth playable card (${cards})`);
+    await pg.keyboard.press('5'); await pg.waitForTimeout(50);
+    ok((await H(() => window.__harbu.store.ui.sel)) === 'slot-05', 'key 5 selects MUNCH');
+    await H(() => { window.__harbu.A.stop(); window.__harbu.A.setMode('sound'); });
+    await pg.waitForTimeout(150);
+    const status = () => H(() => { const e = document.querySelector('.md-status'); return e ? e.dataset.status : 'gone'; });
+    const toast = () => H(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | '));
+    ok((await status()) === 'none', 'the test bench starts with no sample');
+    // import: WAV (stereo float), MP3, Ogg/Opus, then a broken file
+    const imports = [['stereo.wav', Buffer.from(makeWav({ seconds: 2, rate: 48000, channels: 2, float: true, freq: 330 })), 2], ['tone-c5-1s.mp3', await fixture('tone-c5-1s.mp3'), 1], ['tone-c4-2s.ogg', await fixture('tone-c4-2s.ogg'), 2]];
+    for (const [name, buffer, secs] of imports) {
+      await pg.setInputFiles('[data-testid=munch-file]', { name, mimeType: 'audio/*', buffer });
+      await pg.waitForFunction(n => { const s = window.__harbu.store.project.slots[4].sample; return s && s.name === n && document.querySelector('.md-status[data-status=ready]'); }, name, { timeout: 8000 }).catch(() => {});
+      const r = await H(() => window.__harbu.store.project.slots[4].sample);
+      ok(r && r.name === name && Math.abs(r.duration - secs) < .1 && r.slices.length === 9, `import ${name}: ready, ${r && r.duration.toFixed(2)} s, eight slices`);
+    }
+    const before = await H(() => window.__harbu.store.project.slots[4].sample.id);
+    await pg.setInputFiles('[data-testid=munch-file]', { name: 'broken.wav', mimeType: 'audio/wav', buffer: Buffer.from('RIFF....WAVE this is not audio') });
+    await pg.waitForTimeout(500);
+    ok(/broken\.wav/.test(await toast()) && (await H(() => window.__harbu.store.project.slots[4].sample.id)) === before, 'a broken file is refused with a message and the current sample stays');
+    // the same file twice is stored once
+    await pg.setInputFiles('[data-testid=munch-file]', { name: 'again.ogg', mimeType: 'audio/ogg', buffer: await fixture('tone-c4-2s.ogg') });
+    await pg.waitForTimeout(500);
+    const stored = await H(() => window.__harbu.A.samples.store.list().then(l => l.length));
+    ok(stored === 3 && (await H(() => window.__harbu.store.project.slots[4].sample.id)) === before, `importing the same file again reuses it (3 stored assets, got ${stored})`);
+    // slice pads, slice steps, melodic notes, transport
+    await pg.click('[data-testid=munch-pads] .md-pad >> nth=3');
+    await pg.click('[data-testid=munch-grid] [data-k="0"][data-s="0"]'); await pg.click('[data-testid=munch-grid] [data-k="5"][data-s="2"]'); await pg.click('[data-testid=munch-grid] [data-k="7"][data-s="8"]');
+    await H(() => { const p = window.__harbu.store.project; p.slots[4].patterns[p.scenes[p.scene].id].notes.push({ s: 12, p: 67, l: 2, v: .8 }); window.__harbu.A.patternEdited(); });
+    const notes = await H(() => { const p = window.__harbu.store.project; return p.slots[4].patterns[p.scenes[p.scene].id].notes.map(n => `${n.s}:${n.slice ?? 'p' + n.p}`).join(); });
+    ok(notes === '0:0,2:5,8:7,12:p67', `slice steps and a melodic note in the MUNCH pattern (${notes})`);
+    const played0 = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played);
+    ok(played0 >= 1, 'slice pads audition');
+    await pg.click('#play'); await pg.waitForTimeout(2300);
+    const st = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats);
+    ok(st.played - played0 >= 4 && st.missed === 0, `MUNCH plays through the transport (${st.played - played0} hits, ${st.missed} missed)`);
+    await H(() => window.__harbu.A.togglePlay()); await pg.waitForTimeout(100);
+    ok((await H(() => [window.__harbu.A.transport.state, window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount()].join())) === 'paused,0', 'Pause silences every MUNCH voice');
+    await H(() => window.__harbu.A.stop());
+    // edits: pitch, trim, reverse are params; undo restores
+    await H(() => { const A = window.__harbu.A; A.setParam('slot-05', 'tune', 7); A.setParam('slot-05', 'start', .2); A.toggleParam('slot-05', 'reverse'); });
+    ok((await H(() => { const p = window.__harbu.store.project.slots[4].params; return [p.tune, p.start, p.reverse].join(); })) === '7,0.2,true', 'pitch, trim and reverse are stored as non-destructive params');
+    ok(await H(() => !!window.__harbu.A.samples.buffer(window.__harbu.store.project.slots[4].sample.id, true)), 'reverse prepares the reversed copy ahead of playback');
+    // recording from the (fake) microphone
+    await pg.click('[data-testid=munch-rec]'); await pg.waitForTimeout(1200);
+    ok((await H(() => window.__harbu.A.recorder.state)) === 'recording', 'recording starts');
+    await pg.click('[data-testid=munch-rec]');
+    await pg.waitForFunction(() => /^Recording/.test(window.__harbu.store.project.slots[4].sample.name), null, { timeout: 5000 }).catch(() => {});
+    const rec = await H(() => window.__harbu.store.project.slots[4].sample);
+    ok(rec && /^Recording/.test(rec.name) && rec.duration > .5, `a recording becomes the MUNCH sample (${rec && rec.name}, ${rec && rec.duration.toFixed(2)} s)`);
+    ok(await H(() => navigator.mediaDevices.enumerateDevices().then(() => window.__harbu.A.recorder.state === 'idle')), 'the microphone is released after recording');
+    await pg.click('[data-testid=munch-rec]'); await pg.waitForTimeout(400); await H(() => window.__harbu.A.recordCancel());
+    ok((await H(() => [window.__harbu.A.recorder.state, window.__harbu.store.project.slots[4].sample.name].join())) === `idle,${rec.name}`, 'cancelling a recording keeps the current sample');
+    // save → reopen
+    await H(() => window.__harbu.A.flushSave());
+    const ref = await H(() => window.__harbu.store.project.slots[4].sample);
+    await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
+    const back = await H(() => ({ ref: window.__harbu.store.project.slots[4].sample, st: window.__harbu.A.samples.state(window.__harbu.store.project.slots[4].sample.id).status, notes: window.__harbu.store.project.slots[4].patterns['scene-02'].notes.length + window.__harbu.store.project.slots[4].patterns['scene-01'].notes.length }));
+    ok(JSON.stringify(back.ref) === JSON.stringify(ref) && back.st === 'ready' && back.notes === 4, `after reload the sample reference, slices and notes are back and the audio is ready (${back.st})`);
+    // Save a copy keeps the reference
+    await H(() => window.__harbu.A.duplicateProject());
+    ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id, 'Save a copy keeps the sample reference');
+    // export says it is not portable
+    const [dl] = await Promise.all([pg.waitForEvent('download'), H(() => window.__harbu.A.exportProject())]);
+    const exported = JSON.parse(await fs.readFile(await dl.path(), 'utf8'));
+    ok(exported.slots[4].sample.id === ref.id && /not portable/.test(await toast()), 'Export keeps the reference and warns that the audio is not included');
+    // missing asset: reference kept, clear warning, same file brings it back
+    await H(id => window.__harbu.A.samples.store.remove(id), ref.id);
+    await H(() => window.__harbu.A.flushSave());
+    await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
+    await H(() => { window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); }); await pg.waitForTimeout(200);
+    ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id && (await status()) === 'missing' && /missing on this device/.test(await toast()), 'a missing sample keeps its reference, shows a warning and the bench says so');
+    await pg.click('#play'); await pg.waitForTimeout(600); await pg.click('#stop');
+    ok(!errs.length, `no errors while a sample is missing${errs.length ? ' — ' + errs[0] : ''}`);
+    await mctx.close();
+    // microphone permission denied
+    const dctx = await mb.newContext({ viewport: { width: 1180, height: 820 } });
+    const dp = await dctx.newPage();
+    await dp.goto(URL + '?munch=dev'); await dp.click('#startBtn'); await dp.waitForTimeout(200);
+    await dp.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); });
+    await dp.click('[data-testid=munch-rec]'); await dp.waitForTimeout(300);
+    ok(/denied/.test(await dp.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join())) && (await dp.evaluate(() => window.__harbu.A.recorder.state)) === 'idle', 'denied microphone permission gives a clear message');
+    await dctx.close();
+    await mb.close();
+  }
+
   console.log('\n— Upgrade from a v0.5 library in this browser —');
   {
     const fs = await import('node:fs/promises');

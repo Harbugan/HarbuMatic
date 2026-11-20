@@ -52,11 +52,23 @@ async function render(browser, url, scen) {
   await ctx.addInitScript(AUDIO_SHIM, { SR, SECS: scen.secs, seed: 7 });
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
-  await page.goto(url); await page.evaluate(() => localStorage.clear()); await page.reload();
+  await page.goto(url + (scen.query || '')); await page.evaluate(() => localStorage.clear()); await page.reload();
   await page.click('#startBtn'); // boots the engine (and plays the demo)
   const out = await page.evaluate(async ({ scen, EDGE }) => {
     const { A, store } = window.__harbu;
     if (scen.edge) { A.stop(); await A.importFile(new File([EDGE], 'edge.json')); }
+    if (scen.munch) { // a 1 s, 220 Hz WAV on MUNCH with a slice + melodic pattern in the demo's scene B
+      A.stop();
+      const rate = 22050, n = rate, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+      w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+      for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(2 * Math.PI * 220 * i / rate) * 12000), true);
+      const meta = await A.importSampleFile(new File([b], 'sine.wav', { type: 'audio/wav' }), 'slot-05');
+      if (!meta) throw new Error('MUNCH import failed');
+      const p = store.project; p.songMode = false; p.scene = 1;
+      p.slots.forEach(s => { s.solo = s.id === 'slot-05'; });
+      p.slots[4].patterns[p.scenes[1].id] = { len: 16, notes: [{ s: 0, p: 60, l: 1, v: .9, slice: 0 }, { s: 4, p: 60, l: 1, v: .9, slice: 5 }, { s: 8, p: 67, l: 4, v: .8 }] };
+      A.engine.applyAll();
+    }
     const p = store.project;
     if (scen.songMode != null) { A.stop(); p.songMode = scen.songMode; if (scen.scene != null) p.scene = scen.scene; }
     if (scen.solo != null) { // solo one instrument, addressed by position so both schemas work
@@ -87,7 +99,12 @@ const AUDIO = [
   { name: 'demo, whole song', secs: 16, songMode: true },
   { name: 'edge song (v5 import: swing, offsets, chance, slides, mute, lofi kit, crush)', secs: 14, edge: true },
   { name: 'edge, scene E loop with synth muted', secs: 8, edge: true, songMode: false, scene: 4 },
+  // MUNCH enabled but without a sample: the four instruments must sound exactly as on the baseline
+  { name: 'demo, scene B loop with the MUNCH preview enabled (?munch=dev)', secs: 9, query: '?munch=dev' },
 ];
+
+// MUNCH (dev preview) on the current build only: it must actually make sound through the offline engine
+const MUNCH = { name: 'MUNCH solo: slices + melodic note (current build)', secs: 3, query: '?munch=dev', munch: true };
 
 async function shots(browser, url) {
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, reducedMotion: 'reduce' });
@@ -119,6 +136,10 @@ async function shots(browser, url) {
   for (let i = 0; i < 4; i++) {
     const out = await render(browser, APP, { name: 'solo', secs: 4, songMode: false, scene: 1, solo: i });
     ok(rms(out[0]) > 1e-3, `instrument ${i + 1} solo renders audio (rms ${rms(out[0]).toFixed(4)})`);
+  }
+  {
+    const out = await render(browser, APP, MUNCH);
+    ok(rms(out[0]) > 1e-3, `${MUNCH.name} renders audio (rms ${rms(out[0]).toFixed(4)})`);
   }
   if (!BASE) { console.log('\n(no HARBU_BASELINE_URL: skipping the comparison with a baseline build)'); }
   else {
