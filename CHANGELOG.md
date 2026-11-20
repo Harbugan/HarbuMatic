@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.1 — Bugfix & UI polish
+
+Stabilization only. No musical behaviour, project format or saved data changed.
+
+### Fixed
+- **BOP sequencer stopped responding after tapping a drum label (BUG-001).** The label gesture overwrote its own pointer id, so the release was ignored and every later press was dropped. Labels can now be tapped again and again. Steps stay editable straight away, with touch and mouse, while playing and while stopped. The Lock tool on drum labels works again, and a lost pointer capture can no longer leave a gesture stuck.
+- **Knob lighting rotated with the dial (BUG-003).** Only the indicator layer rotates now. The cap's highlight, shading and cast shadow stay fixed.
+- **ARRANGE changed the area under the header (BUG-004).** JAM, SOUND and ARRANGE now share one header and one transport/instrument strip. Only Deep edit still compacts the strip.
+- **Alignment and spacing (BUG-002):**
+  - The Solo button no longer sticks out of instrument cards at 1024×768 or in portrait. Narrow-screen card rules that never applied now do.
+  - The ARRANGE scene library uses 6 columns on wide screens, as intended, instead of 3 tiles with stacked full-width buttons.
+  - In SOUND, labels under segment pickers line up with the knob labels.
+
+### Release identity
+- `APP_VERSION` in `src/core/constants.js` is the only version source. The UI, the service-worker cache name and `package.json` (checked by a test) follow it.
+- A subtle footer on the case's bottom bezel shows `HarbuMatic v0.5.1 · Created by .::H∆RBUGΛП::.`. Settings & help shows the same version and credit.
+
+### Tests
+- New `tests/identity.test.mjs` covers the version source, the exact credit code points and the absence of hardcoded version strings. It also checks that the identity never goes into song data.
+- New checks in `npm run test:ui`:
+  - Regression flows for BUG-001 and BUG-003.
+  - Header and strip geometry across modes, at every viewport.
+  - Controls staying inside their cards and tiles, the ARRANGE library columns and the SOUND label baselines.
+  - The footer text and that it covers no control.
+
+### Known limitations (0.5.1)
+- All verification ran in headless Chromium. Nothing has been checked on a physical iPad yet; see `BUGS.md` for the remaining issues.
+
 ## 0.5.0 — Tablet-first refinement & architecture
 
 ### Architecture

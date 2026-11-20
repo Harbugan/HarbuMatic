@@ -24,7 +24,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | Version | Theme | Intended outcome | Status |
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
-| **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, consistent navigation, alignment, version and creator signature | **Planned** |
+| **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, consistent navigation, alignment, version and creator signature | **In review** — fixes implemented, iPad verification pending |
 | **v0.6** | Sample Playground | Import/record samples, waveform editing, chopping/looping, .hbn, initial WAV export | Proposed scope |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
