@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — v0.6 Phase 1: instrument foundation
+
+Architecture only. The four instruments sound, look and behave exactly as in 0.5.1, and nothing new is visible in the UI. The version stays 0.5.1 until v0.6 is released.
+
+### Changed
+- **Instrument Registry** (`src/core/instruments.js`): one frozen definition per instrument type (`bop`, `goo`, `blip`, `fuzz`, plus `munch` registered as a planned, non-playable type). Each holds name, description, colours, pattern kind, capabilities, default parameters, UI metadata, the musical role and the audio engine id.
+- **Instrument slots**: songs hold `slots` with stable ids (`slot-01` … `slot-04`) that are independent of the instrument type. Each slot owns its parameters, macros, patterns, mute and solo. Several slots of one type are supported by the data model, engine and scheduler.
+- **Project schema v6**: scenes have stable ids, patterns are keyed by scene id, arrangement blocks reference `sceneId`, and snapshots are keyed by slot id and remember the instrument type. The schema has no fixed scene count (the UI still shows six).
+- **Audio**: one mixer channel per slot. Synthesis moved unchanged into per-type voice factories (`src/audio/voices.js`), so per-instance state (mono bass oscillator, LFO, hat choke, crusher) is no longer shared. The scheduler dispatches through slots by pattern kind and capabilities.
+- **UI**: cards, sequencer, SOUND, Lab, ARRANGE, LCD and characters resolve instruments through the registry and slot ids. The card strip renders whatever slots are visible.
+- **Library**: songs are stored under `harbumatic.v6.*`. On first run the v0.5 library is copied and migrated; the v0.5 keys are left untouched, so the live 0.5.1 site on the same origin keeps working.
+
+### Migration
+- v4 and v5 songs migrate to v6 without loss: patterns, notes, steps, parameters, macros, mute/solo, scenes, harmony, arrangement (ids and repeats) and snapshots. v5 → v6 is deterministic and idempotent.
+- Files from a newer version, with an unknown instrument, or with more scenes/slots than supported are refused with a message instead of being cut down.
+
+### Tests
+- New `tests/instruments.test.mjs`, `tests/migration.test.mjs`, `tests/scheduler.test.mjs` and `tests/app.test.mjs`, with golden references frozen from v0.5.1 (songs, scheduler dispatch logs, generator output).
+- `npm run test:ui` covers the slot flows and the v0.5 → v6 library upgrade.
+- New `npm run test:baseline` compares offline audio renders and screenshots with a baseline build.
+
+### Known limitations
+- MUNCH has no engine, artwork, SOUND panel or generator yet; see "Adding MUNCH" in `docs/ARCHITECTURE.md`.
+- Five cards have not been laid out or tested at every viewport.
+- Songs saved by this version cannot be opened by 0.5.1 (it refuses them with a message; nothing is deleted).
+- Verification ran in Node and headless Chromium only, not on a physical iPad.
+
 ## 0.5.1 — Bugfix & UI polish
 
 Stabilization only. No musical behaviour, project format or saved data changed.
