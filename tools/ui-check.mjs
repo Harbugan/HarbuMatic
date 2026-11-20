@@ -17,13 +17,17 @@ const SIZES = [[1024, 768], [1180, 820], [1366, 1024], [1440, 900], [1180, 740],
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); if (!cond) failures++; };
 
-async function open(browser, w, h) {
+// five-card layout targets (dev preview ?preview=five): 11" iPad Pro/Air landscape, 13" iPad Pro/Air landscape,
+// short landscape (Safari toolbars), the older 10–12.9" sizes above, portrait fallback and desktop
+const FIVE_SIZES = [[1194, 834], [1210, 834], [1376, 1032], [1366, 1024], [1180, 820], [1024, 768], [1180, 740], [1024, 700], [820, 1180], [768, 1024], [1440, 900], [1920, 1080]];
+
+async function open(browser, w, h, query = '') {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, hasTouch: true, acceptDownloads: true });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto(URL);
+  await page.goto(URL + query);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.click('#startBtn');
@@ -129,6 +133,52 @@ async function rollPoint(page, step, rowOrPitch) {
     for (const m of ['jam', 'sound', 'arrange', 'jam']) { await page.evaluate(m => window.__harbu.A.setMode(m), m); await page.waitForTimeout(150); geo[m] = geo[m] || await shell(page); }
     ok(geo.jam === geo.sound && geo.jam === geo.arrange, `${w}×${h}: header + strip identical in JAM, SOUND and ARRANGE${geo.jam === geo.arrange ? '' : ' — ' + geo.arrange}`);
     await ctx.close();
+  }
+
+  console.log('\n— Five instrument cards (dev preview ?preview=five, simulated) —');
+  for (const [w, h] of FIVE_SIZES) {
+    const geo = {};
+    for (const mode of ['jam', 'expanded', 'sound', 'arrange']) {
+      const { ctx, page, errors } = await open(browser, w, h, '?preview=five');
+      await page.evaluate(() => window.__harbu.A.stop());
+      if (mode === 'expanded') await page.evaluate(() => window.__harbu.A.setExpanded(true));
+      else if (mode !== 'jam') await page.evaluate(m => window.__harbu.A.setMode(m), mode);
+      await page.waitForTimeout(250);
+      const a = await layoutAudit(page);
+      const c = await page.evaluate(() => {
+        const cards = [...document.querySelectorAll('#cards .card')];
+        return {
+          list: cards.map(x => `${x.dataset.slot}:${x.dataset.t}`).join(),
+          overflowX: document.documentElement.scrollWidth > innerWidth || document.querySelector('.strip').scrollWidth > document.querySelector('.strip').clientWidth,
+          pills: cards.flatMap(x => [...x.querySelectorAll('.pill')].map(p => { const r = p.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })),
+          clipped: cards.filter(x => { const n = x.querySelector('.card-name'); return n.scrollWidth > n.clientWidth + 1 || n.getBoundingClientRect().right > x.getBoundingClientRect().right; }).map(x => x.dataset.slot),
+          cats: cards.map(x => Math.round(x.querySelector('.cat').getBoundingClientRect().width)),
+          height: Math.round(document.querySelector('#cards').getBoundingClientRect().height),
+        };
+      });
+      ok(c.list === 'slot-01:drums,slot-02:bass,slot-03:synth,slot-04:fuzz,slot-05:munch', `${w}×${h} ${mode}: five cards in slot order (${c.list})`);
+      ok(!c.overflowX, `${w}×${h} ${mode}: no horizontal overflow`);
+      ok(!a.offscreen.length && !a.overlaps.length && !a.spill.length, `${w}×${h} ${mode}: nothing clipped, overlapping or spilling out of a card${[...a.offscreen, ...a.overlaps, ...a.spill].length ? ' — ' + [...a.offscreen, ...a.overlaps, ...a.spill].slice(0, 4).join('; ') : ''}`);
+      ok(c.pills.every(([pw, ph]) => pw >= 38 && ph >= 36), `${w}×${h} ${mode}: M/S stay touch-sized (min ${Math.min(...c.pills.map(p => p[0]))}×${Math.min(...c.pills.map(p => p[1]))})`);
+      ok(!c.clipped.length && c.cats.every(x => x >= 26), `${w}×${h} ${mode}: names readable, every card keeps its character${c.clipped.length ? ' — clipped: ' + c.clipped.join() : ''}`);
+      ok(!errors.length, `${w}×${h} ${mode}: no console errors${errors.length ? ' — ' + errors[0] : ''}`);
+      if (mode !== 'expanded') geo[mode] = await shell(page);
+      if (mode === 'jam') { // the placeholder card is inert: no selection, no audition, no keyboard shortcut
+        await page.click('#cards .card[data-slot="slot-05"]', { force: true }).catch(() => {});
+        await page.keyboard.press('5'); await page.waitForTimeout(40);
+        const st = await page.evaluate(() => ({ sel: window.__harbu.store.ui.sel, ctx: !!window.__harbu.A.engine.ctx && window.__harbu.A.engine.E.ch.has('slot-05') }));
+        ok(st.sel === 'slot-01' && !st.ctx, `${w}×${h}: the MUNCH preview card cannot be selected or played`);
+      }
+      await ctx.close();
+    }
+    ok(geo.jam === geo.sound && geo.jam === geo.arrange, `${w}×${h} five cards: header + strip identical in JAM, SOUND and ARRANGE${geo.jam === geo.arrange ? '' : ' — ' + geo.arrange}`);
+  }
+  { // the five-card strip is no taller than the four-card one at the same size (the sequencer keeps its room)
+    for (const [w, h] of [[1024, 768], [1180, 820], [1194, 834], [1376, 1032], [1180, 740], [820, 1180]]) {
+      const hs = [];
+      for (const q of ['', '?preview=five']) { const { ctx, page } = await open(browser, w, h, q); hs.push(await page.evaluate(() => Math.round(document.querySelector('.strip').getBoundingClientRect().height))); await ctx.close(); }
+      ok(hs[1] <= hs[0] + 2, `${w}×${h}: strip height with five cards ${hs[1]} px vs four ${hs[0]} px`);
+    }
   }
 
   console.log('\n— Interaction flows (1180×820, touch emulation) —');
@@ -295,7 +345,7 @@ async function rollPoint(page, step, rowOrPitch) {
   ok(/harbumatic-.*\.json$/.test(dl.suggestedFilename()), 'Export produces a .json file');
   { // the exported file is a v6 song with stable slot ids, and importing it again restores it
     const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await dl.path(), 'utf8'));
-    ok(exported.v === 6 && exported.slots.map(x => x.id).join() === 'slot-01,slot-02,slot-03,slot-04' && !exported.tracks, 'Export writes schema v6 with slot ids');
+    ok(exported.v === 6 && exported.slots.map(x => `${x.id}:${x.type}`).join() === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && !exported.tracks, 'Export writes schema v6 with five slot ids (MUNCH placeholder included)');
     const before = await state(page);
     await page.setInputFiles('#fileIn', { name: 'again.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
     await page.waitForTimeout(250);
@@ -303,19 +353,25 @@ async function rollPoint(page, step, rowOrPitch) {
     ok(again.songs === before.songs + 1 && JSON.stringify(again.arrangement) === JSON.stringify(before.arrangement) && again.kicks === before.kicks, 'importing the exported file restores the song as a new entry');
   }
 
-  // instrument slots: four cards with stable slot ids, keyboard 1–4 selects them, no MUNCH card yet
+  // instrument slots: four playable cards with stable slot ids, keyboard 1–4 selects them, no MUNCH card outside the preview
   {
     const cards = await page.evaluate(() => [...document.querySelectorAll('#cards .card')].map(c => `${c.dataset.slot}:${c.dataset.t}:${c.querySelector('.card-name').textContent}`));
     ok(cards.join() === 'slot-01:drums:BOP,slot-02:bass:GOO,slot-03:synth:BLIP,slot-04:fuzz:FUZZ', `cards show BOP, GOO, BLIP, FUZZ in slots 01–04 (${cards.join(' ')})`);
     for (const [k, id] of [['2', 'slot-02'], ['4', 'slot-04'], ['1', 'slot-01']]) { await page.keyboard.press(k); await page.waitForTimeout(40); ok((await state(page)).sel === id, `key ${k} selects ${id}`); }
     await page.keyboard.press('5'); await page.waitForTimeout(40);
     ok((await state(page)).sel === 'slot-01', 'key 5 does nothing while there are four instruments');
-    // a song that already holds a MUNCH slot (future sampler) keeps it but shows only the four playable cards
-    const withMunch = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); p.slots.push({ id: 'slot-05', type: 'munch', patterns: {} }); return p; });
+    // a song whose MUNCH slot holds data keeps it as it is, but shows only the four playable cards
+    const withMunch = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); const m = p.slots.find(x => x.type === 'munch'); m.params.vol = .3; return p; });
     await page.setInputFiles('#fileIn', { name: 'munch.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(withMunch)) });
     await page.waitForTimeout(250);
-    const after = await page.evaluate(() => ({ cards: document.querySelectorAll('#cards .card').length, slots: window.__harbu.store.project.slots.map(x => x.type).join() }));
-    ok(after.cards === 4 && after.slots === 'bop,goo,blip,fuzz,munch', 'a stored MUNCH slot is kept but not shown as an instrument');
+    const after = await page.evaluate(() => ({ cards: document.querySelectorAll('#cards .card').length, slots: window.__harbu.store.project.slots.map(x => x.type).join(), vol: window.__harbu.store.project.slots[4].params.vol }));
+    ok(after.cards === 4 && after.slots === 'bop,goo,blip,fuzz,munch' && after.vol === .3, 'a stored MUNCH slot is kept as it is but not shown as an instrument');
+    // a four-slot v6 file (as Phase 1 wrote it) opens with exactly one MUNCH slot added
+    const four = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); p.slots = p.slots.filter(x => x.type !== 'munch'); p.name = 'Four slots'; return p; });
+    await page.setInputFiles('#fileIn', { name: 'four.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(four)) });
+    await page.waitForTimeout(250);
+    const f4 = await page.evaluate(() => ({ name: window.__harbu.store.project.name, slots: window.__harbu.store.project.slots.map(x => `${x.id}:${x.type}`).join(), cards: document.querySelectorAll('#cards .card').length }));
+    ok(f4.name === 'Four slots' && f4.slots === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && f4.cards === 4, `a four-slot v6 song gains one MUNCH slot on import (${f4.slots})`);
     await page.click('#play'); await page.waitForTimeout(300); await page.click('#stop');
   }
 

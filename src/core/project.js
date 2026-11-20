@@ -26,7 +26,7 @@
 import { DRUM_IDS, NSCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
 import {
   getInstrumentType, hasInstrumentType, isPlayableType, defaultParamsFor, createPatternFor, emptyPatternOfKind,
-  patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS,
+  patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 
@@ -44,7 +44,7 @@ export const sceneIdFor = n => `scene-${pad2(n)}`;
 const ID_RE = /^[a-z][a-z0-9-]{0,31}$/;
 const validId = v => typeof v === 'string' && ID_RE.test(v);
 function nextId(make, used) { let n = 1; while (used.has(make(n))) n++; return make(n); }
-/** the next free slot id of a project (slot-05 for a new song: reserved for MUNCH) */
+/** the next free slot id of a project (slot-06 for a new song; slot-05 is MUNCH) */
 export const nextSlotId = project => nextId(slotIdFor, new Set(project.slots.map(s => s.id)));
 export const nextSceneId = project => nextId(sceneIdFor, new Set(project.scenes.map(s => s.id)));
 
@@ -91,7 +91,7 @@ export function createSlot(type, id, sceneIds) {
   };
 }
 
-/** A genuinely empty song: four instruments, default sounds, no notes, no arrangement. */
+/** A genuinely empty song: five instrument slots (MUNCH planned), default sounds, no notes, no arrangement. */
 export function createEmptyProject({ name = 'Untitled song', bpm = 120, key = 9, scale = 'minor', mood } = {}) {
   const now = new Date().toISOString();
   const scenes = SCENE_NAMES.map((n, i) => ({ id: sceneIdFor(i + 1), name: n, harmony: null }));
@@ -320,6 +320,19 @@ function cleanSlots(input, sceneIds) {
   });
 }
 
+/**
+ * Every song holds a MUNCH slot. A song without one (v0.4, v0.5, four-slot v6) gets an empty one appended:
+ * id slot-05, or the first free id after it when slot-05 belongs to another instrument. Existing slots are
+ * never touched, reordered or renumbered, and a song that already has a MUNCH slot (anywhere, any id) is
+ * left alone, so this is deterministic and idempotent. A song already at MAX_SLOTS keeps its slots as they are.
+ */
+function ensureMunchSlot(slots, sceneIds) {
+  if (slots.some(s => s.type === MUNCH_TYPE) || slots.length >= MAX_SLOTS) return slots;
+  const used = new Set(slots.map(s => s.id));
+  let n = MUNCH_SLOT_NUMBER; while (used.has(slotIdFor(n))) n++;
+  return [...slots, createSlot(MUNCH_TYPE, slotIdFor(n), sceneIds)];
+}
+
 function cleanSnap(s, slots) {
   if (!isObj(s) || !isObj(s.slots)) return null;
   const out = {};
@@ -338,7 +351,7 @@ export function validateProject(input) {
   const base = createEmptyProject();
   const scenes = cleanScenes(input), sceneIds = scenes.map(s => s.id);
   const sceneSet = new Set(sceneIds);
-  const slots = cleanSlots(input, sceneIds);
+  const slots = ensureMunchSlot(cleanSlots(input, sceneIds), sceneIds);
   const p = {
     format: FORMAT, v: SCHEMA_VERSION,
     id: typeof input.id === 'string' && input.id ? input.id : base.id,

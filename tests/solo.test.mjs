@@ -6,10 +6,10 @@ import { createEmptyProject, createSlot, anySolo, slotAudible, playableSlots, sl
 import { createEngine } from '../src/audio/engine.js';
 
 const sceneIds = p => p.scenes.map(s => s.id);
+// every song holds a MUNCH slot (slot-05) since v0.6 Phase 2
 const withMunch = (opts = {}) => {
   const p = createEmptyProject();
-  const m = createSlot('munch', nextSlotId(p), sceneIds(p)); Object.assign(m, opts);
-  p.slots.push(m);
+  const m = p.slots.find(s => s.type === 'munch'); Object.assign(m, opts);
   return { p, m };
 };
 const audible = p => p.slots.filter(s => playableSlots(p).includes(s)).map(s => slotAudible(p, s));

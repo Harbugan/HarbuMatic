@@ -130,6 +130,8 @@ function keys(e) {
 
 /* ---------- boot ---------- */
 function init() {
+  // dev-only layout preview: ?preview=five shows the planned MUNCH slot as an inert fifth card (never in normal use)
+  try { store.ui.previewPlanned = new URLSearchParams(location.search).get('preview') === 'five'; } catch (e) { /* no location */ }
   const { fresh, warning } = A.bootProject();
   const warn = () => { if (warning) toast(warning, 8000); }; // shown once the start overlay is gone, where the toast is visible
   $('#ident').textContent = `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`;

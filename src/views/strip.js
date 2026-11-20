@@ -1,9 +1,9 @@
 // Transport panel (play/pause, stop, LCD, tempo) + one instrument card per visible slot.
 
-import { store, P, typeOf, visibleSlots, slot } from '../app/store.js';
+import { store, P, typeOf, visibleSlots, cardSlotList, slot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { DRUM_IDS, SCENE_LETTERS } from '../core/constants.js';
-import { getInstrumentType } from '../core/instruments.js';
+import { getInstrumentType, isPlayableType } from '../core/instruments.js';
 import { patternAt, anySolo } from '../core/project.js';
 import { $, h } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
@@ -77,18 +77,21 @@ export function drawScreen() {
 }
 
 /* ---------- instrument cards ---------- */
-// One card per visible slot, in slot order. The card count follows the project (four today, room for
-// MUNCH later); `data-t` carries the type's CSS key so the existing colour rules apply unchanged.
+// One card per visible slot, in slot order. The card count follows the project (four playable today;
+// five once MUNCH has an engine); `data-t` carries the type's CSS key so the existing colour rules apply
+// unchanged and `#cards[data-count]` picks the four- or five-column layout. With the dev preview
+// (?preview=five) a planned slot gets an inert placeholder card: same geometry, no actions, not selectable.
 let cardSlots = '';
 /** pitch a type auditions at, transposed from A minor to the song key */
 export const auditionPitch = (def, key = store.project.key, which = 'pitch') => (def.pattern === 'drum' ? def.ui.audition.drum : (def.ui.audition[which] ?? def.ui.audition.pitch) + (key - 9));
 export function buildCards() {
   const host = $('#cards'); host.innerHTML = '';
   Object.keys(CAT).forEach(k => delete CAT[k]);
-  const slots = visibleSlots();
+  const slots = cardSlotList();
   cardSlots = slots.map(s => `${s.id}:${s.type}`).join();
   host.dataset.count = String(slots.length);
   slots.forEach((s, i) => {
+    if (!isPlayableType(s.type)) { host.append(plannedCard(s)); return; }
     const id = s.id, m = getInstrumentType(s.type);
     const card = h('div', { class: 'card', 'data-t': m.visual.css, 'data-slot': id, role: 'button', tabindex: 0, 'aria-label': `${m.name} — ${m.description}. Select instrument ${i + 1}` });
     const led = h('i', { class: 'led' });
@@ -112,8 +115,17 @@ export function buildCards() {
     registerCat(id, { el: catEl, rig: catEl.querySelector('.rig'), led, card, mute, solo, mini, type: s.type });
   });
 }
-/** rebuild the cards only when the set of visible slots (or their types) changed */
-export function syncCards() { if (visibleSlots().map(s => `${s.id}:${s.type}`).join() !== cardSlots) buildCards(); }
+/** dev preview only: a planned instrument's card with the real layout, but inert (no select, audition, M/S) */
+function plannedCard(s) {
+  const m = getInstrumentType(s.type);
+  const pill = (cls, t) => h('button', { type: 'button', class: `pill ${cls}`, disabled: true, tabindex: -1 }, t);
+  return h('div', { class: 'card planned', 'data-t': m.visual.css, 'data-slot': s.id, 'aria-disabled': 'true', inert: '', title: `${m.name} — preview, not playable yet` },
+    h('div', { class: 'card-cat' }, h('div', { class: 'cat ' + m.visual.css, html: catSVG(s.type) })),
+    h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), h('i', { class: 'led' })), h('div', { class: 'card-type' }, `${m.description} · soon`), h('div', { class: 'card-ms' }, pill('mute', 'M'), pill('solo', 'S'))),
+    h('div', { class: 'mini-steps' }, Array.from({ length: 16 }, () => h('i'))));
+}
+/** rebuild the cards only when the set of carded slots (or their types) changed */
+export function syncCards() { if (cardSlotList().map(s => `${s.id}:${s.type}`).join() !== cardSlots) buildCards(); }
 export function occupancy(id, sc, cells) {
   const s = slot(id), p = patternAt(store.project, id, sc), out = Array(cells).fill(false), k = cells / p.len;
   if (getInstrumentType(s.type).pattern === 'drum') DRUM_IDS.forEach(d => p.steps[d].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));

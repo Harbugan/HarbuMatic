@@ -12,7 +12,8 @@
 //   ui        sequencer tools, audition note (pitch is at A minor; the UI transposes it to the song key;
 //             soundPitch = preview note in the SOUND view when it differs), piano-roll view defaults
 //   status    'ready'   — playable and shown in the UI
-//             'planned' — known to the schema (songs may keep its data) but not playable and never shown
+//             'planned' — known to the schema and kept in every song (data persists), but never scheduled,
+//                         never soloed, never selected and never shown outside the dev preview (?preview=five)
 //
 // A slot (see src/core/project.js) holds one instance of a type. Slot identity never depends on the type.
 
@@ -57,14 +58,16 @@ const TYPES = {
     ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 76, length: .6, soundPitch: 69 }, viewTop: 86, viewCenter: 76, noteLength: 8 },
     defaultParams: { vol: .5, pan: 0, tone: .45, noise: .35, crush: .25, shimmer: .35, attack: .6, release: 1.4, drive: .3, driveOn: false, delayOn: true, reverbOn: true, delay: .35, reverb: .6 },
   },
-  // Future sampler (v0.6). Registered so the schema and slot model can hold it; it has no engine, no
+  // Future sampler (v0.6). Every song holds one MUNCH slot (slot-05 by default), but it has no engine, no
   // generator and no UI yet, so it is never played or shown. Its pattern kind is provisional.
+  // ui.layers names the interaction layers of the planned design (PLAY: record/import + melodic keys,
+  // CHOP: slice pads + MAGIC CHOP, TWIST: waveform, pitch, reverse, loop). Nothing reads them yet.
   munch: {
     type: 'munch', name: 'MUNCH', description: 'Sampler', status: 'planned',
     role: null, engine: null, pattern: 'notes', defaultLength: 16,
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, samples: true },
     visual: { color: '#9FD6EE', dark: '#5DB4D9', darker: '#3586A8', headphones: '#F5D19A', css: 'munch', character: 'munch' },
-    ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 60, length: .4 }, viewTop: 72, viewCenter: 60, noteLength: 1 },
+    ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 60, length: .4 }, viewTop: 72, viewCenter: 60, noteLength: 1, layers: ['play', 'chop', 'twist'] },
     defaultParams: { vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .2 },
   },
 };
@@ -74,8 +77,14 @@ export const INSTRUMENT_TYPES = freeze(TYPES);
 /** v4/v5 songs stored instruments under these track keys, in this order (= slot-01 … slot-04) */
 export const LEGACY_TRACKS = freeze(['drums', 'bass', 'synth', 'fuzz']);
 export const LEGACY_TRACK_TYPES = freeze({ drums: 'bop', bass: 'goo', synth: 'blip', fuzz: 'fuzz' });
-/** instrument types of a new song, in slot order */
-export const DEFAULT_SLOT_TYPES = freeze(['bop', 'goo', 'blip', 'fuzz']);
+/** instrument types of a new song, in slot order (slot-01 … slot-05) */
+export const DEFAULT_SLOT_TYPES = freeze(['bop', 'goo', 'blip', 'fuzz', 'munch']);
+/**
+ * Instrument every song must hold, and the slot id it gets when a song lacks it. Songs from v0.4/v0.5 and
+ * four-slot v6 songs gain this slot when they are opened (see ensureMunchSlot in src/core/project.js).
+ */
+export const MUNCH_TYPE = 'munch';
+export const MUNCH_SLOT_NUMBER = 5;
 /** most slots a song may hold (four classic instruments + MUNCH + headroom for later) */
 export const MAX_SLOTS = 8;
 

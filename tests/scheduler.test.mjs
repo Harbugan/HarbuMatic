@@ -102,10 +102,9 @@ test('slots of a planned type (MUNCH) are skipped, and two slots of one type pla
   const p = importProject(fx('v5-demo.json')); p.scene = 1; p.songMode = false;
   const baseCalls = runScenario(structuredClone(p), { steps: 32, seed: 3 }).calls;
   const withMunch = structuredClone(p);
-  const munch = createSlot('munch', nextSlotId(withMunch), withMunch.scenes.map(s => s.id));
-  assert.equal(munch.id, 'slot-05');
+  const munch = slotById(withMunch, 'slot-05');
+  assert.equal(munch.type, 'munch', 'the migrated song holds a MUNCH placeholder');
   munch.patterns[withMunch.scenes[1].id].notes.push({ s: 0, p: 60, l: 1, v: 1 });
-  withMunch.slots.push(munch);
   assert.deepEqual(runScenario(withMunch, { steps: 32, seed: 3 }).calls, baseCalls, 'MUNCH placeholder changes nothing');
 
   const twin = createEmptyProject();
@@ -117,7 +116,7 @@ test('slots of a planned type (MUNCH) are skipped, and two slots of one type pla
   const engine = { ctx: { currentTime: 0 }, init() { return this.ctx; }, openGates() {}, closeGates() {}, stepDur: () => .125, audible: () => true, trigger: (id, t, hit) => ids.push([id, hit.p]) };
   let tickFn; const si = globalThis.setInterval; globalThis.setInterval = fn => { tickFn = fn; return 1; };
   try { const tr = createTransport(engine, () => twin, {}); tr.play(); for (let i = 0; i < 80; i++) { engine.ctx.currentTime += .01; tickFn(); } tr.stop(); } finally { globalThis.setInterval = si; }
-  assert.deepEqual(ids.slice(0, 2), [['slot-03', 60], ['slot-05', 72]]);
+  assert.deepEqual(ids.slice(0, 2), [['slot-03', 60], [blip2.id, 72]]);
 });
 
 test('every ready instrument type has an audio voice factory; planned types have none', () => {

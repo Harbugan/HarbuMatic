@@ -32,10 +32,12 @@ test('selection uses slot ids; tools a type lacks fall back to Draw', () => {
 
 test('selection moves off a slot that is not visible', () => {
   load('v5-demo.json');
-  store.project.slots.push(createSlot('munch', nextSlotId(store.project), store.project.scenes.map(s => s.id)));
+  assert.equal(slotById(store.project, 'slot-05').type, 'munch', 'the migrated song holds a MUNCH slot');
   store.ui.sel = 'slot-05'; ensureSelection();
-  assert.equal(store.ui.sel, 'slot-01', 'MUNCH is never selected in Phase 1');
+  assert.equal(store.ui.sel, 'slot-01', 'MUNCH is never selected while it is planned');
   assert.ok(!visibleSlots().some(s => s.type === 'munch'));
+  A.selectSlot('slot-05');
+  assert.equal(store.ui.sel, 'slot-01', 'selectSlot refuses a planned instrument');
 });
 
 test('mute / solo toggle per slot and undo', () => {
@@ -56,7 +58,7 @@ test('snapshots save and recall every slot of the current scene, with macros', (
   const p = store.project; p.scene = 1;
   const before = p.slots.map(s => structuredClone(patternAt(p, s.id, 1)));
   A.snapshotSave(1);
-  assert.deepEqual(Object.keys(p.snaps[1].slots), ['slot-01', 'slot-02', 'slot-03', 'slot-04']);
+  assert.deepEqual(Object.keys(p.snaps[1].slots), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'the MUNCH placeholder is kept in snapshots too');
   A.selectSlot('slot-03'); A.clearPattern();
   slotById(p, 'slot-02').macros.character = 1;
   assert.equal(pat('slot-03').notes.length, 0);
