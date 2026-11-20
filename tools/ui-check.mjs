@@ -489,7 +489,7 @@ async function rollPoint(page, step, rowOrPitch) {
     const exported = JSON.parse(await fs.readFile(await dl.path(), 'utf8'));
     ok(exported.slots[4].sample.id === ref.id && /not portable/.test(await toast()), 'Export keeps the reference and warns that the audio is not included');
     // missing asset: reference kept, clear warning, same file brings it back
-    await H(id => window.__harbu.A.samples.store.remove(id), ref.id);
+    await pg.evaluate(id => window.__harbu.A.samples.store.remove(id), ref.id);
     await H(() => window.__harbu.A.flushSave());
     await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
     await H(() => { window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); }); await pg.waitForTimeout(200);

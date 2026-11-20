@@ -160,7 +160,16 @@ manifest.json           { format: 'harbumatic-package', v: 1, app: <version>, sa
 | Decoded cache | 96 MB | eviction of unused samples |
 | Voices | 8 | AudioBufferSourceNodes are cheap, but bounded pools keep iPad CPU predictable |
 
-These limits are first estimates. They must be confirmed on an 11" and a 13" iPad (see below) before release.
+Measured in headless desktop Chromium (`?munch=dev`, WAV stereo 48 kHz, decoded at the context rate of 44.1 kHz):
+
+| Sample | File | Import (hash + decode + store) | Reversed copy | Decoded (forward + reversed) |
+|---|---|---|---|---|
+| 1 s | 0.2 MB | 21 ms | 2 ms | 0.7 MB |
+| 10 s | 1.8 MB | 44 ms | 3 ms | 7 MB |
+| 30 s | 5.5 MB | 127 ms | 30 ms | 21 MB |
+
+Neither import nor reversing touches scheduler time. Expect an iPad to be several times slower, so the 30 s limit
+and the 96 MB budget are first estimates. They must be confirmed on an 11" and a 13" iPad (see below) before release.
 
 ## Automated tests and their limits
 
