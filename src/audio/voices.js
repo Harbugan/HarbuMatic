@@ -4,7 +4,7 @@
 // independent state (mono oscillator, LFO, open-hat choke, crusher). Synthesis is unchanged from v0.5;
 // only the per-type state moved from the engine into these closures.
 //
-//   factory({ ctx, shared, channel, params }) → {
+//   factory({ ctx, shared, channel, params, sample }) → {
 //     input             node the session gate (or an audition) feeds; usually channel.bus
 //     apply(p, now)     type-specific parameter changes (the engine handles the shared channel strip)
 //     trigger(t, hit, dest)   play one hit at audio time t; dest = node a new voice connects to
@@ -12,11 +12,15 @@
 //     silence(now)      stop sustained sound (mono voices); polyphonic voices end on their own
 //     dispose()         release long-running nodes when the slot goes away
 //   }
-//   shared = { noise: AudioBuffer, voices: { count } }   (the polyphony budget is shared by all slots)
+//   shared = { noise: AudioBuffer, voices: { count }, samples: SampleBank | null }
+//            (the synth polyphony budget is shared by all synth slots; MUNCH has its own bounded pool)
+//   sample() → the slot's sample reference (src/core/samples.js), for sampler voices
 //
-// A future sample engine registers here too. Decoding and storing samples stays outside the scheduler:
-// a sampler voice would receive ready-to-play buffers (e.g. through `shared` or its params), and the
-// scheduler keeps dispatching hits exactly as it does for the synths.
+// MUNCH (createMunchVoice) plays samples. Decoding and storage stay outside: the voice only asks the sample
+// bank (src/samples/bank.js) for an already decoded AudioBuffer when a hit is due, and stays silent when the
+// buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
+
+import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones } from '../core/samples.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -180,6 +184,67 @@ function createFuzzVoice({ ctx, shared, channel, params }) {
   };
 }
 
+/* ---------- MUNCH: sample playback ---------- */
+// One AudioBufferSourceNode + one gain envelope per hit. A note plays a region of the decoded sample (the trimmed
+// region for melodic notes, slice k for slice notes), mirrored inside the reversed copy when `reverse` is on.
+// Pitch is playback rate, so transposing also changes the length (no time-stretch in v0.6).
+//   oneshot  plays the whole region, whatever the note length
+//   gate     stops at the note end (with the release) or at the region end, whichever comes first
+//   loop     loops the region while the note is held, then releases
+// The envelope always reaches 0 at the region end, so a slice never runs into its neighbour. Every source is
+// stopped at a known time and disconnected in `onended`; the pool is bounded (oldest voice is stolen).
+export const MUNCH_POLY = 8;
+const EDGE = .004; // fade at a region boundary (s): no click, no bleed into the next slice
+
+function createMunchVoice({ ctx, shared, channel, params, sample }) {
+  const active = new Set(); // { src, env, end }
+  const stats = { missed: 0, stolen: 0 };
+  function fadeOut(v, at) {
+    try { v.env.gain.cancelScheduledValues(at); v.env.gain.setTargetAtTime(0, at, .004); v.src.stop(at + .03); } catch (e) { /* already gone */ }
+  }
+  function trigger(t, hit, dest) {
+    const ref = sample && sample(), bank = shared.samples, p = params();
+    if (!ref || !bank) return;
+    const rev = !!p.reverse, buf = bank.buffer(ref.id, rev);
+    if (!buf) { stats.missed++; return; } // missing, not decoded yet or failed: silent, the UI reports why
+    const region = hit.slice != null ? sliceRegion(ref.slices, hit.slice) : trimRegion(p);
+    if (!region) return; // a slice the current sample does not have
+    const { offset, length } = bufferRegion(region, buf.duration, rev);
+    const rate = rateForSemitones(noteSemitones(hit, p)), natural = length / rate;
+    if (!(natural > 0)) return;
+    const atk = Math.max(.001, p.attack), rel = Math.max(.005, p.release), noteOff = t + Math.max(.01, hit.dur || 0);
+    let relAt, end;
+    if (p.mode === 'loop') { relAt = noteOff; end = noteOff + rel; }
+    else if (p.mode === 'gate' && noteOff + rel < t + natural) { relAt = noteOff; end = noteOff + rel; }
+    else { end = t + natural; relAt = Math.max(t, end - EDGE); }
+    while (active.size >= MUNCH_POLY) { const old = active.values().next().value; active.delete(old); fadeOut(old, Math.max(t, ctx.currentTime)); stats.stolen++; }
+    const vel = Math.max(0, Math.min(1, hit.v ?? .8));
+    const src = ctx.createBufferSource(), env = ctx.createGain();
+    src.buffer = buf; src.playbackRate.value = rate;
+    if (p.mode === 'loop') { src.loop = true; src.loopStart = offset; src.loopEnd = offset + length; }
+    const peakAt = Math.min(t + atk, relAt);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(vel, peakAt);
+    env.gain.setValueAtTime(vel, Math.max(peakAt, relAt));
+    env.gain.linearRampToValueAtTime(0, end);
+    src.connect(env); env.connect(dest);
+    const v = { src, env, end };
+    src.onended = () => { active.delete(v); try { src.disconnect(); env.disconnect(); } catch (e) { /* gone */ } };
+    src.start(t, offset);
+    src.stop(end + .002);
+    active.add(v);
+  }
+  return {
+    input: channel.bus,
+    apply(p) { const ref = sample && sample(); if (p.reverse && ref && shared.samples) shared.samples.prepare(ref.id, true); }, // build the reversed copy now, never in a scheduler callback
+    trigger,
+    silence(now) { for (const v of active) fadeOut(v, now); active.clear(); },
+    dispose() { for (const v of active) fadeOut(v, ctx.currentTime); active.clear(); },
+    /** for tests and the dev panel */
+    activeCount: () => active.size, stats,
+  };
+}
+
 /** registry `engine` id → voice factory */
-export const VOICE_FACTORIES = Object.freeze({ bop: createBopVoice, goo: createGooVoice, blip: createBlipVoice, fuzz: createFuzzVoice });
+export const VOICE_FACTORIES = Object.freeze({ bop: createBopVoice, goo: createGooVoice, blip: createBlipVoice, fuzz: createFuzzVoice, munch: createMunchVoice });
 export const hasVoiceFactory = id => Object.prototype.hasOwnProperty.call(VOICE_FACTORIES, id);

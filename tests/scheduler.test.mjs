@@ -119,8 +119,7 @@ test('slots of a planned type (MUNCH) are skipped, and two slots of one type pla
   assert.deepEqual(ids.slice(0, 2), [['slot-03', 60], [blip2.id, 72]]);
 });
 
-test('every ready instrument type has an audio voice factory; planned types have none', () => {
-  for (const id of ['bop', 'goo', 'blip', 'fuzz']) assert.equal(typeof VOICE_FACTORIES[getInstrumentType(id).engine], 'function', id);
-  assert.equal(getInstrumentType('munch').engine, null);
+test('every instrument type with an engine has an audio voice factory', () => {
+  for (const id of ['bop', 'goo', 'blip', 'fuzz', 'munch']) assert.equal(typeof VOICE_FACTORIES[getInstrumentType(id).engine], 'function', id);
   assert.equal(typeof createEngine, 'function');
 });
