@@ -514,6 +514,10 @@ async function rollPoint(page, step, rowOrPitch) {
     await pg.click('[data-testid=munch-chop-here]'); await pg.waitForTimeout(120);
     let sl = await slices();
     ok(sl.length === 10 && sl.some(x => Math.abs(x - cur) < 1e-3), `CHOP HERE adds a marker at the cursor (${sl.length - 1} slices)`);
+    ok((await inView(pg, '[data-testid=munch-magic-go]')) && (await inView(pg, '[data-testid=munch-bank-1]')), 'with more than eight slices a second pad bank appears and MAGIC CHOP stays on screen');
+    await pg.click('[data-testid=munch-bank-1]'); await pg.waitForTimeout(80);
+    ok(await H(() => !!document.querySelector('.mw-pad[data-k="8"]') && !!document.querySelector('.mw-row[data-k="8"]')), 'bank 9–16 shows pad 9 and its sequencer row');
+    await pg.click('[data-testid=munch-bank-0]'); await pg.waitForTimeout(80);
     ok(await H(() => document.querySelector('[data-testid=munch-grid] .mw-row[data-k="5"] .mw-cell[data-s="0"]').getAttribute('aria-pressed') === 'true' && !window.__harbu.store.project.slots[4].patterns[window.__harbu.store.project.scenes[window.__harbu.store.project.scene].id].notes.some(n => n.slice === 4)), 'the groove follows its slice: slice 5 became slice 6, nothing plays the wrong audio');
     // drag the marker at 0.5 (index 5 now) to 0.6 with the mouse, then delete it
     wb = await wave();

@@ -287,11 +287,7 @@ function chop(s, host) {
 function pads(ref, n) {
   const m = u(), st = A.sampleState(sel()), ready = st.status === 'ready';
   const wrap = h('div', { class: 'mw-padwrap' });
-  if (n > 8) {
-    const bank = Seg([[0, '1–8'], [1, `9–${n}`]], m.bank, v => { m.bank = v; if (Math.floor(m.sel / 8) !== v) m.sel = v * 8; rerender(); }, { label: 'Pad bank', cls: 'mw-bank' });
-    wrap.append(bank);
-  }
-  const grid = h('div', { class: 'mw-pads', 'data-testid': 'munch-pads' });
+  const grid = h('div', { class: 'mw-pads' + (n > 8 ? ' banks' : ''), 'data-testid': 'munch-pads' });
   for (let i = 0; i < 8; i++) {
     const k = m.bank * 8 + i;
     if (k >= n) { grid.append(h('div', { class: 'mw-pad ghost', 'aria-hidden': 'true' })); continue; }
@@ -301,6 +297,15 @@ function pads(ref, n) {
     b.addEventListener('pointerdown', e => { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); });
     b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); } });
     grid.append(b);
+  }
+  if (n > 8) { // second bank: a slim column beside the pads, so the panel keeps its height
+    const col = h('div', { class: 'mw-bankcol', role: 'radiogroup', 'aria-label': 'Pad bank' });
+    [[0, '1–8'], [1, n === 9 ? '9' : `9–${n}`]].forEach(([v, l]) => {
+      const b = h('button', { type: 'button', role: 'radio', class: 'mw-bankbtn' + (m.bank === v ? ' on' : ''), 'aria-checked': String(m.bank === v), 'data-testid': `munch-bank-${v}` }, l);
+      b.onclick = () => { m.bank = v; if (Math.floor(m.sel / 8) !== v) m.sel = v * 8; rerender(); };
+      col.append(b);
+    });
+    grid.append(col);
   }
   refs.pads = grid;
   wrap.append(grid);
