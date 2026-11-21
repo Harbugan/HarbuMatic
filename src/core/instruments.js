@@ -18,6 +18,8 @@
 //                         never soloed, never selected and never shown outside the dev preview (?preview=five)
 //   paramRanges / paramChoices   optional limits validation applies to stored params (types without them keep
 //             the original v0.5 behaviour: any finite number / any string of the right type)
+//   keepUnknownParams   keep primitive params this build does not know (a later build's additions) instead of
+//             dropping them; only MUNCH sets it, so the four v0.5 instruments validate exactly as before
 //
 // A slot (see src/core/project.js) holds one instance of a type. Slot identity never depends on the type.
 
@@ -74,9 +76,12 @@ const TYPES = {
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, samples: true, slices: true },
     visual: { color: '#9FD6EE', dark: '#5DB4D9', darker: '#3586A8', headphones: '#F5D19A', css: 'munch', character: 'munch' },
     ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 60, length: .4 }, viewTop: 72, viewCenter: 60, noteLength: 1, layers: ['play', 'chop', 'twist'] },
-    defaultParams: { vol: .8, pan: 0, root: 60, tune: 0, start: 0, end: 1, reverse: false, mode: 'oneshot', attack: .002, release: .08, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .2 },
-    paramRanges: { vol: [0, 1], pan: [-1, 1], root: [24, 96], tune: [-24, 24], start: [0, 1], end: [0, 1], attack: [0, 2], release: [.005, 4], drive: [0, 1], delay: [0, 1], reverb: [0, 1] },
-    paramChoices: { mode: ['oneshot', 'gate', 'loop'] },
+    // Phase 4 adds tape fit (fit: bars at the project tempo, 'off' = original speed; fitFine ±12 %) and choke (slice
+    // notes cut the slice still sounding). All three default to the Phase 3 behaviour, so existing songs sound the same.
+    defaultParams: { vol: .8, pan: 0, root: 60, tune: 0, start: 0, end: 1, reverse: false, mode: 'oneshot', attack: .002, release: .08, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .2, fit: 'off', fitFine: 0, choke: false },
+    paramRanges: { vol: [0, 1], pan: [-1, 1], root: [24, 96], tune: [-24, 24], start: [0, 1], end: [0, 1], attack: [0, 2], release: [.005, 4], drive: [0, 1], delay: [0, 1], reverb: [0, 1], fitFine: [-.12, .12] },
+    paramChoices: { mode: ['oneshot', 'gate', 'loop'], fit: ['off', 'half', '1', '2', '4'] },
+    keepUnknownParams: true, // keep params a later build adds (see extraKeys in src/core/samples.js)
   },
 };
 Object.values(TYPES).forEach(deepFreeze);
