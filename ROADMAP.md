@@ -71,7 +71,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
 
-**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration; (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`, in review, physical iPad testing pending** (`docs/MUNCH-PHASE4.md`); (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
@@ -167,7 +167,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | MUNCH standalone fifth instrument; shared sample engine | **Decided** |
 | MUNCH PLAY/CHOP/TWIST, melodic keys and slice pads | **Decided for v0.6 scope** |
 | CHOMPI-like first interaction; Flip-like deeper editing | **Decided design direction** |
-| MAGIC CHOP: musically guided, editable variations | **Decided goal; exact algorithm pending** |
+| MAGIC CHOP: musically guided, editable variations | **Decided goal; first version (metrical-role templates) in Phase 4 review** |
 | Dedicated jungle/breakbeat creation feature | **Decided** |
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |

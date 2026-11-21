@@ -1,7 +1,8 @@
-# MUNCH sample engine (v0.6 Phase 3)
+# MUNCH sample engine (v0.6 Phase 3, extended in Phase 4)
 
 MUNCH is HarbuMatic's fifth instrument: a sampler that plays one sample melodically (keyboard) or as slices (pads).
-Phase 3 adds the working engine and a temporary test bench. The final PLAY / CHOP / TWIST interface is Phase 4.
+Phase 3 added the working engine; Phase 4 adds the PLAY / CHOP / TWIST workspace, slice editing, Tape Fit and MAGIC CHOP
+(design record: `docs/MUNCH-PHASE4.md`).
 
 > **Preview only.** MUNCH is registered with `status: 'preview'`. It is playable only when the app is opened with
 > **`?munch=dev`** (e.g. `https://…/harbumatic/?munch=dev`). Without the flag MUNCH behaves exactly as in Phase 2:
@@ -17,7 +18,10 @@ src/samples/store.js     durable assets in IndexedDB: original bytes + metadata;
 src/samples/bank.js      decoded AudioBuffers in memory (bounded LRU), reversed copies, load states
 src/samples/recorder.js  microphone recording (MediaRecorder) → the normal import
 src/audio/voices.js      createMunchVoice: AudioBufferSourceNode playback through MUNCH's mixer channel
-src/views/munch-dev.js   temporary test bench in the SOUND view (dev preview only)
+src/samples/peaks.js     waveform peaks, computed once per decoded buffer (cached in the bank)
+src/music/magicchop.js   MAGIC CHOP: deterministic slice grooves (Phase 4)
+src/views/munch.js       the MUNCH workspace in SOUND: empty state, PLAY, CHOP, TWIST (Phase 4)
+src/views/munch-wave.js  waveform display and editor gestures (Phase 4)
 ```
 
 The scheduler knows nothing about samples. It dispatches MUNCH notes like any other notes and only passes a note's
@@ -33,7 +37,8 @@ slot.sample = null | {
   slices: [0, .125, .25, .375, .5, .625, .75, .875, 1],  // boundaries, see below
 }
 slot.params (MUNCH): { root: 60, tune: 0, start: 0, end: 1, reverse: false, mode: 'oneshot' | 'gate' | 'loop',
-                       attack: .002, release: .08, vol, pan, drive, driveOn, delayOn, reverbOn, delay, reverb }
+                       attack: .002, release: .08, vol, pan, drive, driveOn, delayOn, reverbOn, delay, reverb,
+                       fit: 'off' | 'half' | '1' | '2' | '4', fitFine: 0, choke: false }      (Phase 4)
 ```
 
 - Only sampler slots (registry capability `samples`) have a `sample` key. Other instruments are unchanged.
@@ -195,7 +200,7 @@ Playwright's Chromium), iPad memory pressure, MediaRecorder on iOS, IndexedDB ev
 
 ## iPad Safari test plan (11" and 13", landscape)
 
-Open `https://<host>/?munch=dev`, tap the start screen, select MUNCH (fifth card) and open SOUND.
+Open `https://<host>/?munch=dev`, tap the start screen and select MUNCH (fifth card; its SOUND workspace opens).
 
 1. **Import.** Import a WAV, an MP3 and an M4A from Files. Each one shows *Ready* with the right length. Try a 40 s
    file (refused, too long) and a non-audio file (refused).
@@ -217,14 +222,20 @@ Open `https://<host>/?munch=dev`, tap the start screen, select MUNCH (fifth card
 9. **Backgrounding.** Switch apps while playing and come back: Resume works.
 10. **Regression.** Open without `?munch=dev`: four cards, and the demo sounds as before.
 
-## Phase 4 integration notes
+## Phase 4: slice editing, Tape Fit, MAGIC CHOP
 
-- Flip the registry status to `ready` (and drop the flag) only when the PLAY/CHOP/TWIST UI ships.
-- PLAY can use `engine.audition(slot, pitch)` for the keyboard and `importSampleFile` / `recordStart` for capture.
-- CHOP: pads use `auditionSlice(k)` and the pattern uses `{ slice: k }` notes. MAGIC CHOP writes slice notes and
-  may add boundaries with `moveSliceBoundary` or a new boundary list.
-- TWIST: waveform drawing needs peak data from the decoded buffer. Compute it once in the bank, not per frame.
-  Trim, reverse, mode and envelope are already params.
-- The piano roll shows slice notes at their pitch row. A pad-grid view of slice notes (rows = slices) belongs to CHOP.
-- Sound shapers (macros) and Generate are disabled for MUNCH. Decide its `MACRO_MAP` and whether Generate should
-  write slice patterns.
+- **Slice identity.** Notes keep referring to slices by index. Every structural edit (CHOP HERE, split, delete,
+  reset) remaps the slice notes of the slot in all scenes and snapshots in the same history step: an old slice maps
+  to the new slice that contains its start (`remapSliceIndexes`). Moving a boundary keeps identity. A new sample
+  keeps the notes' pad numbers (swap the break, keep the groove). Details and the alternatives considered:
+  `docs/MUNCH-PHASE4.md` §3.1.
+- **Tape Fit.** Rate of every MUNCH note = `2^((transpose + tune) / 12) × fitRatio`; `fitRatio` = trimmed region
+  duration / (bars × 4 beats at the current BPM) × (1 + fitFine), computed when the note is triggered and clamped to
+  ×0.5…×2. Fit changes speed *and* pitch; there is no pitch-preserving stretch in v0.6. Slices share the same tape
+  speed and are never re-timed by the scheduler, so the ratio is applied once. With an *N*-bar loop fitted to *N*
+  bars, slice *k* on its home step reproduces the loop.
+- **Choke** (`choke: true`, "Chops: Cut" in TWIST): a slice note fades out every slice still sounding. Off by default.
+- **Held notes.** `engine.noteOn(slot, pitch, v)` returns a handle; `engine.noteOff(handle)` releases gate/loop notes
+  with the release time. One-shots play to the region end.
+- **MAGIC CHOP** writes slice notes only, keeps locked and melodic notes and leaves locked steps alone. See the header
+  of `src/music/magicchop.js`.

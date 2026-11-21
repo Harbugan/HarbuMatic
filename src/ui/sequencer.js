@@ -193,6 +193,7 @@ function drawNotes(g, G, m, s0, s1) {
     if (n === RV.hover || (RV.drag && RV.drag.n === n)) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); }
     g.fillStyle = '#ffffff70'; rr(g, x + 3, y + 2, Math.max(0, w - 6), 3, 2); g.fill();
     if (n.v > .9 && typeOf().capabilities.accent) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText('!', x + 5, y + hh / 2 + 1); }
+    if (n.slice != null) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText(`S${n.slice + 1}`, x + 4, y + hh / 2 + 1); } // MUNCH slice trigger (edited in SOUND → CHOP)
     if (n.pr != null && n.pr < 1) { g.fillStyle = '#28283F'; g.font = '900 9px Nunito'; if (w > 26) g.fillText(Math.round(n.pr * 100) + '%', x + w - 26, y + hh / 2 + 1); else { g.beginPath(); g.arc(x + w - 6, y + hh / 2, 2.5, 0, 7); g.fill(); } }
     if (n.locked) { g.setLineDash([3, 3]); g.strokeStyle = '#fff'; g.lineWidth = 1.5; rr(g, x - 1, y - 1, w + 2, hh + 2, 7); g.stroke(); g.setLineDash([]); }
     g.fillStyle = '#28283F66'; g.fillRect(x + w - 5, y + 4, 2, hh - 8); // resize grip

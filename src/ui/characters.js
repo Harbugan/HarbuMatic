@@ -80,18 +80,26 @@ export function catSVG(type) {
     <path d="M56.5 63 Q60 66 63.5 63" stroke="${INK}" stroke-width="2.3" fill="none" stroke-linecap="round"/>
     <g class="zz" opacity=".55" stroke="${INK}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M100 12 h7 l-7 8 h7"/><path d="M110 2 h5 l-5 6 h5"/></g>`;
   }
-  // provisional placeholder art (seen only in the dev preview for now): a round sound-eater with a big mouth
+  // MUNCH: a round sound-eater with a big mouth and headphones. Face variants (shown by the MUNCH workspace through
+  // data-face on an ancestor): idle eyes, .eyes-alt happy arcs (also used by .joy), .f-wow star eyes, .f-oops x eyes,
+  // .f-listen wide eyes; the mouth group animates for chomps.
   if (tr === 'munch') body = `
     <ellipse cx="49" cy="101" rx="7" ry="4" fill="${C}" ${st}/><ellipse cx="71" cy="101" rx="7" ry="4" fill="${C}" ${st}/>
     <path d="M38 34 Q36 16 52 27 Z" fill="${C}" ${st}/><path d="M82 34 Q84 16 68 27 Z" fill="${C}" ${st}/>
     <ellipse cx="60" cy="61" rx="38" ry="37" fill="${C}" ${st}/>
+    <path d="M30 78 Q60 96 90 78" fill="none" stroke="${D}" stroke-width="3" opacity=".35" stroke-linecap="round"/>
     ${phones('M22 60 Q19 17 60 17 Q101 17 98 60', [12, 48], [92, 48], hp)}
     ${eyePair(47, 73, 48, 3.8, 4.8)}
     <g class="eyes-alt"><path d="M42 50 Q47 44 52 50" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M68 50 Q73 44 78 50" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+    <g class="f-wow" fill="#F5D19A" stroke="${INK}" stroke-width="1.6"><path d="${STAR}" transform="translate(47 48) scale(1.05)"/><path d="${STAR}" transform="translate(73 48) scale(1.05)"/></g>
+    <g class="f-oops" stroke="${INK}" stroke-width="3" stroke-linecap="round"><path d="M43 44 L51 52 M51 44 L43 52"/><path d="M69 44 L77 52 M77 44 L69 52"/><path d="M86 30 q4 6 0 9 q-4 -3 0 -9z" fill="#9FD6EE" stroke-width="1.5"/></g>
+    <g class="f-listen"><circle cx="47" cy="48" r="6" fill="#fff" stroke="${INK}" stroke-width="2.4"/><circle cx="73" cy="48" r="6" fill="#fff" stroke="${INK}" stroke-width="2.4"/><circle cx="48" cy="47" r="3" fill="${INK}"/><circle cx="74" cy="47" r="3" fill="${INK}"/></g>
     <ellipse cx="36" cy="60" rx="5" ry="3" fill="${D}" opacity=".55"/><ellipse cx="84" cy="60" rx="5" ry="3" fill="${D}" opacity=".55"/>
-    <path d="M42 64 Q60 60 78 64 Q76 88 60 89 Q44 88 42 64 Z" fill="${INK}"/>
-    <path d="M49 82 Q60 74 71 82 Q66 88 60 88 Q54 88 49 82 Z" fill="#F49AB2"/>
-    <path d="M47 63.6 L50 69 L53 62.8 Z M67 62.8 L70 69 L73 63.6 Z" fill="#fff"/>`;
+    <g class="mouth">
+      <path d="M42 64 Q60 60 78 64 Q76 88 60 89 Q44 88 42 64 Z" fill="${INK}"/>
+      <path d="M49 82 Q60 74 71 82 Q66 88 60 88 Q54 88 49 82 Z" fill="#F49AB2"/>
+      <path d="M47 63.6 L50 69 L53 62.8 Z M67 62.8 L70 69 L73 63.6 Z" fill="#fff"/>
+    </g>`;
   return `<svg viewBox="0 0 120 110" aria-hidden="true">${shadow}<g class="rig">${body}</g></svg>`;
 }
 
@@ -140,6 +148,8 @@ export function catReact(id, hits) {
   } else if (tr === 'blip') {
     anim(c.rig, [{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }], { duration: 170 });
     if (hits.length >= 2) sparks(c.el, 3, v.dark);
+  } else if (tr === 'munch') {
+    anim(c.rig, [{ transform: 'scale(1,1)' }, { transform: hits.some(x => x.slice != null) ? 'scale(1.08,.9)' : 'translateY(-5px)' }, { transform: 'scale(1,1)' }], { duration: 150 });
   } else if (tr === 'fuzz') {
     anim(c.rig, [{ transform: 'scale(1)' }, { transform: 'scale(1.05)' }, { transform: 'scale(1)' }], { duration: 600, easing: 'ease-in-out', composite: 'add' });
     puff(c.el, v.dark);

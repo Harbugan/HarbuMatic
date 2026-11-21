@@ -29,7 +29,7 @@ import {
   patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
-import { cleanSampleRef, MAX_SLICES } from './samples.js';
+import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
@@ -267,9 +267,9 @@ export function validatePattern(type, p, defLen = 16) {
 }
 
 function cleanParams(type, params) {
-  const t = getInstrumentType(type), def = t.defaultParams, out = defaultParamsFor(type);
-  const ranges = t.paramRanges || {}, choices = t.paramChoices || {};
-  if (!isObj(params)) return out;
+  const t = getInstrumentType(type), def = t.defaultParams, ranges = t.paramRanges || {}, choices = t.paramChoices || {};
+  if (!isObj(params)) return defaultParamsFor(type);
+  const out = t.keepUnknownParams ? { ...extraKeys(params, Object.keys(def)), ...defaultParamsFor(type) } : defaultParamsFor(type);
   for (const k of Object.keys(def)) {
     const dv = def[k], v = params[k];
     if (typeof dv === 'number' && typeof v === 'number' && Number.isFinite(v)) out[k] = ranges[k] ? clamp(v, ranges[k][0], ranges[k][1]) : v;

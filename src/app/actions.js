@@ -1,7 +1,7 @@
 // Actions: the only place that mutates the project in response to the UI.
 // Views call actions; actions save, record history and emit events; main.js re-renders.
 
-import { store, emit, P, pat, slot, typeOf, isDrumSlot, ensureSelection } from './store.js';
+import { store, emit, P, pat, slot, typeOf, isDrumSlot, ensureSelection, isSamplerSlot } from './store.js';
 import { MELODIC, SCENE_LETTERS } from '../core/constants.js';
 import { clone, clamp } from '../core/util.js';
 import { createHistory } from '../core/history.js';
@@ -11,7 +11,11 @@ import {
   playableSlots, patternAt, setPatternAt, sceneIdAt, typeOfSlot,
 } from '../core/project.js';
 import { createPatternFor, isPlayableType } from '../core/instruments.js';
-import { sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH } from '../core/samples.js';
+import {
+  sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH, insertSliceBoundary, splitSlice,
+  removeSliceBoundary, remapSlotSlices, sliceAt, sliceCount, fitInfo, fitRate, FIT_BARS, MAX_SLICES, MIN_SLICE,
+} from '../core/samples.js';
+import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
 import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
 import { createSampleBank } from '../samples/bank.js';
 import { createRecorder, canRecord } from '../samples/recorder.js';
@@ -140,10 +144,25 @@ export async function importFile(file) {
 /* ---------- selection / modes ---------- */
 export function selectSlot(id) {
   if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments (MUNCH) cannot be selected
-  const u = store.ui;
+  const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
   if (!typeOf(id).ui.tools.includes(u.tool)) u.tool = 'draw'; // e.g. Slide exists only where slides do
+  // MUNCH lives in its SOUND workspace: selecting it opens SOUND, unless the player left that workspace on purpose.
+  // When MUNCH opened SOUND by itself, selecting another instrument returns to the mode it came from. The other
+  // instruments never change the mode.
+  let layout = false;
+  if (isSamplerSlot(id)) {
+    if (!nav.away && u.mode !== 'sound') { nav.autoFrom = u.mode; u.mode = 'sound'; u.expanded = false; u.drawer = false; layout = true; }
+  } else if (wasSampler && nav.autoFrom && u.mode === 'sound') { u.mode = nav.autoFrom; nav.autoFrom = null; u.drawer = false; layout = true; }
+  else nav.autoFrom = null;
   emit('selection');
+  if (layout) emit('layout');
+}
+/** the player chose a mode with the mode buttons (or Deep edit): this is explicit navigation */
+function navigated(m) {
+  const nav = store.ui.munchNav;
+  nav.autoFrom = null;
+  if (isSamplerSlot()) nav.away = m !== 'sound';
 }
 export function selectScene(i) {
   const p = store.project;
@@ -152,8 +171,8 @@ export function selectScene(i) {
   transport.queueScene(i);
   emit('scene');
 }
-export function setMode(m) { store.ui.mode = m; if (m !== 'jam') store.ui.expanded = false; store.ui.drawer = false; emit('layout'); }
-export function setExpanded(on) { store.ui.expanded = on; store.ui.drawer = false; if (store.ui.mode !== 'jam') store.ui.mode = 'jam'; emit('layout'); }
+export function setMode(m) { navigated(m); store.ui.mode = m; if (m !== 'jam') store.ui.expanded = false; store.ui.drawer = false; emit('layout'); }
+export function setExpanded(on) { navigated('jam'); store.ui.expanded = on; store.ui.drawer = false; if (store.ui.mode !== 'jam') store.ui.mode = 'jam'; emit('layout'); }
 export function setDrawer(on) { store.ui.drawer = on; emit('drawer'); }
 export function setTool(k) { store.ui.tool = k; emit('tool'); }
 
@@ -380,37 +399,181 @@ const sampleErrorText = e => (e instanceof SampleError ? e.message : 'That sampl
 /** import an audio File (or { name, type, arrayBuffer() }) into the store and assign it; returns the metadata or null */
 export async function importSampleFile(file, slotId = store.ui.sel) {
   engine.init();
+  const had = !!(slot(slotId) && slot(slotId).sample);
   try {
     const bytes = await file.arrayBuffer();
     const { meta, duplicate } = await samples.importBytes({ bytes, name: file.name || 'Sample', type: file.type || '' });
     assignSample(slotId, meta);
+    if (!had) store.ui.munch.tab = 'play'; // a first sound: play it straight away
+    Object.assign(store.ui.munch, { sel: 0, marker: null, cursor: 0, zoom: 1, view: 0, bank: 0, magic: null });
     emit('toast', duplicate ? `“${meta.name}” was already stored: using it` : `MUNCH ate “${meta.name}” (${meta.duration.toFixed(2)} s)`);
+    emit('munch', { kind: 'yum' }); emit('samples');
     return meta;
-  } catch (e) { emit('toast', sampleErrorText(e)); emit('samples'); return null; }
+  } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); emit('samples'); return null; }
 }
 export const recorder = createRecorder({ maxSeconds: samples.store.limits.maxSeconds, onState: () => emit('recorder') });
 export const recordingSupported = () => canRecord();
 export async function recordStart() {
   engine.init();
   transport.state === 'playing' && transport.pause(); // a quiet room: nothing from HarbuMatic leaks into the mic
-  try { await recorder.start(); } catch (e) { emit('toast', sampleErrorText(e)); }
+  try { await recorder.start(); emit('munch', { kind: 'listen' }); } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); }
 }
 export async function recordStop(slotId = store.ui.sel) {
   let rec = null;
   try { rec = await recorder.stop(); } catch (e) { emit('toast', sampleErrorText(e)); return null; }
-  if (!rec) { emit('toast', 'Nothing was recorded'); return null; }
+  if (!rec) { emit('toast', 'Nothing was recorded'); emit('munch', { kind: 'oops' }); return null; }
   return importSampleFile({ name: rec.name, type: rec.type, arrayBuffer: async () => rec.bytes }, slotId);
 }
 export function recordCancel() { recorder.cancel(); }
-/** slice editing (data model): back to n equal slices, or move one boundary */
-export function resetSlices(n = 8, slotId = store.ui.sel) { const s = slot(slotId); if (!s || !s.sample) return; checkpoint(); s.sample.slices = defaultSlices(n); save(); emit('samples'); }
-export function moveSlice(i, pos, slotId = store.ui.sel) { const s = slot(slotId); if (!s || !s.sample) return; checkpoint(`slice:${i}`); s.sample.slices = moveSliceBoundary(s.sample.slices, i, pos); save(); emit('samples'); }
-export function auditionSlice(k, slotId = store.ui.sel) { engine.audition(slotId, SLICE_REF_PITCH, .9, { slice: k }); }
-/** add or remove a one-step slice trigger in the current scene's pattern */
+/* ---------- MUNCH workspace (v0.6 Phase 4) ---------- */
+// Character reactions: the workspace listens to 'munch' events ({ kind }) — yum, oops, listen, chomp, snip, magic, note.
+const react = kind => emit('munch', { kind });
+/** auditions need Web Audio; Node tests and pages without audio skip them silently */
+const canSound = () => typeof window !== 'undefined' && !!(window.AudioContext || window.webkitAudioContext);
+const hear = fn => { if (canSound()) { try { return fn(); } catch (e) { /* audio not available */ } } return null; };
+const M = () => store.ui.munch;
+const sampleOf = id => { const s = slot(id); return s && s.sample; };
+
+/** change a slot's slice boundaries structurally and remap every slice note (all scenes + snapshots), one history step */
+function restructure(slotId, next, { select, marker = null, msg } = {}) {
+  const s = slot(slotId), old = s.sample.slices;
+  checkpoint();
+  s.sample.slices = next;
+  const moved = remapSlotSlices(store.project, slotId, old, next);
+  const n = sliceCount(next), u = M();
+  u.sel = Math.max(0, Math.min(n - 1, select ?? u.sel)); u.marker = marker; u.bank = u.sel >= 8 ? 1 : 0;
+  u.magic = null;
+  save(); emit('samples'); emit('pattern');
+  react('snip');
+  if (msg) emit('toast', msg);
+  return { moved, count: n };
+}
+const LIMIT_MSG = { max: `MUNCH can hold up to ${MAX_SLICES} slices`, close: 'Too close to another marker: move the cursor a little', range: 'Put the cursor inside the sound first', none: 'Pick a slice first', edge: 'The first and last markers frame the sound: drag them instead' };
+
+/** CHOP HERE: a new boundary at a position (fraction of the whole sample); selects the slice that starts there */
+export function chopAt(pos, slotId = store.ui.sel) {
+  const ref = sampleOf(slotId); if (!ref) return null;
+  const r = insertSliceBoundary(ref.slices, pos);
+  if (r.error) { emit('toast', LIMIT_MSG[r.error]); react('oops'); return null; }
+  return restructure(slotId, r.slices, { select: Math.min(r.at, sliceCount(r.slices) - 1), marker: r.at });
+}
+/** split a slice in the middle (default: the selected one) */
+export function splitSliceAt(k = M().sel, slotId = store.ui.sel) {
+  const ref = sampleOf(slotId); if (!ref) return null;
+  const r = splitSlice(ref.slices, k);
+  if (r.error) { emit('toast', LIMIT_MSG[r.error]); react('oops'); return null; }
+  return restructure(slotId, r.slices, { select: k, marker: r.at });
+}
+/** delete an inner boundary (default: the selected marker), merging its two slices */
+export function deleteBoundary(i = M().marker, slotId = store.ui.sel) {
+  const ref = sampleOf(slotId); if (!ref || i == null) { emit('toast', 'Tap a marker first'); return null; }
+  const r = removeSliceBoundary(ref.slices, i);
+  if (r.error) { emit('toast', LIMIT_MSG[r.error]); react('oops'); return null; }
+  return restructure(slotId, r.slices, { select: i - 1 });
+}
+/** back to n equal slices; every slice note moves to the slice that now holds its attack */
+export function resetSlices(n = 8, slotId = store.ui.sel) {
+  const ref = sampleOf(slotId); if (!ref) return null;
+  return restructure(slotId, defaultSlices(n), { select: 0, msg: `${n} equal slices` });
+}
+/** drag a boundary (not structural: slice indexes keep their identity); continuous drags coalesce into one undo step */
+export function moveSlice(i, pos, slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s || !s.sample) return;
+  checkpoint(`slice:${i}`);
+  s.sample.slices = moveSliceBoundary(s.sample.slices, i, pos);
+  if (M().magic) M().magic = null;
+  save(); emit('samples');
+}
+/** nudge a boundary by about 10 ms of audio (a visible alternative to precise dragging) */
+export function nudgeBoundary(dir, i = M().marker, slotId = store.ui.sel) {
+  const ref = sampleOf(slotId); if (!ref || i == null) { emit('toast', 'Tap a marker first'); return; }
+  const step = Math.max(MIN_SLICE, ref.duration > 0 ? .01 / ref.duration : .005);
+  moveSlice(i, ref.slices[i] + dir * step, slotId); sealHistory();
+}
+export function selectSlice(k) {
+  const ref = sampleOf(store.ui.sel), n = ref ? sliceCount(ref.slices) : 0; if (!n) return;
+  const u = M(); u.sel = Math.max(0, Math.min(n - 1, k)); u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel');
+}
+export function selectMarker(i) { M().marker = i; emit('munchsel'); }
+export function setCursor(pos) { const u = M(); u.cursor = clamp(pos, 0, 1); const ref = sampleOf(store.ui.sel); if (ref) u.sel = sliceAt(ref.slices, u.cursor); u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel'); }
+export function auditionSlice(k, slotId = store.ui.sel, v = .9) { react('chomp'); return hear(() => engine.audition(slotId, SLICE_REF_PITCH, v, { slice: k })); }
+/** play a region of the sample as recorded (root pitch, with tune and fit), e.g. from the cursor to the slice end */
+export function auditionRegion(a, b, slotId = store.ui.sel) {
+  if (!(b > a)) return null;
+  react('chomp');
+  return hear(() => engine.audition(slotId, P(slotId).root, .9, { region: [a, b] }));
+}
+/** hear the whole (trimmed) sample at its root */
+export function auditionSample(slotId = store.ui.sel) { react('chomp'); return hear(() => engine.audition(slotId, P(slotId).root, .9)); }
+/** keyboard: press and release (velocity 0–1). Returns a handle for munchNoteOff. */
+export function munchNoteOn(pitch, v = .8, slotId = store.ui.sel) { react('note'); return hear(() => engine.noteOn(slotId, pitch, v)); }
+export function munchNoteOff(handle) { return hear(() => engine.noteOff(handle)); }
+
+/** add or remove a one-step slice trigger in the current scene's pattern (CHOP sequencer, Draw tool) */
 export function toggleSliceStep(k, step, slotId = store.ui.sel) {
   const p = pat(slotId); if (!p || step >= p.len) return;
-  checkpoint();
   const i = p.notes.findIndex(n => n.s === step && n.slice === k);
-  if (i >= 0) p.notes.splice(i, 1); else { p.notes.push({ s: step, p: SLICE_REF_PITCH, l: 1, v: .85, slice: k }); auditionSlice(k, slotId); }
+  if (i >= 0 && p.notes[i].locked) { emit('toast', 'That step is locked: unlock it with the Lock tool'); return; }
+  checkpoint();
+  if (i >= 0) p.notes.splice(i, 1); else { p.notes.push({ s: step, p: SLICE_REF_PITCH, l: 1, v: .85, slice: k }); auditionSlice(k, slotId, .85); }
+  if (M().magic) M().magic = null;
   save(); emit('pattern');
+}
+/** Accent tool: soft → normal → accent (same velocities as JAM's Velocity tool); keeps timing and length */
+export function cycleSliceVel(k, step, slotId = store.ui.sel) {
+  const n = pat(slotId).notes.find(x => x.s === step && x.slice === k); if (!n) return;
+  checkpoint(); n.v = n.v < .5 ? .75 : n.v < .9 ? 1 : .35; save(); emit('pattern'); auditionSlice(k, slotId, n.v);
+}
+/** Lock tool: a locked hit survives MAGIC CHOP and keeps its step for itself */
+export function toggleSliceLock(k, step, slotId = store.ui.sel) {
+  const n = pat(slotId).notes.find(x => x.s === step && x.slice === k); if (!n) return;
+  checkpoint(); if (n.locked) delete n.locked; else n.locked = true; save(); emit('pattern');
+}
+
+/** Fit to Beat: choose bars (or 'off'); refused with a message when the fit would leave the usable speed range */
+export function setFit(choice, slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s) return false;
+  if (choice !== 'off') {
+    if (!s.sample) { emit('toast', 'Feed MUNCH a sound first'); return false; }
+    const f = fitInfo({ ...s.params, fit: choice }, s.sample.duration, store.project.bpm);
+    if (!f.ok) {
+      const bars = FIT_BARS[choice] === .5 ? 'half a bar' : `${FIT_BARS[choice]} bar${FIT_BARS[choice] > 1 ? 's' : ''}`;
+      emit('toast', `${bars} would play at ×${f.ratio.toFixed(2)}: too ${f.ratio < 1 ? 'slow' : 'fast'} for tape. Try ${f.ratio < 1 ? 'fewer' : 'more'} bars or trim the sound.`);
+      react('oops'); return false;
+    }
+  }
+  checkpoint(); s.params.fit = choice; engine.applyParams(slotId); save(); emit('params', slotId); emit('samples');
+  return true;
+}
+/** current tape-fit state of a slot (for the UI) */
+export function fitState(slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s || !s.sample) return null;
+  return fitInfo(s.params, s.sample.duration, store.project.bpm);
+}
+
+/** MAGIC CHOP: replace the unlocked slice notes of the current scene with a groove; one undo step; plays it at once */
+export function magicChop(style = M().style, { seed = randomSeed(), play = true } = {}, slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s || !s.sample) { emit('toast', 'Feed MUNCH a sound first'); react('oops'); return null; }
+  const u = M(), sc = store.project.scene, p = patternAt(store.project, slotId, sc), now = JSON.stringify(p);
+  const pending = u.magic && u.magic.slot === slotId && u.magic.scene === sc && u.magic.after === now ? u.magic : null;
+  const r = magicChopPattern({ pattern: p, slices: s.sample.slices, duration: s.sample.duration, rate: fitRate(s.params, s.sample.duration, store.project.bpm), bpm: store.project.bpm, style, seed });
+  checkpoint();
+  setPatternAt(store.project, slotId, sc, r.pattern);
+  u.style = style;
+  u.magic = { slot: slotId, scene: sc, before: pending ? pending.before : now, after: JSON.stringify(r.pattern), style, seed };
+  save(); emit('pattern'); react('magic');
+  emit('toast', `MAGIC CHOP · ${MAGIC_LABEL[style]}`);
+  if (play && transport.state !== 'playing') togglePlay();
+  return r;
+}
+/** keep the MAGIC CHOP result (it is already in the pattern: this only closes the choice) */
+export function magicKeep() { if (!M().magic) return; M().magic = null; emit('pattern'); emit('toast', 'Kept! Every step is yours to edit'); }
+/** back to the pattern from before the first MAGIC CHOP (itself undoable) */
+export function magicUndo() {
+  const u = M(), m = u.magic; if (!m) return false;
+  const p = patternAt(store.project, m.slot, m.scene);
+  u.magic = null;
+  if (!p || JSON.stringify(p) !== m.after) { emit('toast', 'The groove was edited since: use Undo at the top'); emit('pattern'); return false; }
+  checkpoint(); setPatternAt(store.project, m.slot, m.scene, JSON.parse(m.before)); save(); emit('pattern'); emit('toast', 'Back to your pattern');
+  return true;
 }

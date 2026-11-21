@@ -1,12 +1,12 @@
 // Sound Shapers bar (macros + FX toggles) and the SOUND view (deep parameters).
 
-import { store, P, typeOf, slot } from '../app/store.js';
+import { store, P, typeOf, slot, isSamplerSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
 import { Knob, Seg } from '../ui/controls.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
-import { renderMunchDev } from './munch-dev.js';
+import { renderMunch, setMunchRerender } from './munch.js';
 
 let shaperKnobs = {};
 export function renderBottom() {
@@ -14,7 +14,7 @@ export function renderBottom() {
   const host = $('#shapers'); host.innerHTML = '';
   host.append(h('span', { class: 'shapers-title' }, h('b', {}, 'Sound shapers'), h('small', {}, def.name)));
   shaperKnobs = {};
-  if (!def.capabilities.macros) host.append(h('span', { class: 'mini-hint' }, `${def.name} has no sound shapers yet: shape it in SOUND`));
+  if (!def.capabilities.macros) host.append(h('span', { class: 'mini-hint' }, def.capabilities.samples ? `Shape ${def.name} in SOUND → TWIST` : `${def.name} has no sound shapers yet: shape it in SOUND`));
   else MACRO_KEYS.forEach(k => {
     const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${hints[k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
     shaperKnobs[k] = kn; host.append(kn.el);
@@ -31,7 +31,6 @@ export function syncShapers() { const m = slot().macros; Object.entries(shaperKn
 
 const pct = v => Math.round(v * 100) + '%';
 const sec = v => (v < 1 ? Math.round(v * 1000) + 'ms' : v.toFixed(2) + 's');
-const NOTE_NAME = m => ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][m % 12] + (Math.floor(m / 12) - 1);
 const panFmt = v => (Math.abs(v) < .01 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100));
 // deep parameters and presets per instrument type (registry id)
 const SOUNDDEF = {
@@ -45,11 +44,6 @@ const SOUNDDEF = {
     ['Filter', [{ k: 'cutoff', l: 'Cutoff' }, { k: 'res', l: 'Reso' }, { k: 'fenv', l: 'Env amt' }]],
     ['Envelope', [{ k: 'attack', l: 'Attack', min: .002, max: 2, fmt: sec }, { k: 'decay', l: 'Decay', min: .02, max: 2, fmt: sec }, { k: 'sustain', l: 'Sustain' }, { k: 'release', l: 'Release', min: .02, max: 3, fmt: sec }]],
     ['LFO → filter', [{ k: 'lfoRate', l: 'Rate', min: .1, max: 12, fmt: v => v.toFixed(1) + 'Hz' }, { k: 'lfoDepth', l: 'Depth' }]],
-  ],
-  munch: [
-    ['Pitch', [{ k: 'root', l: 'Root', min: 24, max: 96, step: 1, fmt: v => NOTE_NAME(v) }, { k: 'tune', l: 'Tune', min: -24, max: 24, step: 1, fmt: v => (v > 0 ? '+' : '') + v + ' st' }]],
-    ['Trim', [{ k: 'start', l: 'Start' }, { k: 'end', l: 'End' }, { k: 'reverse', seg: [[false, 'Fwd'], [true, 'Rev']], label: 'Dir' }]],
-    ['Play', [{ k: 'mode', seg: [['oneshot', 'One-shot'], ['gate', 'Gate'], ['loop', 'Loop']], label: 'Mode' }, { k: 'attack', l: 'Attack', min: 0, max: 2, fmt: sec }, { k: 'release', l: 'Release', min: .005, max: 4, fmt: sec }]],
   ],
   fuzz: [
     ['Texture', [{ k: 'tone', l: 'Tone' }, { k: 'noise', l: 'Noise' }, { k: 'crush', l: 'Crush' }, { k: 'shimmer', l: 'Shimmer' }]],
@@ -67,6 +61,7 @@ export const PRESETS = {
 let soundKnobs = [];
 export function renderSound() {
   const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = [];
+  if (isSamplerSlot()) { renderMunch(host); host.scrollTop = scroll; return; } // MUNCH has its own workspace
   const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type;
   const hear = () => A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch'));
   host.append(h('div', { class: 'view-head' }, h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, 'Sound design')), h('span', { class: 'spacer' }), h('span', { class: 'hint' }, 'Sound shapers below steer these same knobs')));
@@ -89,8 +84,8 @@ export function renderSound() {
   soundKnobs.push(Object.assign(swing, { k: '__swing' }));
   frow.append(swing.el, gk('Echo fdbk', 'fb', 0, .85), gk('Echo tone', 'dtone', 0, 1), gk('Room level', 'rev', 0, 1.2), gk('Master', 'master', 0, 1));
   groups.append(h('div', { class: 'sgroup wide' }, h('h4', {}, 'Groove + shared FX · all instruments'), frow));
-  if (m.capabilities.samples) renderMunchDev(groups);
   host.append(groups);
   host.scrollTop = scroll;
 }
 export function refreshSoundKnobs() { const p = P(store.ui.sel); soundKnobs.forEach(k => k.set(k.k === '__swing' ? store.project.swing : p[k.k])); }
+setMunchRerender(() => renderSound());

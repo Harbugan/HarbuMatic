@@ -59,6 +59,7 @@ async function layoutAudit(page) {
     for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
       const [a, ra] = rects[i], [b, rb] = rects[j];
       if (a.contains(b) || b.contains(a)) continue;
+      if (a.closest('.mkeys') && b.closest('.mkeys')) continue; // piano keys overlap by design (black over white)
       const ix = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left), iy = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
       if (ix > 4 && iy > 4) out.overlaps.push(`${name(a)} ↔ ${name(b)}`);
     }
@@ -400,74 +401,191 @@ async function rollPoint(page, step, rowOrPitch) {
       await c0.close();
     }
     const mb = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
-    for (const [w, h] of [[1180, 820], [1024, 768], [1376, 1032], [820, 1180]]) { // the test bench must not break the layout
-      const c = await mb.newContext({ viewport: { width: w, height: h }, hasTouch: true });
-      const pg = await c.newPage(); const errs = []; pg.on('pageerror', e => errs.push(e.message));
-      await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(200);
-      await pg.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); });
-      await pg.setInputFiles('[data-testid=munch-file]', { name: 'tone.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 1 })) });
-      await pg.waitForSelector('.md-status[data-status=ready]', { timeout: 5000 }).catch(() => {});
-      for (const mode of ['sound', 'jam']) {
-        await pg.evaluate(m => window.__harbu.A.setMode(m), mode); await pg.waitForTimeout(200);
+    const mopen = async (w, h, extra = {}) => {
+      const c = await mb.newContext({ viewport: { width: w, height: h }, hasTouch: true, ...extra });
+      const pg = await c.newPage(); const errs = [];
+      pg.on('pageerror', e => errs.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+      await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(250);
+      await pg.evaluate(() => window.__harbu.A.stop());
+      return { c, pg, errs, H: fn => pg.evaluate(fn) };
+    };
+    const inView = (pg, sel) => pg.evaluate(s => { const e = document.querySelector(s); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth; }, sel);
+    // layout: empty state, PLAY, CHOP, TWIST and JAM at iPad sizes (11" and 13" landscape, short landscape, portrait)
+    for (const [w, h] of [[1194, 834], [1210, 834], [1376, 1032], [1366, 1024], [1180, 820], [1024, 768], [1180, 740], [820, 1180], [768, 1024]]) {
+      const { c, pg, errs } = await mopen(w, h);
+      const landscape = w > h;
+      await pg.click('#cards .card[data-slot="slot-05"]', { position: { x: 30, y: 30 } }); await pg.waitForTimeout(200);
+      ok((await pg.evaluate(() => window.__harbu.store.ui.mode)) === 'sound', `${w}×${h}: selecting MUNCH opens its SOUND workspace`);
+      const rec = await inView(pg, '[data-testid=munch-rec]'), imp = await inView(pg, '[data-testid=munch-import]');
+      const scrolled = await pg.evaluate(() => document.querySelector('#viewSound').scrollTop);
+      ok(rec && imp && scrolled === 0, `${w}×${h}: RECORD and IMPORT are visible without scrolling`);
+      await pg.setInputFiles('[data-testid=munch-file]', { name: 'tone.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 2 })) });
+      await pg.waitForSelector('[data-testid=munch-wave]', { timeout: 5000 }).catch(() => {});
+      for (const tab of ['play', 'chop', 'twist', 'jam']) {
+        if (tab === 'jam') await pg.evaluate(() => window.__harbu.A.setMode('jam'));
+        else await pg.click(`[data-testid=munch-tab-${tab}]`);
+        await pg.waitForTimeout(180);
         const a = await layoutAudit(pg);
         const over = await pg.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-        ok(!over && !a.offscreen.length && !a.overlaps.length && !a.spill.length, `${w}×${h} MUNCH ${mode}: five cards and the test bench fit${[...a.offscreen, ...a.overlaps, ...a.spill].length ? ' — ' + [...a.offscreen, ...a.overlaps, ...a.spill].slice(0, 4).join('; ') : ''}`);
+        ok(!over && !a.offscreen.length && !a.overlaps.length && !a.spill.length, `${w}×${h} MUNCH ${tab}: fits, nothing clipped or overlapping${[...a.offscreen, ...a.overlaps, ...a.spill].length ? ' — ' + [...a.offscreen, ...a.overlaps, ...a.spill].slice(0, 4).join('; ') : ''}`);
+        if (tab === 'chop' && landscape) {
+          const vis = await Promise.all(['[data-testid=munch-chop-here]', '[data-testid=munch-pads] .mw-pad[data-k="7"]', '[data-testid=munch-magic-go]', '[data-testid=munch-grid] .mw-row[data-k="7"] .mw-cell:last-child'].map(sel => inView(pg, sel)));
+          ok(vis.every(Boolean), `${w}×${h} CHOP: waveform tools, eight pads, MAGIC CHOP and all eight sequencer rows on screen without scrolling (${vis.join()})`);
+        }
+        if (tab === 'play') ok(await inView(pg, '[data-testid=munch-keys] .mk:last-child'), `${w}×${h} PLAY: the whole keyboard is on screen`);
       }
       ok(!errs.length, `${w}×${h} MUNCH: no errors${errs.length ? ' — ' + errs[0] : ''}`);
       await c.close();
     }
-    const mctx = await mb.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, permissions: ['microphone'] });
-    const pg = await mctx.newPage(); const errs = [];
-    pg.on('pageerror', e => errs.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-    await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(300);
-    const H = fn => pg.evaluate(fn);
+
+    const { c: mctx, pg, errs, H } = await mopen(1194, 834, { permissions: ['microphone'] });
     const cards = await H(() => [...document.querySelectorAll('#cards .card')].map(c => c.dataset.slot).join());
     ok(cards === 'slot-01,slot-02,slot-03,slot-04,slot-05', `MUNCH is the fifth playable card (${cards})`);
-    await pg.keyboard.press('5'); await pg.waitForTimeout(50);
-    ok((await H(() => window.__harbu.store.ui.sel)) === 'slot-05', 'key 5 selects MUNCH');
-    await H(() => { window.__harbu.A.stop(); window.__harbu.A.setMode('sound'); });
-    await pg.waitForTimeout(150);
-    const status = () => H(() => { const e = document.querySelector('.md-status'); return e ? e.dataset.status : 'gone'; });
+    const mode = () => H(() => window.__harbu.store.ui.mode);
+    // navigation: SOUND by default, explicit choices respected, the other instruments never change mode
+    await pg.keyboard.press('5'); await pg.waitForTimeout(80);
+    ok((await H(() => window.__harbu.store.ui.sel)) === 'slot-05' && (await mode()) === 'sound', 'key 5 selects MUNCH and opens SOUND');
+    await pg.keyboard.press('2'); await pg.waitForTimeout(60);
+    ok((await mode()) === 'jam', 'leaving MUNCH returns to JAM (MUNCH had opened SOUND by itself)');
+    await pg.keyboard.press('5'); await pg.click('.mode[data-mode=jam]'); await pg.keyboard.press('1'); await pg.keyboard.press('5'); await pg.waitForTimeout(60);
+    ok((await mode()) === 'jam', 'after choosing JAM on MUNCH, selecting MUNCH again does not force SOUND');
+    await pg.click('.mode[data-mode=sound]'); await pg.keyboard.press('3'); await pg.waitForTimeout(60);
+    ok((await mode()) === 'sound', 'choosing SOUND again re-arms it; BLIP then stays in SOUND');
+    for (const k of ['1', '2', '4']) { await pg.keyboard.press(k); }
+    ok((await mode()) === 'sound', 'BOP, GOO and FUZZ keep the chosen mode');
+    await pg.keyboard.press('5'); await pg.waitForTimeout(80);
+    // the Lab does not show dead generators for MUNCH
+    const lab = await H(() => ({ gen: [...document.querySelectorAll('#rLab .lbtn')].some(b => /Generate/.test(b.textContent)), munch: !!document.querySelector('#rLab [data-testid=lab-munch-chop]') }));
+    ok(!lab.gen && lab.munch, 'the Lab hides Generate/Mutate/… for MUNCH and points to MAGIC CHOP');
+    ok(await H(() => getComputedStyle(document.querySelector('.bottom')).display === 'none' && document.getElementById('device').classList.contains('munch')), 'the workspace takes the full width (bottom bar and side panel step aside)');
+    await pg.click('.mw-drawer'); await pg.waitForTimeout(350);
+    ok(await H(() => document.getElementById('device').classList.contains('drawer-open')), 'Scenes & Lab stay reachable as a drawer');
+    await H(() => window.__harbu.A.setDrawer(false)); await pg.waitForTimeout(300);
+
+    const status = () => H(() => { const e = document.querySelector('.mw-status'); return e ? e.dataset.status : 'gone'; });
     const toast = () => H(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | '));
-    ok((await status()) === 'none', 'the test bench starts with no sample');
+    ok((await status()) === 'none' && (await H(() => !!document.querySelector('[data-testid=munch-feed]'))), 'MUNCH starts hungry: the feed panel with RECORD and IMPORT');
     // import: WAV (stereo float), MP3, Ogg/Opus, then a broken file
     const imports = [['stereo.wav', Buffer.from(makeWav({ seconds: 2, rate: 48000, channels: 2, float: true, freq: 330 })), 2], ['tone-c5-1s.mp3', await fixture('tone-c5-1s.mp3'), 1], ['tone-c4-2s.ogg', await fixture('tone-c4-2s.ogg'), 2]];
     for (const [name, buffer, secs] of imports) {
       await pg.setInputFiles('[data-testid=munch-file]', { name, mimeType: 'audio/*', buffer });
-      await pg.waitForFunction(n => { const s = window.__harbu.store.project.slots[4].sample; return s && s.name === n && document.querySelector('.md-status[data-status=ready]'); }, name, { timeout: 8000 }).catch(() => {});
+      await pg.waitForFunction(n => { const s = window.__harbu.store.project.slots[4].sample; return s && s.name === n && document.querySelector('.mw-status[data-status=ready]'); }, name, { timeout: 8000 }).catch(() => {});
       const r = await H(() => window.__harbu.store.project.slots[4].sample);
       ok(r && r.name === name && Math.abs(r.duration - secs) < .1 && r.slices.length === 9, `import ${name}: ready, ${r && r.duration.toFixed(2)} s, eight slices`);
     }
+    ok((await H(() => window.__harbu.store.ui.munch.tab)) === 'play' && (await H(() => !!document.querySelector('[data-testid=munch-keys]'))), 'after the first import MUNCH opens PLAY');
     const before = await H(() => window.__harbu.store.project.slots[4].sample.id);
     await pg.setInputFiles('[data-testid=munch-file]', { name: 'broken.wav', mimeType: 'audio/wav', buffer: Buffer.from('RIFF....WAVE this is not audio') });
     await pg.waitForTimeout(500);
     ok(/broken\.wav/.test(await toast()) && (await H(() => window.__harbu.store.project.slots[4].sample.id)) === before, 'a broken file is refused with a message and the current sample stays');
-    // the same file twice is stored once
     await pg.setInputFiles('[data-testid=munch-file]', { name: 'again.ogg', mimeType: 'audio/ogg', buffer: await fixture('tone-c4-2s.ogg') });
     await pg.waitForTimeout(500);
     const stored = await H(() => window.__harbu.A.samples.store.list().then(l => l.length));
     ok(stored === 3 && (await H(() => window.__harbu.store.project.slots[4].sample.id)) === before, `importing the same file again reuses it (3 stored assets, got ${stored})`);
-    // slice pads, slice steps, melodic notes, transport
-    await pg.click('[data-testid=munch-pads] .md-pad >> nth=3');
-    await pg.click('[data-testid=munch-grid] [data-k="0"][data-s="0"]'); await pg.click('[data-testid=munch-grid] [data-k="5"][data-s="2"]'); await pg.click('[data-testid=munch-grid] [data-k="7"][data-s="8"]');
-    await H(() => { const p = window.__harbu.store.project; p.slots[4].patterns[p.scenes[p.scene].id].notes.push({ s: 12, p: 67, l: 2, v: .8 }); window.__harbu.A.patternEdited(); });
-    const notes = await H(() => { const p = window.__harbu.store.project; return p.slots[4].patterns[p.scenes[p.scene].id].notes.map(n => `${n.s}:${n.slice ?? 'p' + n.p}`).join(); });
-    ok(notes === '0:0,2:5,8:7,12:p67', `slice steps and a melodic note in the MUNCH pattern (${notes})`);
-    const played0 = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played);
-    ok(played0 >= 1, 'slice pads audition');
-    await pg.click('#play'); await pg.waitForTimeout(2300);
-    const st = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats);
-    ok(st.played - played0 >= 4 && st.missed === 0, `MUNCH plays through the transport (${st.played - played0} hits, ${st.missed} missed)`);
+    const voice = () => H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice);
+    const played = () => H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played);
+    // PLAY: keys audition with velocity; held loop keys sound until released; several keys at once
+    const key = midi => pg.locator(`[data-testid=munch-keys] .mk[data-midi="${midi}"]`);
+    const press = async (midi, id, frac = .8, type = 'pointerdown') => { const b = await key(midi).boundingBox(); await key(midi).dispatchEvent(type, { pointerId: id, clientX: b.x + b.width / 2, clientY: b.y + b.height * frac, isPrimary: id === 1, pointerType: 'touch' }); };
+    let p0 = await played();
+    await press(60, 1); await press(60, 1, .8, 'pointerup');
+    ok((await played()) === p0 + 1, 'a keyboard key plays the sample');
+    await H(() => { const A = window.__harbu.A; A.engine.silenceSustained(); A.setParam('slot-05', 'mode', 'loop'); }); await pg.waitForTimeout(150);
+    await press(60, 1, .9); await press(64, 2, .3); await press(67, 3, .6); await pg.waitForTimeout(250);
+    const heldN = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount());
+    ok(heldN === 3, `three held loop keys sound together (${heldN} voices)`);
+    for (const [m, id] of [[60, 1], [64, 2], [67, 3]]) await press(m, id, .5, 'pointerup');
+    await pg.waitForTimeout(400);
+    ok((await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount())) === 0, 'releasing the keys ends the looped notes');
+    await H(() => window.__harbu.A.setParam('slot-05', 'mode', 'oneshot'));
+    // CHOP: pads, waveform cursor, CHOP HERE, drag, delete, undo/redo, slice identity
+    await pg.click('[data-testid=munch-tab-chop]'); await pg.waitForTimeout(150);
+    p0 = await played();
+    await pg.locator('[data-testid=munch-pads] .mw-pad[data-k="3"]').dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true });
+    ok((await played()) === p0 + 1 && (await H(() => window.__harbu.store.ui.munch.sel)) === 3 && (await H(() => document.querySelector('.mw-row[data-k="3"]').classList.contains('sel'))), 'a pad plays its slice and selects it in the sequencer too');
+    const slices = () => H(() => window.__harbu.store.project.slots[4].sample.slices);
+    const wave = async () => (await pg.locator('[data-testid=munch-wave]').boundingBox());
+    let wb = await wave();
+    await pg.touchscreen.tap(wb.x + wb.width * .3, wb.y + wb.height * .45); await pg.waitForTimeout(100);
+    const cur = await H(() => window.__harbu.store.ui.munch.cursor);
+    ok(Math.abs(cur - .3) < .02, `tapping the waveform places the cursor (${cur.toFixed(3)})`);
+    // a groove on slice 5 (index 4) before chopping
+    await pg.click('[data-testid=munch-grid] .mw-row[data-k="4"] .mw-cell[data-s="0"]');
+    await pg.click('[data-testid=munch-chop-here]'); await pg.waitForTimeout(120);
+    let sl = await slices();
+    ok(sl.length === 10 && sl.some(x => Math.abs(x - cur) < 1e-3), `CHOP HERE adds a marker at the cursor (${sl.length - 1} slices)`);
+    ok((await inView(pg, '[data-testid=munch-magic-go]')) && (await inView(pg, '[data-testid=munch-bank-1]')), 'with more than eight slices a second pad bank appears and MAGIC CHOP stays on screen');
+    await pg.click('[data-testid=munch-bank-1]'); await pg.waitForTimeout(80);
+    ok(await H(() => !!document.querySelector('.mw-pad[data-k="8"]') && !!document.querySelector('.mw-row[data-k="8"]')), 'bank 9–16 shows pad 9 and its sequencer row');
+    await pg.click('[data-testid=munch-bank-0]'); await pg.waitForTimeout(80);
+    ok(await H(() => document.querySelector('[data-testid=munch-grid] .mw-row[data-k="5"] .mw-cell[data-s="0"]').getAttribute('aria-pressed') === 'true' && !window.__harbu.store.project.slots[4].patterns[window.__harbu.store.project.scenes[window.__harbu.store.project.scene].id].notes.some(n => n.slice === 4)), 'the groove follows its slice: slice 5 became slice 6, nothing plays the wrong audio');
+    // drag the marker at 0.5 (index 5 now) to 0.6 with the mouse, then delete it
+    wb = await wave();
+    const idx = sl.findIndex(x => Math.abs(x - .5) < 1e-6);
+    const hx = wb.x + 6 + (wb.width - 12) * .5, hy = wb.y + wb.height - 6 - 13;
+    const cw = await H(() => document.querySelector('[data-testid=munch-wave]').getBoundingClientRect().width);
+    const hx2 = wb.x + cw * .5, hx3 = wb.x + cw * .6;
+    void hx;
+    await pg.mouse.move(hx2, hy); await pg.mouse.down(); await pg.mouse.move(hx2 + 20, hy, { steps: 3 }); await pg.mouse.move(hx3, hy, { steps: 4 }); await pg.mouse.up(); await pg.waitForTimeout(100);
+    sl = await slices();
+    ok(sl.length === 10 && Math.abs(sl[idx] - .6) < .01, `dragging a marker handle moves the boundary (${sl[idx].toFixed(3)})`);
+    ok((await H(() => window.__harbu.store.ui.munch.marker)) === idx, 'the dragged marker is selected');
+    await pg.click('[data-testid=munch-nudge-r]');
+    ok((await slices())[idx] > sl[idx], 'the nudge button moves the selected marker (alternative to dragging)');
+    await pg.click('[data-testid=munch-delete]'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 9, 'Delete removes the selected marker');
+    await pg.click('#hUndo'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 10, 'Undo brings the marker back');
+    await pg.click('#hRedo'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 9, 'Redo removes it again');
+    await pg.click('[data-testid=munch-split]'); await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 9, 'Split, then back to eight equal slices');
+    // Fit to Beat
+    await pg.click('[data-testid=munch-fit] [data-fit="1"]'); await pg.waitForTimeout(80);
+    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /tape ×/.test(await H(() => document.querySelector('.mw-status').textContent)), 'FIT 1 bar is on and the head shows the tape speed');
+    await pg.click('[data-testid=munch-fit] [data-fit="4"]'); await pg.waitForTimeout(80);
+    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /too slow/.test(await toast()), 'a fit that is too far for tape is refused with a clear message');
+    // MAGIC CHOP: generate, it plays, Undo returns to the pattern, Keep closes
+    const patJSON = () => H(() => { const p = window.__harbu.store.project; return JSON.stringify(p.slots[4].patterns[p.scenes[p.scene].id]); });
+    const mine = await patJSON();
+    await pg.click('[data-testid=munch-magic-go]'); await pg.waitForTimeout(250);
+    const gen = await H(() => { const p = window.__harbu.store.project; return p.slots[4].patterns[p.scenes[p.scene].id].notes.filter(n => n.slice != null).length; });
+    ok(gen >= 4 && (await H(() => window.__harbu.A.transport.state)) === 'playing', `MAGIC CHOP writes a groove (${gen} hits) and plays it at once`);
+    ok(await H(() => !!document.querySelector('[data-testid=munch-magic-undo]')), 'MAGIC CHOP offers Keep and Undo');
+    await pg.click('[data-testid=munch-magic-undo]'); await pg.waitForTimeout(100);
+    ok((await patJSON()) === mine, 'Undo returns to the pattern from before MAGIC CHOP');
+    await pg.click('.mw-style:nth-child(3)'); await pg.waitForTimeout(150);
+    await pg.click('[data-testid=munch-magic-keep]'); await pg.waitForTimeout(80);
+    ok((await H(() => window.__harbu.store.ui.munch.magic)) === null && (await patJSON()) !== mine, 'a style chip regenerates; Keep keeps it');
+    await pg.waitForTimeout(500);
+    const st = await voice();
+    ok(st.stats.played > p0 + 3 && st.stats.missed === 0, `MUNCH plays through the transport (${st.stats.played - p0} hits, ${st.stats.missed} missed)`);
     await H(() => window.__harbu.A.togglePlay()); await pg.waitForTimeout(100);
     ok((await H(() => [window.__harbu.A.transport.state, window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount()].join())) === 'paused,0', 'Pause silences every MUNCH voice');
     await H(() => window.__harbu.A.stop());
-    // edits: pitch, trim, reverse are params; undo restores
+    // CHOP ↔ JAM: one pattern
+    const firstCell = await H(() => { const c = document.querySelector('[data-testid=munch-grid] .mw-cell[aria-pressed=true]'); return c ? `${c.dataset.k}:${c.dataset.s}` : ''; });
+    await pg.click('.mode[data-mode=jam]'); await pg.waitForTimeout(150);
+    const rr = await pg.evaluate(() => document.querySelector('#roll').getBoundingClientRect());
+    await pg.touchscreen.tap(rr.left + 60 + (rr.width - 60) * (13.5 / 16), rr.top + rr.height * .4); await pg.waitForTimeout(100);
+    const melodic = await H(() => { const p = window.__harbu.store.project; return p.slots[4].patterns[p.scenes[p.scene].id].notes.filter(n => n.slice == null).length; });
+    await pg.click('.mode[data-mode=sound]'); await pg.waitForTimeout(150);
+    ok(melodic === 1 && (await H(() => /1/.test(document.querySelector('.mw-melodic')?.textContent || ''))) && (await H(() => { const c = document.querySelector('[data-testid=munch-grid] .mw-cell[aria-pressed=true]'); return c ? `${c.dataset.k}:${c.dataset.s}` : ''; })) === firstCell, 'a note drawn in JAM shows up in CHOP, and CHOP still shows the same slice steps');
+    // scenes from the sequencer
+    await pg.click('.mw-scene:nth-child(3)'); await pg.waitForTimeout(100);
+    ok((await H(() => window.__harbu.store.project.scene)) === 2 && (await H(() => document.querySelectorAll('[data-testid=munch-grid] .mw-cell[aria-pressed=true]').length)) === 0, 'the sequencer switches scenes (scene C is empty)');
+    await pg.click('[data-testid=munch-grid] .mw-row[data-k="0"] .mw-cell[data-s="0"]');
+    await pg.click('.mw-scene:nth-child(2)'); await pg.waitForTimeout(100);
+    ok((await H(() => document.querySelector('[data-testid=munch-grid] .mw-cell[aria-pressed=true]') ? 'x' : '')) === 'x', 'back on scene B its groove is still there');
+    // TWIST: the deeper knobs are params; the reversed copy is prepared ahead of playback
+    await pg.click('[data-testid=munch-tab-twist]'); await pg.waitForTimeout(120);
     await H(() => { const A = window.__harbu.A; A.setParam('slot-05', 'tune', 7); A.setParam('slot-05', 'start', .2); A.toggleParam('slot-05', 'reverse'); });
     ok((await H(() => { const p = window.__harbu.store.project.slots[4].params; return [p.tune, p.start, p.reverse].join(); })) === '7,0.2,true', 'pitch, trim and reverse are stored as non-destructive params');
     ok(await H(() => !!window.__harbu.A.samples.buffer(window.__harbu.store.project.slots[4].sample.id, true)), 'reverse prepares the reversed copy ahead of playback');
-    // recording from the (fake) microphone
+    ok(await H(() => document.querySelectorAll('.mw-twist .knob').length >= 12), 'TWIST shows its knobs');
+    // recording from the (fake) microphone: replaces the sound, keeps the groove
     await pg.click('[data-testid=munch-rec]'); await pg.waitForTimeout(1200);
-    ok((await H(() => window.__harbu.A.recorder.state)) === 'recording', 'recording starts');
+    ok((await H(() => window.__harbu.A.recorder.state)) === 'recording' && (await H(() => document.querySelector('.mw-char')?.dataset.face)) === 'listen', 'recording starts and MUNCH listens');
     await pg.click('[data-testid=munch-rec]');
     await pg.waitForFunction(() => /^Recording/.test(window.__harbu.store.project.slots[4].sample.name), null, { timeout: 5000 }).catch(() => {});
     const rec = await H(() => window.__harbu.store.project.slots[4].sample);
@@ -475,33 +593,34 @@ async function rollPoint(page, step, rowOrPitch) {
     ok(await H(() => navigator.mediaDevices.enumerateDevices().then(() => window.__harbu.A.recorder.state === 'idle')), 'the microphone is released after recording');
     await pg.click('[data-testid=munch-rec]'); await pg.waitForTimeout(400); await H(() => window.__harbu.A.recordCancel());
     ok((await H(() => [window.__harbu.A.recorder.state, window.__harbu.store.project.slots[4].sample.name].join())) === `idle,${rec.name}`, 'cancelling a recording keeps the current sample');
-    // save → reopen
+    // save → reopen: sample, slices, fit and grooves are back
+    await H(() => window.__harbu.A.chopAt(.42));
     await H(() => window.__harbu.A.flushSave());
-    const ref = await H(() => window.__harbu.store.project.slots[4].sample);
+    const snap = await H(() => { const s = window.__harbu.store.project.slots[4]; return JSON.stringify({ sample: s.sample, fit: s.params.fit, pats: s.patterns }); });
     await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
-    const back = await H(() => ({ ref: window.__harbu.store.project.slots[4].sample, st: window.__harbu.A.samples.state(window.__harbu.store.project.slots[4].sample.id).status, notes: window.__harbu.store.project.slots[4].patterns['scene-02'].notes.length + window.__harbu.store.project.slots[4].patterns['scene-01'].notes.length }));
-    ok(JSON.stringify(back.ref) === JSON.stringify(ref) && back.st === 'ready' && back.notes === 4, `after reload the sample reference, slices and notes are back and the audio is ready (${back.st})`);
-    // Save a copy keeps the reference
+    const back = await H(() => { const s = window.__harbu.store.project.slots[4]; return { j: JSON.stringify({ sample: s.sample, fit: s.params.fit, pats: s.patterns }), st: window.__harbu.A.samples.state(s.sample.id).status }; });
+    ok(back.j === snap && back.st === 'ready', `after reload the sample, slices, fit and grooves are back and the audio is ready (${back.st})`);
+    const ref = await H(() => window.__harbu.store.project.slots[4].sample);
     await H(() => window.__harbu.A.duplicateProject());
-    ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id, 'Save a copy keeps the sample reference');
-    // export says it is not portable
+    ok((await H(() => JSON.stringify(window.__harbu.store.project.slots[4].sample))) === JSON.stringify(ref), 'Save a copy keeps the sample reference and slices');
     const [dl] = await Promise.all([pg.waitForEvent('download'), H(() => window.__harbu.A.exportProject())]);
     const exported = JSON.parse(await fs.readFile(await dl.path(), 'utf8'));
     ok(exported.slots[4].sample.id === ref.id && /not portable/.test(await toast()), 'Export keeps the reference and warns that the audio is not included');
-    // missing asset: reference kept, clear warning, same file brings it back
+    // missing asset: reference kept, clear warning, the feed panel says how to bring it back
     await pg.evaluate(id => window.__harbu.A.samples.store.remove(id), ref.id);
     await H(() => window.__harbu.A.flushSave());
     await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
-    await H(() => { window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); }); await pg.waitForTimeout(200);
-    ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id && (await status()) === 'missing' && /missing on this device/.test(await toast()), 'a missing sample keeps its reference, shows a warning and the bench says so');
+    await H(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await pg.waitForTimeout(200);
+    ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id && (await H(() => /missing here/.test(document.querySelector('[data-testid=munch-feed]')?.textContent || ''))) && /missing on this device/.test(await toast()), 'a missing sample keeps its reference, warns, and MUNCH asks for the same file');
     await pg.click('#play'); await pg.waitForTimeout(600); await pg.click('#stop');
-    ok(!errs.length, `no errors while a sample is missing${errs.length ? ' — ' + errs[0] : ''}`);
+    ok(!errs.length, `no errors in the MUNCH flows${errs.length ? ' — ' + errs[0] : ''}`);
     await mctx.close();
     // microphone permission denied
     const dctx = await mb.newContext({ viewport: { width: 1180, height: 820 } });
     const dp = await dctx.newPage();
     await dp.goto(URL + '?munch=dev'); await dp.click('#startBtn'); await dp.waitForTimeout(200);
-    await dp.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); window.__harbu.A.selectSlot('slot-05'); window.__harbu.A.setMode('sound'); });
+    await dp.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); });
+    await dp.waitForTimeout(150);
     await dp.click('[data-testid=munch-rec]'); await dp.waitForTimeout(300);
     ok(/denied/.test(await dp.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join())) && (await dp.evaluate(() => window.__harbu.A.recorder.state)) === 'idle', 'denied microphone permission gives a clear message');
     await dctx.close();
