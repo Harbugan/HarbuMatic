@@ -129,3 +129,63 @@ before the first generation).
 
 MUNCH remains behind `?munch=dev` in this PR. Flipping `status: 'ready'` is a one-line change, deliberately left for
 the release decision after physical iPad testing (Phase 5 also brings `.hbn` so samples can travel with songs).
+
+## 7. Implementation status (this PR)
+
+Implemented as planned above. Deviations and additions:
+
+- **Zoom** uses visible ± buttons beside the display (1× … 32×) plus drag-to-pan when zoomed; there is no pinch.
+- **Choke** ("Chops: Overlap / Cut" in TWIST) was added because overlapping one-shot slices smear chopped breaks. It
+  defaults to off, so existing patterns play as before.
+- **Sequencer paging**: 16 steps per page when every cell can stay at least 38 px wide, otherwise 8 (≈1024 px
+  landscape). All pattern lengths (1, 2, 4 bars) are editable.
+- The **second pad bank** (slices 9–16) is a slim switch beside the pads; the sequencer shows the same bank.
+- Slice notes show `S1 … S16` in the JAM piano roll; the CHOP sequencer shows how many melodic notes the scene has
+  and links to JAM.
+
+## 8. Known limitations
+
+- Automated tests run in headless Chromium. Touch feel, iPad Safari audio latency, MediaRecorder/codec support,
+  memory pressure and reduced-motion behaviour on iPadOS are **not** verified on a physical device.
+- Tape Fit is tape-style only (speed and pitch together); ×0.5 … ×2 is the usable range. No pitch-preserving stretch,
+  no BPM detection, no transient detection (out of scope for v0.6).
+- MAGIC CHOP classifies slices by position, not by content. A break whose hits do not sit on the grid (unfitted,
+  swung or trimmed oddly) gives less convincing roles; Straight then plays it as recorded.
+- Keyboard: one key per finger, no glissando by sliding. Velocity comes from where the key is pressed (higher =
+  softer), not from force.
+- At ≈700 px tall landscape (e.g. 1024×700) the CHOP layer scrolls inside the workspace instead of shrinking touch
+  targets; portrait scrolls by design.
+- Samples still live only in this browser (IndexedDB). JSON export does not include audio; `.hbn` is Phase 5.
+- MUNCH remains behind `?munch=dev`.
+
+## 9. Physical iPad test (11" and 13", Safari, landscape first)
+
+Open `https://<preview-host>/?munch=dev`, tap the start screen.
+
+1. **Entry.** Tap the MUNCH card: SOUND opens with RECORD and IMPORT visible, no scrolling. Tap JAM, then BOP, then
+   MUNCH again: JAM stays (your choice is respected). Tap SOUND: MUNCH's workspace is back.
+2. **Feed.** Import a short drum break (WAV, MP3, M4A from Files). MUNCH chomps and PLAY opens. Record 3 s with the
+   mic; deny the mic once in Settings and check the message.
+3. **Fit.** Tap FIT 2 (or the bar count of your loop). The head shows the tape speed; play it with the transport and
+   check it loops in time. Change BPM: it re-fits. Tap 4 on a short sound: refused with a message.
+4. **Chop.** In CHOP tap the waveform (cursor + you hear it), CHOP HERE, drag a round handle, nudge it with ◀ ▶,
+   delete it, Undo/Redo in the header. Zoom in and pan. Check the page never scrolls while editing.
+5. **Pads.** Tap all eight pads fast with several fingers: immediate, no clicks, the pad and the sequencer row light up.
+6. **Keys.** In PLAY play chords; press low on a key (loud) and high (soft). Switch to Loop, hold keys, release.
+7. **MAGIC CHOP.** Tap it: a groove plays at once. Try each style, Again, Undo, Keep. Edit single steps (Draw,
+   Accent, Lock); lock a step and regenerate: it stays.
+8. **JAM.** Open JAM: the slice notes are there (S1…). Draw a melodic note; back in CHOP the ♪ counter shows it.
+9. **Scenes.** Switch scenes from the sequencer letters; make a groove in another scene; play song mode in ARRANGE.
+10. **Persist.** Close the tab, reopen with `?munch=dev`: sample, slices, fit and grooves are back. Save a copy.
+11. **Regression.** Open without `?munch=dev`: four cards, everything as before.
+12. **Comfort.** Turn on Reduce Motion in iPadOS settings: MUNCH changes faces but does not bounce.
+
+## 10. Phase 5 readiness
+
+- **`.hbn` packaging:** ready. Everything MUNCH needs is addressed by content-hash id (`sampleRefsOf`, `getBytes`),
+  slice edits and fit are plain params/boundaries in the v6 JSON, and unknown keys survive validation.
+- **WAV export:** the offline renderer in `tools/baseline-compare.mjs` already renders MUNCH through the real engine;
+  an export needs the bank to decode into an `OfflineAudioContext` (attach a second context) and the fit rate reads the
+  project BPM, so it renders identically.
+- **Release:** flip MUNCH to `status: 'ready'` only after the physical iPad test above, ideally together with `.hbn`
+  so samples can travel with songs.

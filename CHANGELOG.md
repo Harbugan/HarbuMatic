@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — v0.6 Phase 4: MUNCH, the playful instrument
+
+MUNCH becomes an instrument instead of a test bench: feed it a sound, fit it to the beat, chop it, play it on keys and pads and let MAGIC CHOP make a groove. Still a **dev preview** (`?munch=dev`); without the flag nothing changes for players. The version stays 0.5.1. Design record: `docs/MUNCH-PHASE4.md`.
+
+### Added
+- **MUNCH workspace** (`src/views/munch.js`, `src/views/munch-wave.js`): selecting MUNCH opens its SOUND workspace (unless the player chose another mode while on MUNCH); full width, the side panel becomes a drawer, the bottom bar steps aside.
+  - Empty state: MUNCH asks to be fed, big RECORD and IMPORT (also when the sample is missing on this device).
+  - Head: reacting character, sample status with tape speed, PLAY / CHOP / TWIST, **FIT TO BEAT** (Orig, ½, 1, 2, 4 bars).
+  - Waveform display from real peaks: cursor, slice markers with big handles, trim shading, beat ruler, zoom.
+  - **PLAY**: two-octave keyboard (velocity from where you press, polyphonic, held notes for gate/loop), root, octave, play mode.
+  - **CHOP**: CHOP HERE, split, nudge, delete, eight equal; eight jelly pads plus a second bank up to 16; **MAGIC CHOP** with Again / Keep / Undo and five styles; a paged slice sequencer (Draw / Accent / Lock, scenes, bars) on the same pattern JAM edits.
+  - **TWIST**: Region, Pitch (root, tune, fit fine), Play (mode, attack, release, chops overlap/cut), Space & colour, shared Groove FX.
+- **Slice editing** (`src/core/samples.js`): insert / split / remove boundaries; every structural edit remaps slice notes in all scenes and snapshots to the slice that holds their attack (one undo step). Moving a boundary keeps identity.
+- **Tape Fit**: params `fit` (bars) and `fitFine` (±12 %); the trimmed region is fitted to bars at the current BPM, computed at trigger time, clamped to ×0.5…×2 with a clear refusal when out of range. Root, transposition, tune and fit stay separate.
+- **MAGIC CHOP** (`src/music/magicchop.js`): deterministic grooves from slices classified by metrical role; Straight (as recorded), Syncopated, Half-time, Playful, Chaos; repetition with phrase-end fills; locks and melodic notes are kept.
+- **Audio**: fit rate in the MUNCH voice, `choke` param (a slice cuts the slice still sounding), held notes (`engine.noteOn/noteOff`), explicit audition regions, cached waveform peaks (`src/samples/peaks.js`).
+- Slice notes show their number in the JAM piano roll.
+
+### Changed
+- The Phase 3 test bench (`src/views/munch-dev.js`) is removed; its controls live in the workspace.
+- For MUNCH the Lab hides its generators, vibe and chaos and points to MAGIC CHOP; Key & chords and Snapshots stay. The other instruments are unchanged.
+- Validation keeps unknown primitive keys on MUNCH params and sample references (data from a later build survives a round trip). Schema stays v6; new params default to Phase 3 behaviour.
+
 ## Unreleased — v0.6 Phase 3: MUNCH sample engine
 
 MUNCH can import, record, store and play samples, melodically and as eight slices, through the normal transport. It is a **dev preview**: playable only with `?munch=dev`. Without the flag nothing changes for players. The version stays 0.5.1.

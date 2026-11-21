@@ -55,7 +55,8 @@ MUNCH has a working sample engine. See **`docs/SAMPLES.md`** for the data model,
 - `src/core/samples.js` (pure): `slot.sample` reference (content-hash id, metadata, slice boundaries), slice and trim regions, pitch → playback rate. Notes may carry `slice: k`; without it they are melodic.
 - `src/samples/`: IndexedDB store (original bytes + metadata), decoded-buffer bank (bounded LRU, reversed copies, load states) and the MediaRecorder recorder. The scheduler never touches them.
 - `createMunchVoice` in `src/audio/voices.js` asks the bank for a ready buffer when a hit is due. `createEngine(getProject, { samples })` hands the bank to voices and attaches the AudioContext for decoding. The scheduler only forwards a note's `slice`.
-- MUNCH is a **preview** instrument: playable only with `?munch=dev` (`setPreviewInstruments`). Phase 4 sets it to `ready` together with the PLAY/CHOP/TWIST UI.
+- MUNCH is a **preview** instrument: playable only with `?munch=dev` (`setPreviewInstruments`). Phase 4 ships the PLAY/CHOP/TWIST UI but keeps the preview flag; flipping `status: 'ready'` is left to the release decision (see `docs/MUNCH-PHASE4.md`).
+- Phase 4 adds slice editing with deterministic note remapping, Tape Fit (`fit`/`fitFine`), `choke`, MAGIC CHOP (`src/music/magicchop.js`), held keyboard notes and waveform peaks. See `docs/MUNCH-PHASE4.md`.
 
 ## Project data (schema v6)
 
@@ -128,7 +129,7 @@ All generators take a **shared context** built by `buildContext(project, scene)`
 
 - **Standard JAM** shows Draw and Erase, octave buttons, Clear and Deep edit. You can add and remove notes by tapping, and move or resize them by dragging.
 - **Deep edit** (the expanded JAM) uses the same sequencer and state. It adds Velocity, Chance, Slide, Lock, bar length, ×2, zoom, the scale fold ("In key") and the velocity lane. Cards shrink to cat, name and M/S, the bottom bar hides, and the Lab becomes a drawer.
-- **MUNCH test bench** (`?munch=dev`, temporary): MUNCH becomes the fifth playable card. In SOUND it has Pitch, Trim and Play knobs, plus a test bench (`src/views/munch-dev.js`) for import, record, eight slice pads and a slice step grid. Sound shapers and Lab generators are shown as unavailable for MUNCH.
+- **MUNCH workspace** (`?munch=dev`): MUNCH is the fifth playable card. Selecting it opens SOUND (unless the player chose another mode while on MUNCH; when MUNCH opened SOUND by itself, selecting another instrument returns to the previous mode). SOUND then shows `src/views/munch.js` instead of the generic knobs: full width (`.device.munch`: the side panel is a drawer, the bottom bar is hidden), an empty state with RECORD/IMPORT, and PLAY / CHOP / TWIST around a waveform display (`src/views/munch-wave.js`). The CHOP sequencer edits the same pattern as JAM. The Lab shows MUNCH-specific shortcuts instead of disabled generators.
 - **Dev preview** `?preview=five` (read once in `main.js`, `store.ui.previewPlanned`) adds an inert placeholder card for the planned MUNCH slot so the five-card layout can be checked before MUNCH is playable. The card has no actions, cannot be selected or auditioned, and is ignored by keyboard shortcuts, the LCD and audio. Without the parameter the UI shows the four playable cards only.
 - **Layout** responds to available space:
   - Landscape tablets get a side Lab panel.
