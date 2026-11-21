@@ -29,7 +29,8 @@ export function renderLab() {
   uni.onclick = () => uniReact(.3);
   host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${SCENE_LETTERS[p.scene]}`))));
 
-  const gen = m.capabilities.generate; // MUNCH has no generator: its buttons are shown disabled, never as no-ops
+  if (m.capabilities.samples) { renderSamplerLab(host, p); host.scrollTop = scroll; return; }
+  const gen = m.capabilities.generate;
   const act = (k, label, kind, cls = '', sub) => {
     const b = h('button', { type: 'button', class: 'lbtn ' + cls, title: gen ? label : `${label} is not available for ${m.name}`, disabled: !gen }, h('span', { class: 'lbtn-i', html: ico(k) }), h('span', { class: 'lbtn-t' }, label, sub ? h('small', {}, gen ? sub : 'not for ' + m.name) : null));
     b.onclick = () => A.runTransform(kind);
@@ -60,6 +61,27 @@ export function renderLab() {
     Object.keys(L.targets).forEach(k => { const b = h('button', { type: 'button', class: 'tg' + (L.targets[k] ? ' on' : ''), 'aria-pressed': String(L.targets[k]) }, k); b.onclick = () => { L.targets[k] = !L.targets[k]; A.save(); renderLab(); }; tg.append(b); });
     body.append(tg);
   }));
+  keyAndSnaps(host, p);
+  host.scrollTop = scroll;
+}
+
+/**
+ * MUNCH has no Lab generators: instead of five disabled buttons it gets a pointer to its own creative tools
+ * (MAGIC CHOP lives in CHOP). Key & chords and Snapshots are song-wide, so they stay.
+ */
+function renderSamplerLab(host, p) {
+  const m = typeOf();
+  const go = (label, sub, icon, tab) => {
+    const b = h('button', { type: 'button', class: 'lbtn ' + (tab === 'chop' ? 'big' : ''), 'data-testid': `lab-munch-${tab}` }, h('span', { class: 'lbtn-i', html: ico(icon) }), h('span', { class: 'lbtn-t' }, label, h('small', {}, sub)));
+    b.onclick = () => { store.ui.munch.tab = tab; A.setDrawer(false); A.setMode('sound'); };
+    return b;
+  };
+  host.append(h('div', { class: 'lab-munch' }, h('p', { class: 'mini-hint' }, `${m.name} makes its own happy accidents.`),
+    h('div', { class: 'lab-grid' }, go('Magic chop', 'grooves from your slices', 'spark', 'chop'), go('Play', 'keys', 'play', 'play'), go('Twist', 'shape it', 'mutate', 'twist'))));
+  keyAndSnaps(host, p);
+}
+
+function keyAndSnaps(host, p) {
   host.append(...section('key', `Key & chords · ${NOTE[p.key]} ${p.scale}`, body => {
     const keySel = h('select', { 'aria-label': 'Key' }, NOTE.map((n, i) => h('option', { value: i, selected: i === p.key }, n)));
     const scSel = h('select', { 'aria-label': 'Scale' }, Object.keys(SCALES).map(k => h('option', { value: k, selected: k === p.scale }, k)));
@@ -82,7 +104,6 @@ export function renderLab() {
     });
     body.append(sn);
   }));
-  host.scrollTop = scroll;
 }
 
 export function renderScenes() {

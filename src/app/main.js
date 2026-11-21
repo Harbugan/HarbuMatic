@@ -1,6 +1,6 @@
 // Bootstrap: build the UI, wire events to renders, run the animation loop.
 
-import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P } from './store.js';
+import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P, isSamplerSlot } from './store.js';
 import * as A from './actions.js';
 import { APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
 import { getInstrumentType, setPreviewInstruments } from '../core/instruments.js';
@@ -15,6 +15,8 @@ import { renderJamBar, updateLeds } from '../views/jam.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs } from '../views/sound.js';
 import { renderArrange, markPlayingBlock } from '../views/arrange.js';
+import { refreshMunchSel, refreshMunchParams, munchHits, munchStep, munchReact } from '../views/munch.js';
+import { waveDragging } from '../views/munch-wave.js';
 import { renderSongButton, openMenu, closeMenu, bindFileInput, newSongDialog } from '../views/menu.js';
 
 /* ---------- layout ---------- */
@@ -26,6 +28,8 @@ function applyLayout() {
   // only Deep edit, a JAM sub-mode the player opts into, compacts the strip (BUG-004)
   d.classList.toggle('compact', u.expanded && u.mode === 'jam');
   d.classList.toggle('drawer-open', u.drawer);
+  // MUNCH workspace: full width, the side panel becomes a drawer and the bottom bar steps aside
+  d.classList.toggle('munch', u.mode === 'sound' && isSamplerSlot());
   $('#scrim').classList.toggle('show', u.drawer || dialogOpen() || $('#menu').classList.contains('open'));
   $$('.mode').forEach(b => { const on = b.dataset.mode === u.mode; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
   $('#viewJam').hidden = u.mode !== 'jam';
@@ -55,27 +59,29 @@ function wire() {
   on('layout', applyLayout);
   on('drawer', applyLayout);
   on('tool', () => { renderJamBar(); Seq.render(); });
-  on('selection', () => { setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') renderSound(); });
+  on('selection', () => { setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') applyLayout(); });
   on('scene', () => { Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderScenes(); renderLab(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
-  on('params', id => { if (id === store.ui.sel) { syncShapers(); if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
+  on('params', id => { if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
-  // MUNCH test bench (dev preview): sample state, recorder and slice steps live in the SOUND view
-  const benchOpen = () => store.ui.mode === 'sound' && typeOf().capabilities.samples;
-  on('samples', () => { if (benchOpen()) renderSound(); });
-  on('recorder', () => { if (benchOpen()) renderSound(); });
-  on('pattern', () => { if (benchOpen()) renderSound(); });
-  on('tempo', () => { renderTransport(); if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
+  // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
+  // is being dragged only the display redraws, so the gesture is never interrupted by a rebuild.
+  const munchUpdate = () => { if (!munchOpen()) return; if (waveDragging()) refreshMunchSel(); else renderSound(); };
+  ['samples', 'recorder', 'pattern', 'scene'].forEach(evt => on(evt, munchUpdate));
+  on('munchsel', () => { if (munchOpen()) refreshMunchSel(); });
+  on('munch', ({ kind }) => { if (munchOpen()) munchReact(kind); });
+  on('tempo', () => { renderTransport(); if (munchOpen()) munchUpdate(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
   on('lab', renderLab);
   on('arrangement', () => { if (store.ui.mode === 'arrange') renderArrange(); renderScenes(); });
   on('transport', () => {
     renderTransport(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange();
-    if (!A.transport.playing) { setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); }
+    if (!A.transport.playing) { setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen()) munchStep(-1); }
   });
   on('transformed', ({ intensity, info }) => { uniReact(intensity); if (info) toast(info); if (!A.transport.playing) auditionPattern(); });
   on('evolved', () => { /* UI catches up in the next frame via 'pattern' */ });
   on('library', () => {});
 }
+const munchOpen = () => store.ui.mode === 'sound' && isSamplerSlot();
 function renderBottomFx() { $$('#fxbar .fxbtn').forEach(b => { const on = !!P(store.ui.sel)[b.dataset.fx + 'On']; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); }
 
 let audT = [];
@@ -97,7 +103,8 @@ function frame() {
     while (tr.queue.length && tr.queue[0].time <= now) {
       const ev = tr.queue.shift();
       Seq.playhead.step = ev.step; Seq.playhead.time = ev.time; Seq.playhead.scene = ev.scene;
-      for (const t in ev.hits) catReact(t, ev.hits[t]);
+      for (const t in ev.hits) { catReact(t, ev.hits[t]); if (t === store.ui.sel && munchOpen()) munchHits(ev.hits[t]); }
+      if (munchOpen() && ev.scene === store.project.scene) munchStep(ev.step);
       if (ev.scene !== lastScene) { lastScene = ev.scene; changedScene = true; }
       const bar = Math.floor(ev.step / 16);
       if (ev.step % 16 === 0 && bar !== lastBar) { lastBar = bar; const c = drumCat(); if (c && store.ui.motion) c.el.classList.toggle('joy', bar % 4 === 3); }
