@@ -33,6 +33,21 @@ export const store = {
     arrSel: null,           // selected arrangement block id
     libSel: null,           // selected scene in the arrange library
     previewPlanned: false,  // dev only (?preview=five): show planned instruments as inert layout placeholders
+    // MUNCH workspace (SOUND view of a sampler slot): view state only, never saved in the song
+    munch: {
+      tab: 'play',          // play | chop | twist
+      sel: 0,               // selected slice (shared by waveform, pads and sequencer)
+      marker: null,         // selected boundary index (for delete / nudge), or null
+      cursor: 0,            // editor cursor, fraction of the whole sample
+      zoom: 1, view: 0,     // waveform zoom and left edge (fraction)
+      bank: 0, page: 0,     // pad bank (slices 1–8 / 9–16) and sequencer page (16 steps)
+      octave: 0,            // keyboard octave shift
+      tool: 'draw',         // CHOP sequencer tool: draw | accent | lock
+      style: 'straight',    // MAGIC CHOP style
+      magic: null,          // pending MAGIC CHOP result { slot, scene, before, after, style, seed }
+    },
+    // MUNCH opens SOUND when selected unless the player left it on purpose (see selectSlot / setMode in actions.js)
+    munchNav: { away: false, autoFrom: null },
   },
 };
 export const slot = (id = store.ui.sel) => slotById(store.project, id);
@@ -56,3 +71,5 @@ export function ensureSelection() {
   const vis = visibleSlots();
   if (vis.length && !vis.some(s => s.id === store.ui.sel)) store.ui.sel = vis[0].id;
 }
+/** the selected slot is a sampler (MUNCH): SOUND shows its workspace instead of the generic knobs */
+export const isSamplerSlot = (id = store.ui.sel) => { const s = slot(id); return !!(s && typeOfSlot(s).capabilities.samples); };
