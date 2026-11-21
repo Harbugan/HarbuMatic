@@ -12,6 +12,7 @@
 //   about every change.
 
 import { createSampleStore, SampleError } from './store.js';
+import { computePeaks } from './peaks.js';
 
 export const DEFAULT_BUDGET = 96 * 1024 * 1024;
 const bytesOf = b => (b ? b.length * b.numberOfChannels * 4 : 0);
@@ -35,7 +36,7 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
   const listeners = new Set();
   let clock = 0;
   const waitCtx = [];
-  const entry = id => { if (!entries.has(id)) entries.set(id, { status: 'idle', error: null, buffer: null, reversed: null, promise: null, used: 0 }); return entries.get(id); };
+  const entry = id => { if (!entries.has(id)) entries.set(id, { status: 'idle', error: null, buffer: null, reversed: null, peaks: null, promise: null, used: 0 }); return entries.get(id); };
   const notify = id => listeners.forEach(fn => { try { fn(id, bank.state(id)); } catch (e) { /* listener error */ } });
 
   function evict() {
@@ -75,6 +76,12 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
       if (!e.reversed) { e.reversed = reverseOf(e.buffer); evict(); } // normally built ahead by prepare()
       return e.reversed;
     },
+    /** waveform peaks of the forward buffer (computed once and cached with the buffer), or null until ready */
+    peaks(id) {
+      const e = entries.get(id); if (!e || e.status !== 'ready' || !e.buffer) return null;
+      if (!e.peaks) e.peaks = computePeaks(e.buffer);
+      return e.peaks;
+    },
     /** build the reversed copy ahead of playback (no-op until the sample is ready) */
     prepare(id, reverse = false) { if (reverse) bank.buffer(id, true); },
     /** load + decode one sample from the store; resolves with the buffer, or null (state says why). Concurrent calls share one load. */
@@ -88,7 +95,7 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
           const bytes = await store.getBytes(id);
           const buf = await decodeBytes(bytes);
           if (!buf || !buf.length) throw new SampleError('corrupt', 'The stored sample could not be decoded.');
-          Object.assign(e, { status: 'ready', buffer: buf, reversed: null, error: null, used: ++clock });
+          Object.assign(e, { status: 'ready', buffer: buf, reversed: null, peaks: null, error: null, used: ++clock });
           evict();
           return buf;
         } catch (err) {
@@ -103,7 +110,7 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
     async importBytes(file) {
       const r = await store.importBytes(file, decoder ? decodeBytes : null); // no AudioContext yet → SampleError('not-ready')
       const e = entry(r.meta.id);
-      Object.assign(e, { status: 'ready', buffer: r.buffer, reversed: null, error: null, used: ++clock, promise: null });
+      Object.assign(e, { status: 'ready', buffer: r.buffer, reversed: null, peaks: null, error: null, used: ++clock, promise: null });
       evict(); notify(r.meta.id);
       return r;
     },

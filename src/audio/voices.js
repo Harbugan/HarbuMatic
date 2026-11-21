@@ -20,7 +20,7 @@
 // bank (src/samples/bank.js) for an already decoded AudioBuffer when a hit is due, and stays silent when the
 // buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
 
-import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones } from '../core/samples.js';
+import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitRate } from '../core/samples.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -186,37 +186,42 @@ function createFuzzVoice({ ctx, shared, channel, params }) {
 
 /* ---------- MUNCH: sample playback ---------- */
 // One AudioBufferSourceNode + one gain envelope per hit. A note plays a region of the decoded sample (the trimmed
-// region for melodic notes, slice k for slice notes), mirrored inside the reversed copy when `reverse` is on.
-// Pitch is playback rate, so transposing also changes the length (no time-stretch in v0.6).
+// region for melodic notes, slice k for slice notes, or an explicit region for editor auditions), mirrored inside the
+// reversed copy when `reverse` is on.
+// Playback rate = pitch (transpose + tune, see noteSemitones) × tape fit (fitRate: the trimmed region fitted to bars at
+// the current BPM, computed at trigger time). No time-stretch in v0.6: speed and pitch move together.
 //   oneshot  plays the whole region, whatever the note length
 //   gate     stops at the note end (with the release) or at the region end, whichever comes first
 //   loop     loops the region while the note is held, then releases
+//   choke    (param) a slice note cuts any slice that is still sounding — one chop at a time
 // The envelope always reaches 0 at the region end, so a slice never runs into its neighbour. Every source is
 // stopped at a known time and disconnected in `onended`; the pool is bounded (oldest voice is stolen).
+// trigger() returns a handle; release(handle, at) ends a held gate/loop note early (keyboard key up).
 export const MUNCH_POLY = 8;
 const EDGE = .004; // fade at a region boundary (s): no click, no bleed into the next slice
 
-function createMunchVoice({ ctx, shared, channel, params, sample }) {
-  const active = new Set(); // { src, env, end }
-  const stats = { played: 0, missed: 0, stolen: 0 };
+function createMunchVoice({ ctx, shared, channel, params, sample, tempo }) {
+  const active = new Set(); // { src, env, end, slice }
+  const stats = { played: 0, missed: 0, stolen: 0, choked: 0 };
   function fadeOut(v, at) {
     try { v.env.gain.cancelScheduledValues(at); v.env.gain.setTargetAtTime(0, at, .004); v.src.stop(at + .03); } catch (e) { /* already gone */ }
   }
   function trigger(t, hit, dest) {
     const ref = sample && sample(), bank = shared.samples, p = params();
-    if (!ref || !bank) return;
+    if (!ref || !bank) return null;
     const rev = !!p.reverse, buf = bank.buffer(ref.id, rev);
-    if (!buf) { stats.missed++; return; } // missing, not decoded yet or failed: silent, the UI reports why
-    const region = hit.slice != null ? sliceRegion(ref.slices, hit.slice) : trimRegion(p);
-    if (!region) return; // a slice the current sample does not have
+    if (!buf) { stats.missed++; return null; } // missing, not decoded yet or failed: silent, the UI reports why
+    const region = Array.isArray(hit.region) ? hit.region : hit.slice != null ? sliceRegion(ref.slices, hit.slice) : trimRegion(p);
+    if (!region || !(region[1] > region[0])) return null; // a slice the current sample does not have
     const { offset, length } = bufferRegion(region, buf.duration, rev);
-    const rate = rateForSemitones(noteSemitones(hit, p)), natural = length / rate;
-    if (!(natural > 0)) return;
+    const rate = rateForSemitones(noteSemitones(hit, p)) * fitRate(p, buf.duration, tempo ? tempo() : 120), natural = length / rate;
+    if (!(natural > 0)) return null;
     const atk = Math.max(.001, p.attack), rel = Math.max(.005, p.release), noteOff = t + Math.max(.01, hit.dur || 0);
     let relAt, end;
     if (p.mode === 'loop') { relAt = noteOff; end = noteOff + rel; }
     else if (p.mode === 'gate' && noteOff + rel < t + natural) { relAt = noteOff; end = noteOff + rel; }
     else { end = t + natural; relAt = Math.max(t, end - EDGE); }
+    if (p.choke && hit.slice != null) for (const old of [...active]) if (old.slice) { active.delete(old); fadeOut(old, Math.max(t, ctx.currentTime)); stats.choked++; }
     while (active.size >= MUNCH_POLY) { const old = active.values().next().value; active.delete(old); fadeOut(old, Math.max(t, ctx.currentTime)); stats.stolen++; }
     const vel = Math.max(0, Math.min(1, hit.v ?? .8));
     const src = ctx.createBufferSource(), env = ctx.createGain();
@@ -228,16 +233,24 @@ function createMunchVoice({ ctx, shared, channel, params, sample }) {
     env.gain.setValueAtTime(vel, Math.max(peakAt, relAt));
     env.gain.linearRampToValueAtTime(0, end);
     src.connect(env); env.connect(dest);
-    const v = { src, env, end };
+    const v = { src, env, end, slice: hit.slice != null, mode: p.mode, vel };
     src.onended = () => { active.delete(v); try { src.disconnect(); env.disconnect(); } catch (e) { /* gone */ } };
     src.start(t, offset);
     src.stop(end + .002);
     active.add(v); stats.played++;
+    return v;
+  }
+  /** end a held note (gate/loop) at `at` with the release time; one-shots play on */
+  function release(v, at = ctx.currentTime) {
+    if (!v || !active.has(v) || v.mode === 'oneshot') return false;
+    const rel = Math.max(.005, params().release), end = Math.min(v.end, Math.max(at, ctx.currentTime) + rel);
+    try { v.env.gain.cancelScheduledValues(at); v.env.gain.setValueAtTime(v.vel, at); v.env.gain.linearRampToValueAtTime(0, end); v.src.stop(end + .002); v.end = end; } catch (e) { /* gone */ }
+    return true;
   }
   return {
     input: channel.bus,
     apply(p) { const ref = sample && sample(); if (p.reverse && ref && shared.samples) shared.samples.prepare(ref.id, true); }, // build the reversed copy now, never in a scheduler callback
-    trigger,
+    trigger, release,
     silence(now) { for (const v of active) fadeOut(v, now); active.clear(); },
     dispose() { for (const v of active) fadeOut(v, ctx.currentTime); active.clear(); },
     /** for tests and the dev panel */
