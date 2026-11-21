@@ -6,6 +6,7 @@ import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
 import { Knob, Seg } from '../ui/controls.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
+import { renderMunchDev } from './munch-dev.js';
 
 let shaperKnobs = {};
 export function renderBottom() {
@@ -13,7 +14,8 @@ export function renderBottom() {
   const host = $('#shapers'); host.innerHTML = '';
   host.append(h('span', { class: 'shapers-title' }, h('b', {}, 'Sound shapers'), h('small', {}, def.name)));
   shaperKnobs = {};
-  MACRO_KEYS.forEach(k => {
+  if (!def.capabilities.macros) host.append(h('span', { class: 'mini-hint' }, `${def.name} has no sound shapers yet: shape it in SOUND`));
+  else MACRO_KEYS.forEach(k => {
     const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${hints[k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
     shaperKnobs[k] = kn; host.append(kn.el);
   });
@@ -29,6 +31,7 @@ export function syncShapers() { const m = slot().macros; Object.entries(shaperKn
 
 const pct = v => Math.round(v * 100) + '%';
 const sec = v => (v < 1 ? Math.round(v * 1000) + 'ms' : v.toFixed(2) + 's');
+const NOTE_NAME = m => ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][m % 12] + (Math.floor(m / 12) - 1);
 const panFmt = v => (Math.abs(v) < .01 ? 'C' : (v < 0 ? 'L' : 'R') + Math.round(Math.abs(v) * 100));
 // deep parameters and presets per instrument type (registry id)
 const SOUNDDEF = {
@@ -42,6 +45,11 @@ const SOUNDDEF = {
     ['Filter', [{ k: 'cutoff', l: 'Cutoff' }, { k: 'res', l: 'Reso' }, { k: 'fenv', l: 'Env amt' }]],
     ['Envelope', [{ k: 'attack', l: 'Attack', min: .002, max: 2, fmt: sec }, { k: 'decay', l: 'Decay', min: .02, max: 2, fmt: sec }, { k: 'sustain', l: 'Sustain' }, { k: 'release', l: 'Release', min: .02, max: 3, fmt: sec }]],
     ['LFO → filter', [{ k: 'lfoRate', l: 'Rate', min: .1, max: 12, fmt: v => v.toFixed(1) + 'Hz' }, { k: 'lfoDepth', l: 'Depth' }]],
+  ],
+  munch: [
+    ['Pitch', [{ k: 'root', l: 'Root', min: 24, max: 96, step: 1, fmt: v => NOTE_NAME(v) }, { k: 'tune', l: 'Tune', min: -24, max: 24, step: 1, fmt: v => (v > 0 ? '+' : '') + v + ' st' }]],
+    ['Trim', [{ k: 'start', l: 'Start' }, { k: 'end', l: 'End' }, { k: 'reverse', seg: [[false, 'Fwd'], [true, 'Rev']], label: 'Dir' }]],
+    ['Play', [{ k: 'mode', seg: [['oneshot', 'One-shot'], ['gate', 'Gate'], ['loop', 'Loop']], label: 'Mode' }, { k: 'attack', l: 'Attack', min: 0, max: 2, fmt: sec }, { k: 'release', l: 'Release', min: .005, max: 4, fmt: sec }]],
   ],
   fuzz: [
     ['Texture', [{ k: 'tone', l: 'Tone' }, { k: 'noise', l: 'Noise' }, { k: 'crush', l: 'Crush' }, { k: 'shimmer', l: 'Shimmer' }]],
@@ -69,7 +77,7 @@ export function renderSound() {
   [...(SOUNDDEF[type] || []), ...COMMON].forEach(([title, defs]) => {
     const row = h('div', { class: 'row' });
     defs.forEach(d => {
-      if (d.seg) { row.append(h('div', { class: 'wave-pick' }, Seg(d.seg, p[d.k], v => { A.checkpoint(); p[d.k] = v; A.engine.applyParams(sel); A.save(); hear(); }), h('div', { class: 'klbl' }, d.k.replace('wave', 'osc ').toUpperCase()))); return; }
+      if (d.seg) { row.append(h('div', { class: 'wave-pick' }, Seg(d.seg, p[d.k], v => { A.checkpoint(); p[d.k] = v; A.engine.applyParams(sel); A.save(); hear(); }), h('div', { class: 'klbl' }, (d.label || d.k.replace('wave', 'osc ')).toUpperCase()))); return; }
       const kn = Knob({ label: d.l, min: d.min ?? 0, max: d.max ?? 1, step: d.step || 0, value: p[d.k], def: m.defaultParams[d.k], fmt: d.fmt || pct, onChange: v => A.setParam(sel, d.k, v), onEnd: A.sealHistory });
       kn.k = d.k; soundKnobs.push(kn); row.append(kn.el);
     });
@@ -81,6 +89,7 @@ export function renderSound() {
   soundKnobs.push(Object.assign(swing, { k: '__swing' }));
   frow.append(swing.el, gk('Echo fdbk', 'fb', 0, .85), gk('Echo tone', 'dtone', 0, 1), gk('Room level', 'rev', 0, 1.2), gk('Master', 'master', 0, 1));
   groups.append(h('div', { class: 'sgroup wide' }, h('h4', {}, 'Groove + shared FX · all instruments'), frow));
+  if (m.capabilities.samples) renderMunchDev(groups);
   host.append(groups);
   host.scrollTop = scroll;
 }

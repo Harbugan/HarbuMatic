@@ -27,8 +27,12 @@ function makeIR(ctx, sec) {
   return b;
 }
 
-export function createEngine(getProject) {
-  const E = { ctx: null, ch: new Map(), gates: null, shared: null, onInterrupt: null };
+/**
+ * @param getProject  () → current project
+ * @param opts.samples  sample bank (src/samples/bank.js) handed to sampler voices; decoding stays in the bank
+ */
+export function createEngine(getProject, { samples = null } = {}) {
+  const E = { ctx: null, ch: new Map(), gates: null, shared: null, onInterrupt: null, samples };
   const slotParams = id => slotById(getProject(), id).params;
   const stepDur = () => 60 / getProject().bpm / 4;
   const audible = id => { const pr = getProject(), s = slotById(pr, id); return !!s && slotAudible(pr, s); };
@@ -53,7 +57,8 @@ export function createEngine(getProject) {
     E.delay.delayTime.value = stepDur() * 3;
     const noise = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const nd = noise.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-    E.shared = { noise, voices: { count: 0 } };
+    E.shared = { noise, voices: { count: 0 }, samples: E.samples };
+    if (E.samples && E.samples.attach) E.samples.attach(ctx); // the bank decodes into this context from now on
     syncSlots();
     playableSlots(getProject()).forEach(s => applyParams(s.id)); applyGlobalFx();
     ctx.onstatechange = () => { if (ctx.state !== 'running' && E.onInterrupt) E.onInterrupt(ctx.state); };
@@ -68,7 +73,7 @@ export function createEngine(getProject) {
     ch.bus.connect(ch.color); ch.color.connect(ch.drive); ch.drive.connect(ch.out); ch.out.connect(ch.pan); ch.pan.connect(E.master);
     ch.out.connect(ch.sd); ch.sd.connect(E.dIn); ch.out.connect(ch.sr); ch.sr.connect(E.revIn);
     const def = getInstrumentType(slot.type), id = slot.id;
-    const voice = VOICE_FACTORIES[def.engine]({ ctx, shared: E.shared, channel: ch, params: () => slotParams(id) });
+    const voice = VOICE_FACTORIES[def.engine]({ ctx, shared: E.shared, channel: ch, params: () => slotParams(id), sample: () => { const s = slotById(getProject(), id); return (s && s.sample) || null; } });
     return { type: slot.type, channel: ch, voice };
   }
   function disposeChannel(entry) {
@@ -139,13 +144,13 @@ export function createEngine(getProject) {
     const entry = E.ch.get(id); if (!entry) return;
     entry.voice.trigger(t, hit, voiceOut(id, live));
   }
-  /** immediate preview (tapping a key, drawing a note) — bypasses the play-session gate */
-  function audition(id, pitch, v = .8) {
+  /** immediate preview (tapping a key, drawing a note) — bypasses the play-session gate. `extra` adds hit fields (e.g. { slice: 3 }) */
+  function audition(id, pitch, v = .8, extra = null) {
     init();
     const s = slotById(getProject(), id); if (!s || !E.ch.has(id)) return;
     const def = getInstrumentType(s.type), t = E.ctx.currentTime + .01;
     if (def.pattern === 'drum') trigger(id, t, { d: pitch, v }, false);
-    else trigger(id, t, { p: pitch, v, dur: def.ui.audition.length, slideIn: false, slideOut: false }, false);
+    else trigger(id, t, { p: pitch, v, dur: def.ui.audition.length, slideIn: false, slideOut: false, ...extra }, false);
   }
 
   return {

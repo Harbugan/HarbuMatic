@@ -3,7 +3,7 @@
 import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P } from './store.js';
 import * as A from './actions.js';
 import { APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
-import { getInstrumentType } from '../core/instruments.js';
+import { getInstrumentType, setPreviewInstruments } from '../core/instruments.js';
 import { sceneHasContent } from '../core/project.js';
 import { $, $$ } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
@@ -60,6 +60,11 @@ function wire() {
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('params', id => { if (id === store.ui.sel) { syncShapers(); if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
+  // MUNCH test bench (dev preview): sample state, recorder and slice steps live in the SOUND view
+  const benchOpen = () => store.ui.mode === 'sound' && typeOf().capabilities.samples;
+  on('samples', () => { if (benchOpen()) renderSound(); });
+  on('recorder', () => { if (benchOpen()) renderSound(); });
+  on('pattern', () => { if (benchOpen()) renderSound(); });
   on('tempo', () => { renderTransport(); if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
   on('lab', renderLab);
   on('arrangement', () => { if (store.ui.mode === 'arrange') renderArrange(); renderScenes(); });
@@ -131,7 +136,12 @@ function keys(e) {
 /* ---------- boot ---------- */
 function init() {
   // dev-only layout preview: ?preview=five shows the planned MUNCH slot as an inert fifth card (never in normal use)
-  try { store.ui.previewPlanned = new URLSearchParams(location.search).get('preview') === 'five'; } catch (e) { /* no location */ }
+  // dev-only sample engine preview: ?munch=dev makes MUNCH a playable fifth instrument with a test bench in SOUND
+  try {
+    const q = new URLSearchParams(location.search);
+    store.ui.previewPlanned = q.get('preview') === 'five';
+    if (q.get('munch') === 'dev') { setPreviewInstruments(true); store.ui.munchDev = true; }
+  } catch (e) { /* no location */ }
   const { fresh, warning } = A.bootProject();
   const warn = () => { if (warning) toast(warning, 8000); }; // shown once the start overlay is gone, where the toast is visible
   $('#ident').textContent = `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`;
@@ -151,7 +161,7 @@ function init() {
   document.body.classList.toggle('coarse', store.ui.coarse);
   A.engine.onInterrupt = state => { if (A.transport.playing) { A.transport.pause(); toast(state === 'interrupted' ? 'Audio was interrupted — tap Resume' : 'Audio paused by the system — tap Resume'); } };
   // save immediately when the tab is hidden (iPad may discard background tabs)
-  document.addEventListener('visibilitychange', () => { if (document.hidden) A.flushSave(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { A.flushSave(); A.recordCancel(); } }); // backgrounded: never keep the mic open
   window.addEventListener('pagehide', () => A.flushSave());
   startIdleLife();
   renderAll(); Seq.fitView();

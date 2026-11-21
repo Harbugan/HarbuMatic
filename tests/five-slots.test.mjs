@@ -119,9 +119,9 @@ test('save → load and export → re-import keep all five slots', () => {
 });
 
 /* ---------- MUNCH stays planned ---------- */
-test('MUNCH is planned: not playable, not listed, not selectable', () => {
+test('MUNCH is a disabled preview by default: not playable, not listed, not selectable', () => {
   const m = getInstrumentType('munch');
-  assert.equal(m.status, 'planned'); assert.equal(m.engine, null); assert.equal(isPlayableType('munch'), false);
+  assert.equal(m.status, 'preview'); assert.equal(m.engine, 'munch'); assert.equal(isPlayableType('munch'), false);
   assert.deepEqual(m.ui.layers, ['play', 'chop', 'twist'], 'interaction layers of the agreed design are named for later phases');
   assert.ok(!playableSlots(createEmptyProject()).some(s => s.type === 'munch'));
 });

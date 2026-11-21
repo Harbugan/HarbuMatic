@@ -56,8 +56,10 @@ export function createTransport(engine, getProject, hooks = {}) {
           }
           // a mono acid voice gates shorter unless it slides on; everything else holds ~the full length
           const dur = caps.mono && !slideOut ? Math.max(sd * .45, n.l * sd - sd * .45) : n.l * sd * .98;
-          hits.push({ p: n.p, v: n.v, slide: slideIn, acc: n.v > .9 });
-          if (on) engine.trigger(slot.id, t + sw + (n.o || 0) * sd, { p: n.p, v: n.v, dur, slideIn, slideOut });
+          const hit = { p: n.p, v: n.v, dur, slideIn, slideOut };
+          if (n.slice != null) hit.slice = n.slice; // sampler slice trigger (only MUNCH notes carry it)
+          hits.push(n.slice != null ? { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9, slice: n.slice } : { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9 });
+          if (on) engine.trigger(slot.id, t + sw + (n.o || 0) * sd, hit);
         }
       }
       if (hits.length && on) ev.hits[slot.id] = hits;

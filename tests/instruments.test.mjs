@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   INSTRUMENT_TYPES, getInstrumentType, hasInstrumentType, listInstrumentTypes, isPlayableType, defaultParamsFor,
   createPatternFor, typeForLegacyTrack, LEGACY_TRACKS, DEFAULT_SLOT_TYPES, MAX_SLOTS,
+  setPreviewInstruments, previewInstrumentsEnabled,
 } from '../src/core/instruments.js';
 import {
   createEmptyProject, createDemoProject, createSlot, nextSlotId, validateProject, importProject, playableSlots, slotById, typeOfSlot,
@@ -64,13 +65,20 @@ test('the four classic instruments keep their v0.5.1 names, colours and default 
   assert.ok(!getInstrumentType('blip').capabilities.slide && !getInstrumentType('fuzz').capabilities.slide);
 });
 
-test('MUNCH is registered for the future but is neither playable nor listed', () => {
+test('MUNCH is a preview instrument: playable only while previews are enabled', () => {
   const m = getInstrumentType('munch');
-  assert.equal(m.status, 'planned'); assert.equal(m.engine, null); assert.equal(m.capabilities.generate, false);
+  assert.equal(m.status, 'preview'); assert.equal(m.engine, 'munch'); assert.equal(m.capabilities.generate, false);
+  assert.equal(previewInstrumentsEnabled(), false, 'off by default');
   assert.equal(isPlayableType('munch'), false);
   assert.deepEqual(listInstrumentTypes().map(t => t.type), ['bop', 'goo', 'blip', 'fuzz']);
   assert.ok(listInstrumentTypes({ includePlanned: true }).some(t => t.type === 'munch'));
   ['bop', 'goo', 'blip', 'fuzz'].forEach(id => assert.ok(isPlayableType(id)));
+  try {
+    setPreviewInstruments(true);
+    assert.equal(isPlayableType('munch'), true);
+    assert.deepEqual(listInstrumentTypes().map(t => t.type), ['bop', 'goo', 'blip', 'fuzz', 'munch']);
+  } finally { setPreviewInstruments(false); }
+  assert.equal(isPlayableType('munch'), false);
 });
 
 /* ---------- slots ---------- */

@@ -195,3 +195,20 @@ body.coarse .mood-chip { min-height: var(--tap); }
   .shapers .knob { --ks: 44px; }
   .fxbtn { min-height: 48px; }
 }
+
+/* MUNCH test bench (dev preview ?munch=dev, temporary: v0.6 Phase 3) */
+.munch-dev { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
+.munch-dev .md-info { font-size: 14px; } .munch-dev .md-info span { color: var(--muted); }
+.munch-dev .md-status { font-size: 12px; color: var(--muted); }
+.munch-dev .md-status[data-status="missing"], .munch-dev .md-status[data-status="error"] { color: #B85475; }
+.munch-dev .md-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.munch-dev .md-rec.on { background: #E07D98; color: #fff; }
+.munch-dev .md-sub { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent-dd); margin-top: 4px; }
+.munch-dev .md-pads { display: grid; grid-template-columns: repeat(8, minmax(44px, 1fr)); gap: 6px; }
+.munch-dev .md-pad { min-height: var(--tap); border: 0; border-radius: 12px; font-weight: 900; cursor: pointer; background: linear-gradient(180deg, #fff, var(--accent)); box-shadow: 0 3px 0 var(--accent-d); }
+.munch-dev .md-pad:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-d); }
+.munch-dev .md-pad:disabled { opacity: .45; cursor: default; }
+.munch-dev .md-grid { display: grid; grid-template-columns: repeat(var(--steps, 16), minmax(0, 1fr)); gap: 3px; max-width: 760px; }
+.munch-dev .md-cell { min-height: 36px; border: 0; border-radius: 6px; padding: 0; cursor: pointer; background: #e9dccb; }
+.munch-dev .md-cell.beat { background: #dfcfbb; }
+.munch-dev .md-cell.on { background: var(--accent-d); }

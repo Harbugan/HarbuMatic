@@ -12,8 +12,12 @@
 //   ui        sequencer tools, audition note (pitch is at A minor; the UI transposes it to the song key;
 //             soundPitch = preview note in the SOUND view when it differs), piano-roll view defaults
 //   status    'ready'   — playable and shown in the UI
+//             'preview' — has an engine, but is playable only while preview instruments are enabled
+//                         (setPreviewInstruments, set from the ?munch=dev flag). Otherwise it behaves as 'planned'.
 //             'planned' — known to the schema and kept in every song (data persists), but never scheduled,
 //                         never soloed, never selected and never shown outside the dev preview (?preview=five)
+//   paramRanges / paramChoices   optional limits validation applies to stored params (types without them keep
+//             the original v0.5 behaviour: any finite number / any string of the right type)
 //
 // A slot (see src/core/project.js) holds one instance of a type. Slot identity never depends on the type.
 
@@ -58,17 +62,21 @@ const TYPES = {
     ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 76, length: .6, soundPitch: 69 }, viewTop: 86, viewCenter: 76, noteLength: 8 },
     defaultParams: { vol: .5, pan: 0, tone: .45, noise: .35, crush: .25, shimmer: .35, attack: .6, release: 1.4, drive: .3, driveOn: false, delayOn: true, reverbOn: true, delay: .35, reverb: .6 },
   },
-  // Future sampler (v0.6). Every song holds one MUNCH slot (slot-05 by default), but it has no engine, no
-  // generator and no UI yet, so it is never played or shown. Its pattern kind is provisional.
+  // Sampler (v0.6). Every song holds one MUNCH slot (slot-05 by default). Phase 3: it has a sample engine but
+  // is a 'preview' instrument, playable only with ?munch=dev, until its final UI ships (Phase 4).
+  // Notes are melodic, or trigger a slice when they carry `slice` (see src/core/samples.js). The sample itself
+  // is referenced by slot.sample; trim, pitch, reverse and play mode are non-destructive params.
   // ui.layers names the interaction layers of the planned design (PLAY: record/import + melodic keys,
-  // CHOP: slice pads + MAGIC CHOP, TWIST: waveform, pitch, reverse, loop). Nothing reads them yet.
+  // CHOP: slice pads + MAGIC CHOP, TWIST: waveform, pitch, reverse, loop).
   munch: {
-    type: 'munch', name: 'MUNCH', description: 'Sampler', status: 'planned',
-    role: null, engine: null, pattern: 'notes', defaultLength: 16,
-    capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, samples: true },
+    type: 'munch', name: 'MUNCH', description: 'Sampler', status: 'preview',
+    role: null, engine: 'munch', pattern: 'notes', defaultLength: 16,
+    capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, samples: true, slices: true },
     visual: { color: '#9FD6EE', dark: '#5DB4D9', darker: '#3586A8', headphones: '#F5D19A', css: 'munch', character: 'munch' },
     ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 60, length: .4 }, viewTop: 72, viewCenter: 60, noteLength: 1, layers: ['play', 'chop', 'twist'] },
-    defaultParams: { vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .2 },
+    defaultParams: { vol: .8, pan: 0, root: 60, tune: 0, start: 0, end: 1, reverse: false, mode: 'oneshot', attack: .002, release: .08, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .2 },
+    paramRanges: { vol: [0, 1], pan: [-1, 1], root: [24, 96], tune: [-24, 24], start: [0, 1], end: [0, 1], attack: [0, 2], release: [.005, 4], drive: [0, 1], delay: [0, 1], reverb: [0, 1] },
+    paramChoices: { mode: ['oneshot', 'gate', 'loop'] },
   },
 };
 Object.values(TYPES).forEach(deepFreeze);
@@ -94,11 +102,19 @@ export function getInstrumentType(id) {
   if (!hasInstrumentType(id)) throw new Error(`Unknown instrument type: ${id}`);
   return TYPES[id];
 }
-/** every registered type (planned ones only on request) */
+let previewEnabled = false;
+/**
+ * Switch 'preview' instruments (MUNCH in v0.6 Phase 3) on or off for this session. The app calls it once at boot
+ * (?munch=dev); tests toggle it. Off by default, so a normal session plays exactly what Phase 2 played.
+ */
+export function setPreviewInstruments(on) { previewEnabled = !!on; }
+export const previewInstrumentsEnabled = () => previewEnabled;
+const live = t => t.status === 'ready' || (t.status === 'preview' && previewEnabled);
+/** every registered type that is playable right now (planned and disabled preview types only on request) */
 export const listInstrumentTypes = ({ includePlanned = false } = {}) =>
-  Object.values(TYPES).filter(t => includePlanned || t.status === 'ready');
-/** playable = ready and backed by an audio engine */
-export const isPlayableType = id => hasInstrumentType(id) && TYPES[id].status === 'ready' && !!TYPES[id].engine;
+  Object.values(TYPES).filter(t => includePlanned || live(t));
+/** playable = ready (or an enabled preview) and backed by an audio engine */
+export const isPlayableType = id => hasInstrumentType(id) && live(TYPES[id]) && !!TYPES[id].engine;
 export const typeForLegacyTrack = track => LEGACY_TRACK_TYPES[track] || null;
 
 /** fresh, mutable default parameters for a type */

@@ -11,6 +11,10 @@ import {
   playableSlots, patternAt, setPatternAt, sceneIdAt, typeOfSlot,
 } from '../core/project.js';
 import { createPatternFor, isPlayableType } from '../core/instruments.js';
+import { sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH } from '../core/samples.js';
+import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
+import { createSampleBank } from '../samples/bank.js';
+import { createRecorder, canRecord } from '../samples/recorder.js';
 import { createRng, randomSeed } from '../core/rng.js';
 import { buildContext } from '../music/context.js';
 import { transformPattern } from '../music/transform.js';
@@ -22,7 +26,9 @@ import { isLoopBoundary } from '../audio/position.js';
 
 export const history = createHistory();
 export const library = createLibrary(safeStorage());
-export const engine = createEngine(() => store.project);
+// MUNCH samples: durable assets in IndexedDB (opened on first use), decoded buffers in the bank
+export const samples = createSampleBank({ store: createSampleStore({ backend: indexedDbBackend() }) });
+export const engine = createEngine(() => store.project, { samples });
 export const transport = createTransport(engine, () => store.project, {
   onState: () => emit('transport'),
   beforeStep: (pos, boundary) => autoEvolveHook(pos, boundary),
@@ -54,7 +60,7 @@ function restoreSnapshot(json) {
   store.project.id = keepId;
   ensureSelection();
   if (transport.pos && store.project.arrangement.length === 0 && transport.pos.song) transport.stop();
-  engine.applyAll();
+  engine.applyAll(); syncSamples();
   save(); emit('project');
 }
 export function undo() { const s = history.undo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Undo'); } emit('history'); }
@@ -71,7 +77,7 @@ function adopt(project, msg) {
   ensureSelection();
   history.clear();
   Object.assign(store.ui, { scrollX: 0, zoom: 1, arrSel: null, libSel: null });
-  save(true); engine.applyAll();
+  save(true); engine.applyAll(); syncSamples();
   emit('project'); emit('history');
   if (msg) emit('toast', msg);
 }
@@ -86,6 +92,7 @@ export function bootProject() {
   store.project = p;
   ensureSelection();
   if (fresh) save(true);
+  syncSamples();
   return { fresh, warning: library.migrationWarning() };
 }
 export function newSong({ name, bpm, mood }) { adopt(createEmptyProject({ name: name || 'Untitled song', bpm: bpm || 120, mood }), `“${name || 'Untitled song'}” — a fresh canvas`); }
@@ -109,6 +116,7 @@ export function duplicateProject() {
   adopt(copy, `Saved a copy: “${copy.name}”`);
 }
 export function exportProject() {
+  const refs = sampleRefsOf(store.project);
   const data = JSON.stringify(store.project, null, 1);
   const safe = store.project.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'song';
   const a = document.createElement('a');
@@ -116,7 +124,8 @@ export function exportProject() {
   a.download = `harbumatic-${safe}.json`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  emit('toast', 'Song exported as a file');
+  // a JSON file only references samples (they stay in this browser): say so, never imply it is portable
+  emit('toast', refs.length ? 'Song exported without its audio: the MUNCH sample stays on this device, so this file is not portable yet' : 'Song exported as a file');
 }
 export async function importFile(file) {
   try {
@@ -149,7 +158,13 @@ export function setDrawer(on) { store.ui.drawer = on; emit('drawer'); }
 export function setTool(k) { store.ui.tool = k; emit('tool'); }
 
 /* ---------- transport ---------- */
-export function togglePlay() { engine.init(); engine.applyAll(); transport.toggle(); }
+export function togglePlay() {
+  engine.init(); engine.applyAll();
+  // a sample still decoding (e.g. right after opening a song) gets a moment, so the first notes are not silent
+  const ids = playingSampleIds();
+  if (transport.state !== 'playing' && ids.length && samples.isLoading(ids)) { samples.whenSettled(ids, 2000).then(() => { if (transport.state !== 'playing') transport.toggle(); }); return; }
+  transport.toggle();
+}
 export function stop() { transport.stop(); }
 const drumSlots = () => store.project.slots.filter(s => typeOfSlot(s).role === 'drums');
 export function setBpm(v) {
@@ -321,3 +336,81 @@ export function previewScene(i) {
 }
 export const toastMsg = m => emit('toast', m);
 export const emitTool = () => emit('tool');
+
+/* ---------- MUNCH samples (v0.6 Phase 3) ---------- */
+// The project stores only a reference (slot.sample) and non-destructive edits (params, slices); the audio lives in
+// the sample store. Only playable sampler slots load samples, so a normal session (MUNCH preview off) never opens
+// IndexedDB.
+const warnedMissing = new Set();
+/** sample ids used by playable slots of the current song */
+export const playingSampleIds = () => sampleRefsOf({ slots: playableSlots(store.project) });
+/** pin + load the current song's samples; warn once per missing sample */
+export function syncSamples() {
+  const ids = playingSampleIds();
+  if (!ids.length && !samples.pinnedIds().length) return Promise.resolve();
+  return samples.pin(ids).then(() => {
+    for (const s of playableSlots(store.project)) {
+      if (!s.sample) continue;
+      const st = samples.state(s.sample.id);
+      if ((st.status === 'missing' || st.status === 'error') && !warnedMissing.has(s.sample.id)) {
+        warnedMissing.add(s.sample.id);
+        emit('toast', st.status === 'missing'
+          ? `MUNCH sample “${s.sample.name}” is missing on this device. The song keeps its reference: import the same file again to bring it back.`
+          : `MUNCH sample “${s.sample.name}” could not be loaded (${st.error}). The song keeps its reference.`);
+      }
+    }
+    emit('samples');
+  });
+}
+samples.on(() => emit('samples'));
+/** state of a slot's sample for the UI: { ref, status, error } (status 'none' when no sample is loaded) */
+export function sampleState(slotId) {
+  const s = slot(slotId), ref = s && s.sample;
+  return ref ? { ref, ...samples.state(ref.id) } : { ref: null, status: 'none', error: null };
+}
+/** put a stored sample into a slot (new reference, default eight slices; params keep their edits) */
+export function assignSample(slotId, meta) {
+  const s = slot(slotId); if (!s) return;
+  checkpoint();
+  s.sample = sampleRefFor(meta);
+  warnedMissing.delete(meta.id);
+  save(); engine.applyParams(slotId); syncSamples(); emit('samples'); emit('pattern');
+}
+const sampleErrorText = e => (e instanceof SampleError ? e.message : 'That sample could not be imported.');
+/** import an audio File (or { name, type, arrayBuffer() }) into the store and assign it; returns the metadata or null */
+export async function importSampleFile(file, slotId = store.ui.sel) {
+  engine.init();
+  try {
+    const bytes = await file.arrayBuffer();
+    const { meta, duplicate } = await samples.importBytes({ bytes, name: file.name || 'Sample', type: file.type || '' });
+    assignSample(slotId, meta);
+    emit('toast', duplicate ? `“${meta.name}” was already stored: using it` : `MUNCH ate “${meta.name}” (${meta.duration.toFixed(2)} s)`);
+    return meta;
+  } catch (e) { emit('toast', sampleErrorText(e)); emit('samples'); return null; }
+}
+export const recorder = createRecorder({ maxSeconds: samples.store.limits.maxSeconds, onState: () => emit('recorder') });
+export const recordingSupported = () => canRecord();
+export async function recordStart() {
+  engine.init();
+  transport.state === 'playing' && transport.pause(); // a quiet room: nothing from HarbuMatic leaks into the mic
+  try { await recorder.start(); } catch (e) { emit('toast', sampleErrorText(e)); }
+}
+export async function recordStop(slotId = store.ui.sel) {
+  let rec = null;
+  try { rec = await recorder.stop(); } catch (e) { emit('toast', sampleErrorText(e)); return null; }
+  if (!rec) { emit('toast', 'Nothing was recorded'); return null; }
+  return importSampleFile({ name: rec.name, type: rec.type, arrayBuffer: async () => rec.bytes }, slotId);
+}
+export function recordCancel() { recorder.cancel(); }
+/** slice editing (data model): back to n equal slices, or move one boundary */
+export function resetSlices(n = 8, slotId = store.ui.sel) { const s = slot(slotId); if (!s || !s.sample) return; checkpoint(); s.sample.slices = defaultSlices(n); save(); emit('samples'); }
+export function moveSlice(i, pos, slotId = store.ui.sel) { const s = slot(slotId); if (!s || !s.sample) return; checkpoint(`slice:${i}`); s.sample.slices = moveSliceBoundary(s.sample.slices, i, pos); save(); emit('samples'); }
+export function auditionSlice(k, slotId = store.ui.sel) { engine.audition(slotId, SLICE_REF_PITCH, .9, { slice: k }); }
+/** add or remove a one-step slice trigger in the current scene's pattern */
+export function toggleSliceStep(k, step, slotId = store.ui.sel) {
+  const p = pat(slotId); if (!p || step >= p.len) return;
+  checkpoint();
+  const i = p.notes.findIndex(n => n.s === step && n.slice === k);
+  if (i >= 0) p.notes.splice(i, 1); else { p.notes.push({ s: step, p: SLICE_REF_PITCH, l: 1, v: .85, slice: k }); auditionSlice(k, slotId); }
+  save(); emit('pattern');
+}

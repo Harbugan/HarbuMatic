@@ -83,7 +83,9 @@ export function drawScreen() {
 // (?preview=five) a planned slot gets an inert placeholder card: same geometry, no actions, not selectable.
 let cardSlots = '';
 /** pitch a type auditions at, transposed from A minor to the song key */
-export const auditionPitch = (def, key = store.project.key, which = 'pitch') => (def.pattern === 'drum' ? def.ui.audition.drum : (def.ui.audition[which] ?? def.ui.audition.pitch) + (key - 9));
+export const auditionPitch = (def, key = store.project.key, which = 'pitch', id = store.ui.sel) => (def.pattern === 'drum' ? def.ui.audition.drum
+  : def.capabilities.samples ? P(id).root // a sampler previews its sample at the root: as recorded
+    : (def.ui.audition[which] ?? def.ui.audition.pitch) + (key - 9));
 export function buildCards() {
   const host = $('#cards'); host.innerHTML = '';
   Object.keys(CAT).forEach(k => delete CAT[k]);
@@ -108,7 +110,7 @@ export function buildCards() {
     card.addEventListener('click', e => {
       if (e.target.closest('.pill')) return;
       A.selectSlot(id);
-      A.engine.audition(id, auditionPitch(m), .8);
+      A.engine.audition(id, auditionPitch(m, store.project.key, 'pitch', id), .8);
     });
     card.addEventListener('keydown', e => { if (e.key === 'Enter') A.selectSlot(id); });
     host.append(card);
