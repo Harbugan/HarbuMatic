@@ -316,8 +316,7 @@ function pads(ref, n) {
     const reg = sliceRegion(ref.slices, k), len = (reg[1] - reg[0]) * ref.duration;
     const b = h('button', { type: 'button', class: 'mw-pad' + (k === m.sel ? ' sel' : ''), 'data-k': k, disabled: !ready, style: `--pc:${SLICE_COLORS[k % 4]}`, 'aria-label': `Pad ${k + 1}: play slice ${k + 1}` },
       h('b', {}, String(k + 1)), h('small', {}, len < 1 ? `${Math.round(len * 1000)} ms` : `${len.toFixed(2)} s`));
-    b.addEventListener('pointerdown', e => { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); });
-    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); } });
+    bindPad(b, k);
     grid.append(b);
   }
   if (n > 8) { // second bank: a slim column beside the pads, so the panel keeps its height
@@ -332,6 +331,21 @@ function pads(ref, n) {
   refs.pads = grid;
   wrap.append(grid);
   return wrap;
+}
+/** pads behave like keys: press = play (velocity from where you press), release = end a Gate/Loop note */
+function bindPad(b, k) {
+  const on = (id, v) => { b.classList.add('down'); held.set(id, { handle: A.munchPadOn(k, v), el: b }); A.selectSlice(k); flash(b); };
+  const off = id => { const x = held.get(id); if (!x) return; held.delete(id); A.munchPadOff(x.handle); x.el.classList.remove('down'); };
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const r = b.getBoundingClientRect(), v = .45 + .55 * Math.max(0, Math.min(1, (e.clientY - r.top) / Math.max(1, r.height)));
+    try { b.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
+    on(e.pointerId, v);
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, e => off(e.pointerId)));
+  b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); on('pad' + k, .9); } });
+  b.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); off('pad' + k); } });
+  b.addEventListener('click', e => e.preventDefault());
 }
 function magicPanel() {
   const m = u(), pending = !!(m.magic && m.magic.slot === sel() && m.magic.scene === store.project.scene);

@@ -20,7 +20,7 @@
 // bank (src/samples/bank.js) for an already decoded AudioBuffer when a hit is due, and stays silent when the
 // buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
 
-import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitRate } from '../core/samples.js';
+import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback } from '../core/samples.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -188,52 +188,97 @@ function createFuzzVoice({ ctx, shared, channel, params }) {
 // One AudioBufferSourceNode + one gain envelope per hit. A note plays a region of the decoded sample (the trimmed
 // region for melodic notes, slice k for slice notes, or an explicit region for editor auditions), mirrored inside the
 // reversed copy when `reverse` is on.
-// Playback rate = pitch (transpose + tune, see noteSemitones) × tape fit (fitRate: the trimmed region fitted to bars at
-// the current BPM, computed at trigger time). No time-stretch in v0.6: speed and pitch move together.
+//
+// Playback rate and buffer (see fitPlayback in src/core/samples.js):
+//   Tape     rate = pitch (transpose + tune) × fit rate: speed and pitch move together
+//   Stretch  the bank's time-stretched copy of the sample (pitch kept) at rate = pitch × a tiny residual that makes the
+//            duration exact; until that copy is rendered the voice falls back to tape so the timing never drifts
+//
+// Play modes:
 //   oneshot  plays the whole region, whatever the note length
-//   gate     stops at the note end (with the release) or at the region end, whichever comes first
-//   loop     loops the region while the note is held, then releases
-//   choke    (param) a slice note cuts any slice that is still sounding — one chop at a time
-// The envelope always reaches 0 at the region end, so a slice never runs into its neighbour. Every source is
-// stopped at a known time and disconnected in `onended`; the pool is bounded (oldest voice is stolen).
-// trigger() returns a handle; release(handle, at) ends a held gate/loop note early (keyboard key up).
+//   gate     stops at the note end / key or pad release (with the release) or at the region end, whichever is first
+//   loop     loops the region while the note (key, pad) is held, then releases
+// Voice ownership and retrigger (v0.6 stabilization, BUGS.md MUNCH-3):
+//   every voice has a key — 's<k>' slice k, 'n<p>' melodic pitch p, 'a' editor audition. A new hit with the same key
+//   cuts the previous one (a pad or key retriggers instead of piling up); different keys stay polyphonic.
+//   choke (param, default on): a slice hit also cuts every other slice still sounding — one chop at a time.
+// Cuts are click-free: the envelope is held at its current value and ramped to 0 over CUT seconds, at the exact time
+// of the new hit. The envelope always reaches 0 at the region end, so a slice never runs into its neighbour. Every
+// source is stopped at a known time and disconnected in `onended`; the pool is bounded (oldest voice is stolen).
+// silence() (Pause, Stop — also while already stopped) fades out every voice, auditions and held keys included.
+// trigger() returns a handle; release(handle, at) ends a held gate/loop note early (key or pad up).
 export const MUNCH_POLY = 8;
 const EDGE = .004; // fade at a region boundary (s): no click, no bleed into the next slice
+export const CUT = .006; // fade when a voice is cut (retrigger, choke, steal, stop)
+const voiceKey = hit => (Array.isArray(hit.region) ? 'a' : hit.slice != null ? `s${hit.slice}` : `n${hit.p}`);
+/** value of a piecewise-linear envelope [[t, v], …] at time `at` */
+export function envValueAt(points, at) {
+  if (!points.length || at <= points[0][0]) return points.length ? points[0][1] : 0;
+  for (let i = 1; i < points.length; i++) {
+    const [t1, v1] = points[i], [t0, v0] = points[i - 1];
+    if (at <= t1) return t1 > t0 ? v0 + (v1 - v0) * (at - t0) / (t1 - t0) : v1;
+  }
+  return points[points.length - 1][1];
+}
 
 function createMunchVoice({ ctx, shared, channel, params, sample, tempo }) {
-  const active = new Set(); // { src, env, end, slice }
-  const stats = { played: 0, missed: 0, stolen: 0, choked: 0 };
-  function fadeOut(v, at) {
-    try { v.env.gain.cancelScheduledValues(at); v.env.gain.setTargetAtTime(0, at, .004); v.src.stop(at + .03); } catch (e) { /* already gone */ }
+  const active = new Set(); // { src, env, t, end, key, slice, mode, vel, points }
+  const stats = { played: 0, missed: 0, stolen: 0, choked: 0, retriggered: 0, stretched: 0, stretchFallback: 0 };
+  /** ramp a voice to silence from `at` (never earlier than its own start) and stop it */
+  function cut(v, at) {
+    const when = Math.max(at, v.t);
+    const value = envValueAt(v.points, when);
+    try {
+      v.env.gain.cancelScheduledValues(when);
+      v.env.gain.setValueAtTime(value, when);
+      v.env.gain.linearRampToValueAtTime(0, when + CUT);
+      v.src.stop(when + CUT + .002);
+    } catch (e) { /* already gone */ }
+    v.points = [...v.points.filter(pt => pt[0] < when), [when, value], [when + CUT, 0]];
+    v.end = Math.min(v.end, when + CUT);
+    active.delete(v);
   }
   function trigger(t, hit, dest) {
     const ref = sample && sample(), bank = shared.samples, p = params();
     if (!ref || !bank) return null;
-    const rev = !!p.reverse, buf = bank.buffer(ref.id, rev);
-    if (!buf) { stats.missed++; return null; } // missing, not decoded yet or failed: silent, the UI reports why
+    const rev = !!p.reverse, base = bank.buffer(ref.id, rev);
+    if (!base) { stats.missed++; return null; } // missing, not decoded yet or failed: silent, the UI reports why
     const region = Array.isArray(hit.region) ? hit.region : hit.slice != null ? sliceRegion(ref.slices, hit.slice) : trimRegion(p);
     if (!region || !(region[1] > region[0])) return null; // a slice the current sample does not have
+    const fp = fitPlayback(p, base.duration, tempo ? tempo() : 120);
+    let buf = base, fitRateFactor = fp.tapeRate;
+    if (fp.stretch !== 1) {
+      const v = bank.stretched ? bank.stretched(ref.id, rev, fp.stretch, ref.slices) : null;
+      if (v) { buf = v.buffer; fitRateFactor = v.stretch / fp.stretch; stats.stretched++; } // residual: exact duration
+      else { fitRateFactor = 1 / fp.stretch; stats.stretchFallback++; } // not rendered yet: tape keeps the timing
+    }
     const { offset, length } = bufferRegion(region, buf.duration, rev);
-    const rate = rateForSemitones(noteSemitones(hit, p)) * fitRate(p, buf.duration, tempo ? tempo() : 120), natural = length / rate;
+    const rate = rateForSemitones(noteSemitones(hit, p)) * fitRateFactor, natural = length / rate;
     if (!(natural > 0)) return null;
     const atk = Math.max(.001, p.attack), rel = Math.max(.005, p.release), noteOff = t + Math.max(.01, hit.dur || 0);
     let relAt, end;
     if (p.mode === 'loop') { relAt = noteOff; end = noteOff + rel; }
     else if (p.mode === 'gate' && noteOff + rel < t + natural) { relAt = noteOff; end = noteOff + rel; }
     else { end = t + natural; relAt = Math.max(t, end - EDGE); }
-    if (p.choke && hit.slice != null) for (const old of [...active]) if (old.slice) { active.delete(old); fadeOut(old, Math.max(t, ctx.currentTime)); stats.choked++; }
-    while (active.size >= MUNCH_POLY) { const old = active.values().next().value; active.delete(old); fadeOut(old, Math.max(t, ctx.currentTime)); stats.stolen++; }
+    const key = voiceKey(hit);
+    for (const old of [...active]) {
+      if (old.end <= t) { active.delete(old); continue; } // already finished by then (onended still cleans it up)
+      if (old.t > t) continue; // never cut a voice that starts after this one
+      if (old.key === key) { cut(old, t); stats.retriggered++; }
+      else if (p.choke && hit.slice != null && old.slice) { cut(old, t); stats.choked++; }
+    }
+    while (active.size >= MUNCH_POLY) { const old = active.values().next().value; cut(old, Math.max(t, ctx.currentTime)); stats.stolen++; }
     const vel = Math.max(0, Math.min(1, hit.v ?? .8));
     const src = ctx.createBufferSource(), env = ctx.createGain();
     src.buffer = buf; src.playbackRate.value = rate;
     if (p.mode === 'loop') { src.loop = true; src.loopStart = offset; src.loopEnd = offset + length; }
-    const peakAt = Math.min(t + atk, relAt);
+    const peakAt = Math.min(t + atk, relAt), holdAt = Math.max(peakAt, relAt);
     env.gain.setValueAtTime(0, t);
     env.gain.linearRampToValueAtTime(vel, peakAt);
-    env.gain.setValueAtTime(vel, Math.max(peakAt, relAt));
+    env.gain.setValueAtTime(vel, holdAt);
     env.gain.linearRampToValueAtTime(0, end);
     src.connect(env); env.connect(dest);
-    const v = { src, env, end, slice: hit.slice != null, mode: p.mode, vel };
+    const v = { src, env, t, end, key, slice: hit.slice != null, mode: p.mode, vel, rate, points: [[t, 0], [peakAt, vel], [holdAt, vel], [end, 0]] };
     src.onended = () => { active.delete(v); try { src.disconnect(); env.disconnect(); } catch (e) { /* gone */ } };
     src.start(t, offset);
     src.stop(end + .002);
@@ -243,16 +288,21 @@ function createMunchVoice({ ctx, shared, channel, params, sample, tempo }) {
   /** end a held note (gate/loop) at `at` with the release time; one-shots play on */
   function release(v, at = ctx.currentTime) {
     if (!v || !active.has(v) || v.mode === 'oneshot') return false;
-    const rel = Math.max(.005, params().release), end = Math.min(v.end, Math.max(at, ctx.currentTime) + rel);
-    try { v.env.gain.cancelScheduledValues(at); v.env.gain.setValueAtTime(v.vel, at); v.env.gain.linearRampToValueAtTime(0, end); v.src.stop(end + .002); v.end = end; } catch (e) { /* gone */ }
+    const from = Math.max(at, ctx.currentTime, v.t), rel = Math.max(.005, params().release), end = Math.min(v.end, from + rel);
+    if (end <= from) return true;
+    const value = envValueAt(v.points, from);
+    try { v.env.gain.cancelScheduledValues(from); v.env.gain.setValueAtTime(value, from); v.env.gain.linearRampToValueAtTime(0, end); v.src.stop(end + .002); } catch (e) { /* gone */ }
+    v.points = [...v.points.filter(pt => pt[0] < from), [from, value], [end, 0]];
+    v.end = end;
     return true;
   }
   return {
     input: channel.bus,
-    apply(p) { const ref = sample && sample(); if (p.reverse && ref && shared.samples) shared.samples.prepare(ref.id, true); }, // build the reversed copy now, never in a scheduler callback
+    // build the reversed copy and request the stretched copy now, never in a scheduler callback
+    apply(p) { const ref = sample && sample(); if (!ref || !shared.samples) return; if (p.reverse) shared.samples.prepare(ref.id, true); },
     trigger, release,
-    silence(now) { for (const v of active) fadeOut(v, now); active.clear(); },
-    dispose() { for (const v of active) fadeOut(v, ctx.currentTime); active.clear(); },
+    silence(now) { for (const v of [...active]) cut(v, now); active.clear(); },
+    dispose() { for (const v of [...active]) cut(v, ctx.currentTime); active.clear(); },
     /** for tests and the dev panel */
     activeCount: () => active.size, stats,
   };

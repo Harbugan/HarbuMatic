@@ -12,6 +12,7 @@ import { computePeaks, peaksForView, PEAK_BUCKET } from '../src/samples/peaks.js
 import { createEngine } from '../src/audio/engine.js';
 import { createTransport } from '../src/audio/scheduler.js';
 import { makeWav, decodeWav, withFakeWindow, FakeBuffer } from './helpers/audio.mjs';
+import { CUT } from '../src/audio/voices.js';
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
 const M = 'slot-05';
@@ -68,7 +69,7 @@ test('fit multiplies pitch, tune and transposition; slices share the tape speed,
 }));
 
 test('through the transport: fitted slices land one per beat and play at the fit rate (not squared)', () => rig(async ({ p, engine, ctx, srcs, m }) => {
-  m.params.fit = '1'; p.bpm = 120; m.sample.slices = defaultSlices(4); // 4 slices, 1 s → 1 bar (2 s): 0.5 s per slice
+  m.params.fit = '1'; m.params.fitMode = 'tape'; p.bpm = 120; m.sample.slices = defaultSlices(4); // 4 slices, 1 s → 1 bar (2 s): 0.5 s per slice
   setPatternAt(p, M, 0, { len: 16, notes: [0, 1, 2, 3].map(k => ({ s: k * 4, p: 60, l: 4, v: .8, slice: k })) });
   let tick; const si = globalThis.setInterval, ci = globalThis.clearInterval;
   globalThis.setInterval = fn => { tick = fn; return 1; }; globalThis.clearInterval = () => {};
@@ -88,14 +89,15 @@ test('through the transport: fitted slices land one per beat and play at the fit
   });
 }));
 
-test('choke: a slice cuts the slice still sounding; off by default', () => rig(async ({ engine, srcs, voice, m }) => {
+test('choke: a slice cuts the slice still sounding; on by default, Overlap lets slices ring', () => rig(async ({ engine, srcs, voice, m }) => {
+  m.params.choke = false;
   engine.trigger(M, 1, { p: 60, v: .8, dur: .1, slice: 0 }, false);
   engine.trigger(M, 1.05, { p: 60, v: .8, dur: .1, slice: 3 }, false);
   assert.ok(near(srcs()[0].stopAt, 1 + .125 + .002), 'without choke both play to their end');
   m.params.choke = true;
   engine.trigger(M, 2, { p: 60, v: .8, dur: .1, slice: 0 }, false);
   engine.trigger(M, 2.05, { p: 60, v: .8, dur: .1, slice: 3 }, false);
-  assert.ok(near(srcs()[2].stopAt, 2.05 + .03), 'the first slice is cut when the next one starts');
+  assert.ok(near(srcs()[2].stopAt, 2.05 + CUT + .002), 'the first slice is cut when the next one starts');
   assert.ok(voice.stats.choked >= 1);
   engine.trigger(M, 3, { p: 60, v: .8, dur: .1 }, false); // melodic notes never choke
   engine.trigger(M, 3.01, { p: 64, v: .8, dur: .1 }, false);

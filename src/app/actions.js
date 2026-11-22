@@ -564,6 +564,9 @@ export function auditionSample(slotId = store.ui.sel) { react('chomp'); return h
 /** keyboard: press and release (velocity 0–1). Returns a handle for munchNoteOff. */
 export function munchNoteOn(pitch, v = .8, slotId = store.ui.sel) { react('note'); return hear(() => engine.noteOn(slotId, pitch, v)); }
 export function munchNoteOff(handle) { return hear(() => engine.noteOff(handle)); }
+/** slice pad: press and release like a key (Gate stops on release, Loop loops while held, One-shot plays the slice) */
+export function munchPadOn(k, v = .9, slotId = store.ui.sel) { react('chomp'); return hear(() => engine.noteOn(slotId, SLICE_REF_PITCH, v, { slice: k })); }
+export const munchPadOff = munchNoteOff;
 
 /** add or remove a one-step slice trigger in the current scene's pattern (CHOP sequencer, Draw tool) */
 export function toggleSliceStep(k, step, slotId = store.ui.sel) {

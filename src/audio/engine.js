@@ -100,12 +100,16 @@ export function createEngine(getProject, { samples = null } = {}) {
     E.gates = {};
     for (const [id, entry] of E.ch) { const g = E.ctx.createGain(); g.gain.value = 1; g.connect(entry.voice.input); E.gates[id] = g; }
   }
+  /** Pause/Stop: close the session gates (queued notes go quiet) and silence every voice — also when the transport
+   *  was already stopped, so Stop always ends auditions, held keys and long one-shots (BUGS.md MUNCH-3) */
   function closeGates() {
-    if (!E.gates || !E.ctx) return;
-    const now = E.ctx.currentTime, old = E.gates;
-    Object.values(old).forEach(g => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, .006); });
-    setTimeout(() => Object.values(old).forEach(g => { try { g.disconnect(); } catch (e) { /* gone */ } }), 250);
-    E.gates = null;
+    if (!E.ctx) return;
+    if (E.gates) {
+      const now = E.ctx.currentTime, old = E.gates;
+      Object.values(old).forEach(g => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, .006); });
+      setTimeout(() => Object.values(old).forEach(g => { try { g.disconnect(); } catch (e) { /* gone */ } }), 250);
+      E.gates = null;
+    }
     silenceSustained();
   }
   /** stop sustained voices (the mono bass keeps running between notes) */
