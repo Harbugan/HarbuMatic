@@ -63,6 +63,7 @@ export function refreshMunchSel() {
   if (refs.grid) refs.grid.querySelectorAll('.mw-row').forEach(r => r.classList.toggle('sel', +r.dataset.k === m.sel));
   if (refs.cursor) refs.cursor.textContent = cursorText();
   if (refs.tools) refs.tools.querySelectorAll('[data-needs=marker]').forEach(b => { b.disabled = m.marker == null; });
+  if (refs.sliceInfo) refs.sliceInfo.textContent = sliceInfoText();
 }
 /** params changed (knob drag, fit): refresh knob values and the head readout without rebuilding */
 export function refreshMunchParams() {
@@ -304,15 +305,20 @@ function chop(s, host) {
     b.onclick = fn; return b;
   };
   refs.cursor = h('span', { class: 'sr-only', 'aria-live': 'polite' }, cursorText()); // the display shows it too
+  const k = m.sel + 1;
   refs.tools = h('div', { class: 'mw-tools' },
-    tool('scissors', 'CHOP HERE', () => A.chopAt(u().cursor), { cls: 'primary wide', testid: 'munch-chop-here', title: 'Add a marker at the cursor' }),
+    tool('scissors', 'CHOP HERE', () => A.chopAt(u().cursor), { cls: 'primary wide', testid: 'munch-chop-here', title: 'Add a marker at the cursor (tap the waveform to place it)' }),
     tool('split', 'Split', () => A.splitSliceAt(u().sel), { testid: 'munch-split', title: 'Split the selected slice in half' }),
-    tool('left', 'Nudge', () => A.nudgeBoundary(-1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-l', title: 'Move the selected marker a little earlier' }),
-    tool('right', 'Nudge', () => A.nudgeBoundary(1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-r', title: 'Move the selected marker a little later' }),
-    tool('trash', 'Delete', () => A.deleteBoundary(), { needs: 'marker', testid: 'munch-delete', title: 'Delete the selected marker' }),
-    tool('repeat', '8 equal', () => A.resetSlices(8), { testid: 'munch-reset', title: 'Back to eight equal slices' }));
+    tool('left', 'Earlier', () => A.nudgeBoundary(-1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-l', title: 'Move the selected marker 10 ms earlier' }),
+    tool('right', 'Later', () => A.nudgeBoundary(1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-r', title: 'Move the selected marker 10 ms later' }),
+    tool('trash', 'Delete', () => A.deleteBoundary(), { needs: 'marker', testid: 'munch-delete', title: 'Delete the selected marker (the slice joins the one before it)' }),
+    tool('repeat', 'Equal…', equalDialog, { testid: 'munch-reset', title: 'Start over with 4, 8 or 16 equal slices' }));
   refs.tools.querySelectorAll('.btn.icon .btn-l').forEach(l => l.remove());
-  const left = h('div', { class: 'mw-left' }, refs.tools, refs.cursor, pads(ref, n), magicPanel());
+  refs.sliceInfo = h('span', { class: 'mw-si-t', 'aria-live': 'polite' }, sliceInfoText());
+  const ur = (icon, label, fn, dis) => { const b = h('button', { type: 'button', class: 'btn icon mw-si-b', 'aria-label': label, title: label, disabled: dis, html: ico(icon) }); b.onclick = fn; return b; };
+  const info = h('div', { class: 'mw-sliceinfo', 'data-testid': 'munch-sliceinfo' }, ur('undo', 'Undo', A.undo, !A.history.canUndo), ur('redo', 'Redo', A.redo, !A.history.canRedo), refs.sliceInfo);
+  const left = h('div', { class: 'mw-left' }, refs.tools, refs.cursor, pads(ref, n), info, magicPanel());
+  void k;
   const right = h('div', { class: 'mw-right' }, sequencer(ref, n, host));
   return h('div', { class: 'mw-chop' }, left, right);
 }
@@ -341,6 +347,18 @@ function pads(ref, n) {
   refs.pads = grid;
   wrap.append(grid);
   return wrap;
+}
+/** "SLICE 3 · 250 ms · 0.50–0.75 s · marker ●3" for the selected slice */
+function sliceInfoText() {
+  const s = slot(), ref = s && s.sample, m = u(); if (!ref) return '';
+  const reg = sliceRegion(ref.slices, m.sel); if (!reg) return '';
+  const a = reg[0] * ref.duration, b = reg[1] * ref.duration, len = b - a;
+  return `SLICE ${m.sel + 1} · ${len < 1 ? Math.round(len * 1000) + ' ms' : len.toFixed(2) + ' s'} · ${a.toFixed(2)}–${b.toFixed(2)} s`;
+}
+function equalDialog() {
+  const n = sliceCount(slot().sample.slices);
+  dialog({ title: 'Equal slices', body: h('p', {}, `Replace the ${n} slices with equal ones. Your grooves stay: every step moves to the slice that now holds its sound. Undo brings the old markers back.`),
+    actions: [{ label: 'Cancel' }, ...[4, 8, 16].map(c => ({ label: String(c), primary: c === 8, onClick: () => A.resetSlices(c) }))] });
 }
 /** pads behave like keys: press = play (velocity from where you press), release = end a Gate/Loop note */
 function bindPad(b, k) {

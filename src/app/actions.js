@@ -518,7 +518,7 @@ function restructure(slotId, next, { select, marker = null, msg } = {}) {
   if (msg) emit('toast', msg);
   return { moved, count: n };
 }
-const LIMIT_MSG = { max: `MUNCH can hold up to ${MAX_SLICES} slices`, close: 'Too close to another marker: move the cursor a little', range: 'Put the cursor inside the sound first', none: 'Pick a slice first', edge: 'The first and last markers frame the sound: drag them instead' };
+const LIMIT_MSG = { max: `MUNCH can hold up to ${MAX_SLICES} slices`, close: 'Too close to another marker: move the cursor a little', range: 'Put the cursor inside the sound first', none: 'Pick a slice first', edge: 'Slice 1 starts the sound: there is no marker before it to delete (drag its handle to trim instead)' };
 
 /** CHOP HERE: a new boundary at a position (fraction of the whole sample); selects the slice that starts there */
 export function chopAt(pos, slotId = store.ui.sel) {
@@ -539,12 +539,12 @@ export function deleteBoundary(i = M().marker, slotId = store.ui.sel) {
   const ref = sampleOf(slotId); if (!ref || i == null) { emit('toast', 'Tap a marker first'); return null; }
   const r = removeSliceBoundary(ref.slices, i);
   if (r.error) { emit('toast', LIMIT_MSG[r.error]); react('oops'); return null; }
-  return restructure(slotId, r.slices, { select: i - 1 });
+  return restructure(slotId, r.slices, { select: i - 1, marker: i - 1 });
 }
 /** back to n equal slices; every slice note moves to the slice that now holds its attack */
 export function resetSlices(n = 8, slotId = store.ui.sel) {
   const ref = sampleOf(slotId); if (!ref) return null;
-  return restructure(slotId, defaultSlices(n), { select: 0, msg: `${n} equal slices` });
+  return restructure(slotId, defaultSlices(n), { select: 0, marker: 0, msg: `${n} equal slices` });
 }
 /** drag a boundary (not structural: slice indexes keep their identity); continuous drags coalesce into one undo step */
 export function moveSlice(i, pos, slotId = store.ui.sel) {
@@ -561,12 +561,18 @@ export function nudgeBoundary(dir, i = M().marker, slotId = store.ui.sel) {
   const step = Math.max(MIN_SLICE, ref.duration > 0 ? .01 / ref.duration : .005);
   moveSlice(i, ref.slices[i] + dir * step, slotId); sealHistory();
 }
+/** select slice k (pads, sequencer rows, waveform); its start marker becomes the one ◀ ▶ and Delete act on */
 export function selectSlice(k) {
   const ref = sampleOf(store.ui.sel), n = ref ? sliceCount(ref.slices) : 0; if (!n) return;
-  const u = M(); u.sel = Math.max(0, Math.min(n - 1, k)); u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel');
+  const u = M(); u.sel = Math.max(0, Math.min(n - 1, k)); u.marker = u.sel; u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel');
 }
-export function selectMarker(i) { M().marker = i; emit('munchsel'); }
-export function setCursor(pos) { const u = M(); u.cursor = clamp(pos, 0, 1); const ref = sampleOf(store.ui.sel); if (ref) u.sel = sliceAt(ref.slices, u.cursor); u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel'); }
+/** tap a marker handle: that marker, and the slice that starts there */
+export function selectMarker(i) {
+  const u = M(), ref = sampleOf(store.ui.sel), n = ref ? sliceCount(ref.slices) : 0;
+  u.marker = i; if (n && i < n) { u.sel = i; u.bank = u.sel >= 8 ? 1 : 0; }
+  emit('munchsel');
+}
+export function setCursor(pos) { const u = M(); u.cursor = clamp(pos, 0, 1); const ref = sampleOf(store.ui.sel); if (ref) { u.sel = sliceAt(ref.slices, u.cursor); u.marker = u.sel; } u.bank = u.sel >= 8 ? 1 : 0; emit('munchsel'); }
 export function auditionSlice(k, slotId = store.ui.sel, v = .9) { react('chomp'); return hear(() => engine.audition(slotId, SLICE_REF_PITCH, v, { slice: k })); }
 /** play a region of the sample as recorded (root pitch, with tune and fit), e.g. from the cursor to the slice end */
 export function auditionRegion(a, b, slotId = store.ui.sel) {

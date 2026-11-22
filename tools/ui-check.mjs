@@ -538,8 +538,21 @@ async function rollPoint(page, step, rowOrPitch) {
     ok((await slices()).length === 10, 'Undo brings the marker back');
     await pg.click('#hRedo'); await pg.waitForTimeout(100);
     ok((await slices()).length === 9, 'Redo removes it again');
-    await pg.click('[data-testid=munch-split]'); await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(100);
-    ok((await slices()).length === 9, 'Split, then back to eight equal slices');
+    await pg.click('[data-testid=munch-split]'); await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(120);
+    await pg.click('.dbtn.primary'); await pg.waitForTimeout(100); // Equal… asks 4 / 8 / 16 (8 is the default choice)
+    ok((await slices()).length === 9, 'Split, then Equal… → back to eight equal slices');
+    await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(120);
+    await pg.click('.dbtn:has-text("16")'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 17, 'Equal… can also make sixteen slices (sixteenths of a bar)');
+    await pg.click('#hUndo'); await pg.waitForTimeout(100);
+    // picking a slice picks its start marker: ◀ ▶ and Delete work without hunting for a handle
+    await pg.click('[data-testid=munch-pads] .mw-pad[data-k="3"]'); await pg.waitForTimeout(80);
+    const selm = await H(() => ({ sel: window.__harbu.store.ui.munch.marker, dis: document.querySelector('[data-testid=munch-nudge-r]').disabled, info: document.querySelector('.mw-si-t')?.textContent || '' }));
+    ok(selm.sel === 3 && !selm.dis && /SLICE 4/.test(selm.info), `tapping pad 4 selects slice 4 and its start marker, so Earlier/Later are ready (${JSON.stringify(selm)})`);
+    const startBefore = (await slices())[3];
+    await pg.click('[data-testid=munch-nudge-l]'); await pg.waitForTimeout(60);
+    ok((await slices())[3] < startBefore, 'Earlier moves the start of the selected slice');
+    await pg.click('#hUndo'); await pg.waitForTimeout(80);
     // Fit to Beat
     await pg.click('[data-testid=munch-fit] [data-fit="1"]'); await pg.waitForTimeout(80);
     ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /stretch ×.*pitch kept/.test(await H(() => document.querySelector('.mw-status').textContent)), 'FIT 1 bar is on and the head shows the stretch (pitch kept, the default)');
