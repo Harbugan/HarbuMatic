@@ -239,3 +239,14 @@ Open `https://<host>/?munch=dev`, tap the start screen and select MUNCH (fifth c
   with the release time. One-shots play to the region end.
 - **MAGIC CHOP** writes slice notes only, keeps locked and melodic notes and leaves locked steps alone. See the header
   of `src/music/magicchop.js`.
+
+## v0.6 stabilization
+
+The following changed. Details are in `docs/MUNCH-STABILIZATION.md`.
+- **Storage:** IndexedDB v2 (only adds missing stores). Connection-loss retry, open timeout, and `lastError` with the
+  browser error name. `importBytes` returns `{ stored, error }`: a sample that decodes but cannot be written plays from
+  memory (`store.unsaved()`, never evicted by the bank) until `retryUnsaved()` or `repair()` writes it.
+- **Recording:** Audio Session switch for WebKit (`src/audio/session.js`), constraint fallback, per-error messages,
+  `diagnostics()`, auto-stop that keeps the recording.
+- **Voice:** voice keys (retrigger), choke on by default, click-free cuts, Stop always silences. Stretch mode plays the
+  bank's time-stretched copy (`bank.stretched()` / `requestStretch()`), Tape mode plays the original at the fit rate.

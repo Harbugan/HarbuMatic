@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — v0.6 MUNCH stabilization
+
+MUNCH should work on a physical iPad: Import → Record → Play → Chop → Sequence → Fit to Tempo → Stop → Play again. It is still a **dev preview** (`?munch=dev`), and the version stays 0.5.1 until the owner's iPad test. The record of causes, decisions and the iPad checklist is in `docs/MUNCH-STABILIZATION.md`, and the bug entries are BUGS.md MUNCH-1…4.
+
+### Fixed
+- **Microphone on iPad (MUNCH-1):** WebKit refuses `getUserMedia` while `navigator.audioSession.type` is `playback`, which the engine sets at start. RECORD now switches to `play-and-record` inside the tap and restores the session afterwards. Constraints fall back from raw audio to `{ audio: true }`, and a refusal is never retried. Messages are clearer and carry the browser error name. MP4 is preferred on WebKit and recording uses no timeslice. The 30 s limit or a system interruption keeps the recording.
+- **Sample storage (MUNCH-2):** a failed IndexedDB transaction drops the connection and is retried once. Database v2 repairs missing stores without deleting data, and opening times out instead of hanging. Decode and storage errors are distinct. A sample that cannot be saved still plays and is marked *Not saved*, with *Try again* and a confirmed *Repair storage…* that only touches HarbuMatic's sample database.
+- **Retrigger and Stop (MUNCH-3):** the same slice, key or audition retriggers instead of piling up. Choke is on by default for new sounds. Cuts are click-free (the envelope is held, then ramped). **Stop now silences MUNCH even when the transport is already stopped.** Pads respect Gate/Loop release.
+
+### Added
+- **Stretch fit mode (MUNCH-4):** `fitMode` `stretch` (default, pitch kept) or `tape` (pitch follows speed). Stretch is a pure-JS WSOLA anchored at slice boundaries (`src/samples/stretch.js`), rendered in a Worker (`stretch-runner.js`, `stretch-worker.js`) and cached in the bank. Fit has a STRETCH/TAPE toggle.
+- CHOP: the selected slice selects its start marker, so Earlier/Later/Delete are ready without hunting for a handle. A slice info row with Undo/Redo sits under the pads. *Equal…* offers 4/8/16 slices.
+- Tests: `munch-recorder`, `munch-voices` and `munch-stretch`, storage failure injection, and UI flows with an emulated iPad audio session, broken IndexedDB, the Stretch Worker, Stop while stopped and pad gating.
+
+### Changed
+- MUNCH defaults: `choke: true`, `fitMode: 'stretch'`. Songs that stored `choke: false` keep Overlap. Fitted songs without `fitMode` now stretch instead of transposing (intended product decision).
+- The sample store returns `{ stored, error }` instead of throwing on write failures. `SampleError` gains the codes `storage`, `insecure`, `mic-busy` and `mic-session`.
+
 ## Unreleased — v0.6 Phase 4: MUNCH, the playful instrument
 
 MUNCH becomes an instrument instead of a test bench: feed it a sound, fit it to the beat, chop it, play it on keys and pads and let MAGIC CHOP make a groove. Still a **dev preview** (`?munch=dev`); without the flag nothing changes for players. The version stays 0.5.1. Design record: `docs/MUNCH-PHASE4.md`.

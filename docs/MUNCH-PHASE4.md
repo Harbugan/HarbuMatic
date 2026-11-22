@@ -1,5 +1,9 @@
 # MUNCH Phase 4 — The Playful Instrument: audit and plan
 
+> **Superseded in part by the v0.6 stabilization** (`docs/MUNCH-STABILIZATION.md`): Fit now defaults to pitch-preserving
+> **Stretch** (Tape is the alternative), choke defaults to on, retrigger/Stop semantics changed, and the microphone and
+> storage fixes apply. §3.2 below describes the Tape maths, which still holds for Tape mode.
+
 > v0.6 Phase 4. Written before implementation, kept as the design record. Starting point: `main` at the merge of
 > PR #9 (Phase 3 sample engine). MUNCH stays a **preview** instrument (`?munch=dev`) in this phase: the registry
 > status flips to `ready` only when the release decision is made (see "Release gate" below).
