@@ -18,7 +18,7 @@ import {
 import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
 import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
 import { createSampleBank } from '../samples/bank.js';
-import { createRecorder, canRecord } from '../samples/recorder.js';
+import { createRecorder, canRecord, recordSupport } from '../samples/recorder.js';
 import { createRng, randomSeed } from '../core/rng.js';
 import { buildContext } from '../music/context.js';
 import { transformPattern } from '../music/transform.js';
@@ -411,18 +411,39 @@ export async function importSampleFile(file, slotId = store.ui.sel) {
     return meta;
   } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); emit('samples'); return null; }
 }
-export const recorder = createRecorder({ maxSeconds: samples.store.limits.maxSeconds, onState: () => emit('recorder') });
+export const recorder = createRecorder({
+  maxSeconds: samples.store.limits.maxSeconds,
+  session: engine.E.session, // shared with the engine: 'playback' normally, capture only while the mic is open
+  onState: s => {
+    // switching the iPad audio session can suspend the AudioContext: wake it once the microphone is closed
+    if (s === 'idle' && engine.ctx && engine.ctx.state !== 'running') engine.ctx.resume().catch(() => {});
+    emit('recorder');
+  },
+  onAutoStop: (rec, reason) => {
+    if (!rec) { emit('toast', reason === 'ended' ? 'The microphone was taken away by the system. Nothing was recorded.' : 'Nothing was recorded'); react('oops'); return; }
+    emit('toast', reason === 'limit' ? `Recording stopped at ${samples.store.limits.maxSeconds} s (the limit) and was kept` : 'The microphone was taken away by the system: the recording so far was kept');
+    importRecording(rec, recordSlot);
+  },
+});
 export const recordingSupported = () => canRecord();
-export async function recordStart() {
+export const recordingSupport = () => recordSupport();
+let recordSlot = null;
+/** RECORD: call straight from the tap (iPad needs the audio-session switch and getUserMedia inside the gesture) */
+export async function recordStart(slotId = store.ui.sel) {
   engine.init();
+  recordSlot = slotId;
   transport.state === 'playing' && transport.pause(); // a quiet room: nothing from HarbuMatic leaks into the mic
-  try { await recorder.start(); emit('munch', { kind: 'listen' }); } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); }
+  try { await recorder.start(); emit('munch', { kind: 'listen' }); return true; }
+  catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); return false; }
 }
-export async function recordStop(slotId = store.ui.sel) {
+function importRecording(rec, slotId) {
+  return importSampleFile({ name: rec.name, type: rec.type, arrayBuffer: async () => rec.bytes }, slotId || store.ui.sel);
+}
+export async function recordStop(slotId = recordSlot || store.ui.sel) {
   let rec = null;
-  try { rec = await recorder.stop(); } catch (e) { emit('toast', sampleErrorText(e)); return null; }
+  try { rec = await recorder.stop(); } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); return null; }
   if (!rec) { emit('toast', 'Nothing was recorded'); emit('munch', { kind: 'oops' }); return null; }
-  return importSampleFile({ name: rec.name, type: rec.type, arrayBuffer: async () => rec.bytes }, slotId);
+  return importRecording(rec, slotId);
 }
 export function recordCancel() { recorder.cancel(); }
 /* ---------- MUNCH workspace (v0.6 Phase 4) ---------- */

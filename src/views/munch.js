@@ -179,8 +179,10 @@ function importButton(size) {
 }
 function recButton(size) {
   const big = size === 'big', r = A.recorder.state;
-  if (!A.recordingSupported()) {
-    return big ? h('div', { class: 'mw-big rec', 'aria-disabled': 'true' }, h('span', { class: 'mw-big-i', html: ico('mic') }), h('span', { class: 'mw-big-t' }, h('b', {}, 'RECORD'), h('small', {}, 'not supported in this browser'))) : h('span');
+  const sup = A.recordingSupport();
+  if (!sup.ok) {
+    const why = sup.reason === 'insecure' ? 'needs an https page' : 'not supported in this browser';
+    return big ? h('div', { class: 'mw-big rec', 'aria-disabled': 'true', 'data-testid': 'munch-rec-off' }, h('span', { class: 'mw-big-i', html: ico('mic') }), h('span', { class: 'mw-big-t' }, h('b', {}, 'RECORD'), h('small', {}, why))) : h('span');
   }
   const on = r === 'recording';
   const b = h('button', { type: 'button', class: (big ? 'mw-big rec' : 'btn icon mw-rec') + (on ? ' on' : ''), 'data-testid': 'munch-rec', disabled: r === 'starting' || r === 'stopping',
