@@ -13,7 +13,7 @@ import {
 import { createPatternFor, isPlayableType } from '../core/instruments.js';
 import {
   sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH, insertSliceBoundary, splitSlice,
-  removeSliceBoundary, remapSlotSlices, sliceAt, sliceCount, fitInfo, fitRate, FIT_BARS, MAX_SLICES, MIN_SLICE,
+  removeSliceBoundary, remapSlotSlices, sliceAt, sliceCount, fitInfo, fitRate, fitPlayback, FIT_BARS, FIT_MODES, MAX_SLICES, MIN_SLICE,
 } from '../core/samples.js';
 import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
 import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
@@ -64,7 +64,7 @@ function restoreSnapshot(json) {
   store.project.id = keepId;
   ensureSelection();
   if (transport.pos && store.project.arrangement.length === 0 && transport.pos.song) transport.stop();
-  engine.applyAll(); syncSamples();
+  engine.applyAll(); syncSamples(); prepareStretch();
   save(); emit('project');
 }
 export function undo() { const s = history.undo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Undo'); } emit('history'); }
@@ -190,6 +190,7 @@ export function setBpm(v) {
   const b = clamp(Math.round(v), 50, 200); if (b === store.project.bpm) return;
   checkpoint('bpm'); store.project.bpm = b;
   const first = playableSlots(store.project)[0]; if (first) engine.applyParams(first.id); // re-times the echo
+  prepareStretch(); // Stretch: a new tempo needs a new stretched copy (until then the closest one plays at exact timing)
   save(); emit('tempo');
 }
 // the drum Movement shaper *is* the swing amount, so keep them in step
@@ -199,9 +200,9 @@ export function setSongMode(on) { store.project.songMode = on; save(); emit('arr
 /* ---------- sound ---------- */
 export function setParam(t, k, v, coalesce = true) {
   if (coalesce) checkpoint(`p:${t}:${k}`);
-  P(t)[k] = v; engine.applyParams(t); save(); emit('params', t);
+  P(t)[k] = v; engine.applyParams(t); if (isSamplerSlot(t)) prepareStretch(); save(); emit('params', t);
 }
-export function toggleParam(t, k) { checkpoint(); P(t)[k] = !P(t)[k]; engine.init(); engine.applyParams(t); save(); emit('params', t); }
+export function toggleParam(t, k) { checkpoint(); P(t)[k] = !P(t)[k]; engine.init(); engine.applyParams(t); if (isSamplerSlot(t)) prepareStretch(); save(); emit('params', t); }
 export function applyPreset(t, vals) { checkpoint(); Object.assign(P(t), vals); engine.applyParams(t); save(); emit('params', t); }
 export function setMacro(t, k, v) {
   checkpoint(`m:${t}:${k}`);
@@ -381,7 +382,19 @@ export function syncSamples() {
     emit('samples');
   });
 }
-samples.on(() => emit('samples'));
+samples.on(() => { prepareStretch(); emit('samples'); });
+/**
+ * Stretch fit mode: queue the time-stretched copy every playable sampler needs at the current tempo, slices and fit,
+ * so it is usually ready before the next note. Cheap and idempotent (the bank skips copies it has).
+ */
+export function prepareStretch() {
+  if (!store.project) return;
+  for (const s of playableSlots(store.project)) {
+    if (!s.sample || !isSamplerSlot(s.id)) continue;
+    const fp = fitPlayback(s.params, s.sample.duration, store.project.bpm);
+    if (fp.stretch !== 1) samples.requestStretch(s.sample.id, fp.stretch, s.sample.slices, !!s.params.reverse);
+  }
+}
 /** state of a slot's sample for the UI: { ref, status, error } (status 'none' when no sample is loaded) */
 export function sampleState(slotId) {
   const s = slot(slotId), ref = s && s.sample;
@@ -499,6 +512,7 @@ function restructure(slotId, next, { select, marker = null, msg } = {}) {
   const n = sliceCount(next), u = M();
   u.sel = Math.max(0, Math.min(n - 1, select ?? u.sel)); u.marker = marker; u.bank = u.sel >= 8 ? 1 : 0;
   u.magic = null;
+  prepareStretch(); // stretched copies are anchored on the slice boundaries
   save(); emit('samples'); emit('pattern');
   react('snip');
   if (msg) emit('toast', msg);
@@ -538,6 +552,7 @@ export function moveSlice(i, pos, slotId = store.ui.sel) {
   checkpoint(`slice:${i}`);
   s.sample.slices = moveSliceBoundary(s.sample.slices, i, pos);
   if (M().magic) M().magic = null;
+  prepareStretch();
   save(); emit('samples');
 }
 /** nudge a boundary by about 10 ms of audio (a visible alternative to precise dragging) */
@@ -597,12 +612,25 @@ export function setFit(choice, slotId = store.ui.sel) {
     const f = fitInfo({ ...s.params, fit: choice }, s.sample.duration, store.project.bpm);
     if (!f.ok) {
       const bars = FIT_BARS[choice] === .5 ? 'half a bar' : `${FIT_BARS[choice]} bar${FIT_BARS[choice] > 1 ? 's' : ''}`;
-      emit('toast', `${bars} would play at ×${f.ratio.toFixed(2)}: too ${f.ratio < 1 ? 'slow' : 'fast'} for tape. Try ${f.ratio < 1 ? 'fewer' : 'more'} bars or trim the sound.`);
+      emit('toast', `${bars} would need ×${f.ratio.toFixed(2)} speed: too ${f.ratio < 1 ? 'slow' : 'fast'} to sound good. Try ${f.ratio < 1 ? 'fewer' : 'more'} bars or trim the sound.`);
       react('oops'); return false;
     }
   }
-  checkpoint(); s.params.fit = choice; engine.applyParams(slotId); save(); emit('params', slotId); emit('samples');
+  checkpoint(); s.params.fit = choice; engine.applyParams(slotId); prepareStretch(); save(); emit('params', slotId); emit('samples');
   return true;
+}
+/** Fit mode: 'stretch' (pitch stays when the tempo changes, the default) or 'tape' (pitch follows the speed) */
+export function setFitMode(mode, slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s || !FIT_MODES.includes(mode) || s.params.fitMode === mode) return false;
+  checkpoint(); s.params.fitMode = mode; engine.applyParams(slotId); prepareStretch(); save(); emit('params', slotId); emit('samples');
+  return true;
+}
+/** is the stretched copy for the current tempo ready? 'off' (not needed) | 'pending' | 'ready' */
+export function stretchStatus(slotId = store.ui.sel) {
+  const s = slot(slotId); if (!s || !s.sample) return 'off';
+  const fp = fitPlayback(s.params, s.sample.duration, store.project.bpm);
+  if (fp.stretch === 1) return 'off';
+  return samples.stretchState(s.sample.id, fp.stretch, s.sample.slices) === 'ready' ? 'ready' : 'pending';
 }
 /** current tape-fit state of a slot (for the UI) */
 export function fitState(slotId = store.ui.sel) {

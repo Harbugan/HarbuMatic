@@ -263,6 +263,11 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-fit button { border: 0; min-width: 40px; min-height: 40px; padding: 0 6px; border-radius: 11px; background: #ffffffaa; font-weight: 900; font-size: 14px; color: #6d5a66; cursor: pointer; }
 .mw-fit button.on { background: linear-gradient(180deg, #fff, var(--mw-pink)); color: var(--navy); box-shadow: 0 3px 0 var(--mw-pink-d); }
 .mw-fit button.far { color: #c4aeb8; text-decoration: line-through; text-decoration-thickness: 2px; }
+.mw-fit button.mw-fitmode { display: flex; flex-direction: column; justify-content: center; align-items: center; margin-left: 4px; min-width: 70px; padding: 0 8px; line-height: 1; background: linear-gradient(180deg, #fff, #d9f0fa); box-shadow: 0 3px 0 #8ccbe6; color: var(--navy); }
+.mw-fit button.mw-fitmode.tape { background: linear-gradient(180deg, #fff, #fbe6c4); box-shadow: 0 3px 0 #e9ae57; }
+.mw-fit button.mw-fitmode b { font-size: 12px; letter-spacing: .8px; }
+.mw-fit button.mw-fitmode small { font-size: 9px; font-weight: 800; letter-spacing: .3px; color: #6d5a66; margin-top: 2px; }
+.mw-unsaved { background: #fff1d6; color: #9a5b00; box-shadow: 0 2px 0 #e9ae57; }
 .mw-drawer { flex: none; }
 
 /* feed me: the empty state */

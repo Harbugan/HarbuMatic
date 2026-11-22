@@ -111,8 +111,10 @@ function statusLine() {
   const f = fitInfo(s.params, ref.duration, store.project.bpm);
   const base = `${ref.duration.toFixed(2)} s · ${ref.channels === 1 ? 'mono' : 'stereo'} · ${sliceCount(ref.slices)} slices`;
   if (!f.on) return `${base} · original speed`;
+  const far = f.clamped ? ` · can't fit at ${store.project.bpm} BPM` : '';
+  if (f.mode === 'stretch') return `${base} · stretch ×${(1 / f.rate).toFixed(2)} · pitch kept${A.stretchStatus() === 'pending' ? ' · stretching…' : ''}${far}`;
   const st2 = f.semitones >= 0 ? `+${f.semitones.toFixed(1)}` : f.semitones.toFixed(1);
-  return `${base} · tape ×${f.rate.toFixed(2)} (${st2} st)${f.clamped ? ` · can't fit at ${store.project.bpm} BPM` : ''}`;
+  return `${base} · tape ×${f.rate.toFixed(2)} (${st2} st)${far}`;
 }
 function head(s, st, empty) {
   const ref = s.sample, hd = h('div', { class: 'mw-head' });
@@ -151,11 +153,19 @@ function fitControl(s) {
   FIT_CHOICES.forEach(c => {
     const on = cur === c;
     const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: (on ? 'on' : '') + (ok[c] ? '' : ' far'), 'data-fit': c,
-      title: c === 'off' ? 'Original speed' : `${FIT_LABEL[c]} bar${c === 'half' || c === '1' ? '' : 's'} at ${store.project.bpm} BPM${ok[c] ? '' : ' — too far for tape'}`,
+      title: c === 'off' ? 'Original speed' : `${FIT_LABEL[c]} bar${c === 'half' || c === '1' ? '' : 's'} at ${store.project.bpm} BPM${ok[c] ? '' : ' — too far to fit'}`,
       'aria-label': c === 'off' ? 'Original speed' : `Fit to ${c === 'half' ? 'half a bar' : c + (c === '1' ? ' bar' : ' bars')}` }, FIT_LABEL[c]);
     b.onclick = () => A.setFit(c);
     box.append(b);
   });
+  // how the fit is made: STRETCH keeps the pitch (default), TAPE lets the pitch follow the speed. One big toggle.
+  const mode = s.params.fitMode === 'tape' ? 'tape' : 'stretch', other = mode === 'tape' ? 'stretch' : 'tape';
+  const modes = h('button', { type: 'button', class: 'mw-fitmode ' + mode, 'data-testid': 'munch-fitmode', 'data-fitmode': mode,
+    title: mode === 'stretch' ? 'Stretch: tempo changes the length, the pitch stays. Tap for Tape.' : 'Tape: speed and pitch change together. Tap for Stretch.',
+    'aria-label': `Fit mode: ${mode === 'stretch' ? 'Stretch, pitch kept' : 'Tape, pitch follows speed'}. Tap to switch to ${other}.` },
+    h('b', {}, mode === 'stretch' ? 'STRETCH' : 'TAPE'), h('small', {}, mode === 'stretch' ? 'pitch kept' : 'pitch moves'));
+  modes.onclick = () => A.setFitMode(other);
+  box.append(modes);
   return box;
 }
 function character(size) {
