@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-20  
+> Last updated: 2026-11-22  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Product direction
@@ -25,7 +25,8 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, consistent navigation, alignment, version and creator signature | **In review** — fixes implemented, iPad verification pending |
-| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Direction decided; phased implementation |
+| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Phase 4 / PR #10 under physical iPad review; sample storage failure reported; release blocked pending verification |
+| **v0.6.1** | Playability & Polish | Focused cross-instrument UX and musical quality pass on physical iPad; no major new features | **Decided** — after v0.6, before Ruff in the Jungle |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | User-facing instrument replacement, Dynamic Scene Library, automation, stronger finishing/export tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -71,11 +72,11 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
 
-**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`, in review, physical iPad testing pending** (`docs/MUNCH-PHASE4.md`); (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`, under physical iPad review (PR #10); sample import/storage failure reported on iPad** (`docs/MUNCH-PHASE4.md`); (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
-- Pitch, reverse, and basic sample playback controls; explore tempo matching and transient detection.
+- Pitch, reverse, and basic sample playback controls. **Decided:** Stretch (preserve pitch when tempo changes) is the default tempo-fit behavior; Tape (pitch follows speed) is the alternative. Implementation and iPad verification are outstanding.
 - Make slices usable from the sequencer.
 - Initial **WAV audio export** so musical ideas can leave the app.
 - Introduce **.hbn** as the native HarbuMatic project extension (**decided**).
@@ -87,7 +88,24 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Scope guardrails:** No instrument swapping UI or unlimited slots in v0.6. No advanced time-stretch, transient detection, full parameter-lock system or full jungle break engine in v0.6. MAGIC CHOP must create musically useful, editable patterns with Undo; avoid arbitrary note soup. Verify iPad Safari recording, timing, touch and sample memory limits before release.
 
+**Release blocker (reported 2026-11-22):** During physical iPad testing of PR #10, MUNCH reports `The sample could not be stored.` on import, while import works on desktop. Root cause unconfirmed; investigate Safari storage/IndexedDB, errors and cache/version behavior without assuming a diagnosis. PR #10 intentionally keeps the app version at 0.5.1, so that footer alone is not evidence of a stale preview. Verify microphone recording, sample import/storage, reload and playback on physical iPad before considering v0.6 ready. Do not defer this blocker to v0.6.1.
+
 **Exit criterion:** A user can record/import a sound, creatively manipulate it, use it in music, and save the work in a portable project.
+
+## v0.6.1 — Playability & Polish
+
+**Decided sequence (2026-11-22):** Complete and verify v0.6 first, then a focused UX and quality round, then start v0.7 Ruff in the Jungle. This is a quality milestone, not a feature expansion.
+
+- Review preset discoverability, selection and consistency across BOP, GOO, BLIP, FUZZ and MUNCH.
+- Audit JAM / SOUND / ARRANGE navigation, progressive disclosure, first-run experience and instrument workflows on a physical iPad.
+- Improve touch targets, gesture reliability, visual hierarchy, feedback and accessibility without hiding essential controls.
+- Evaluate musical usefulness of Generate, Mutate, Evolve, Happy Accident Lab and MAGIC CHOP; preserve locks, user intent and undoability.
+- Polish character, microinteractions and visual consistency only where they improve playability.
+- Run physical iPad Safari checks and regression tests for transport, timing, sequencer, scenes, projects, sampling and export.
+
+**Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
+
+**Exit criterion:** A first-time user can create a beat quickly (target: 30 seconds), find and audition presets, operate core controls comfortably on iPad and produce musically useful variations without breaking existing projects or workflows.
 
 ## v0.7 — Ruff in the Jungle
 
@@ -168,6 +186,9 @@ These are **forward-looking constraints**, not requests to build every future fe
 | MUNCH PLAY/CHOP/TWIST, melodic keys and slice pads | **Decided for v0.6 scope** |
 | CHOMPI-like first interaction; Flip-like deeper editing | **Decided design direction** |
 | MAGIC CHOP: musically guided, editable variations | **Decided goal; first version (metrical-role templates) in Phase 4 review** |
+| Focused v0.6.1 Playability & Polish milestone before v0.7 | **Decided 2026-11-22** |
+| v0.6 release blocked on reported iPad MUNCH sample-storage failure in PR #10 | **Reported; diagnosis and fix pending** |
+| Default tempo-fit Stretch (pitch preserved); optional Tape (pitch changes with speed) | **Decided; implementation unverified** |
 | Dedicated jungle/breakbeat creation feature | **Decided** |
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
