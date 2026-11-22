@@ -14,7 +14,7 @@ import { sliceCount, sliceRegion, FIT_CHOICES, fitChoicesOk, fitInfo } from '../
 import { MAGIC_STYLES, MAGIC_LABEL } from '../music/magicchop.js';
 import { h } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
-import { Knob, Seg } from '../ui/controls.js';
+import { Knob, Seg, dialog, confirmDialog } from '../ui/controls.js';
 import { catSVG, sparks } from '../ui/characters.js';
 import { Wave, drawWave, zoomWave, zoomLevels, cursorText, SLICE_COLORS } from './munch-wave.js';
 
@@ -107,6 +107,7 @@ function statusLine() {
   if (A.recorder.state === 'recording') return `Listening… ${A.recorder.elapsed().toFixed(1)} s`;
   if (!ref) return STATUS.none;
   if (st.status !== 'ready') return STATUS[st.status] || st.status;
+  if (A.samples.store.isUnsaved(ref.id)) return 'Plays now · NOT saved on this device';
   const f = fitInfo(s.params, ref.duration, store.project.bpm);
   const base = `${ref.duration.toFixed(2)} s · ${ref.channels === 1 ? 'mono' : 'stereo'} · ${sliceCount(ref.slices)} slices`;
   if (!f.on) return `${base} · original speed`;
@@ -123,6 +124,11 @@ function head(s, st, empty) {
     const hear = h('button', { type: 'button', class: 'btn icon mw-hear', 'aria-label': 'Hear the whole sound', title: 'Hear the whole sound', html: ico('play') });
     hear.onclick = () => A.auditionSample();
     const newSound = h('div', { class: 'mw-newsound' }, hear, recButton('mini'), importButton('mini'));
+    if (ref && A.samples.store.isUnsaved(ref.id)) {
+      const warn = h('button', { type: 'button', class: 'btn mini mw-unsaved', 'data-testid': 'munch-unsaved', title: 'This sound is not saved on this device' }, h('span', { html: ico('upload') }), h('span', { class: 'btn-l' }, 'Not saved'));
+      warn.onclick = storageDialog;
+      newSound.prepend(warn);
+    }
     hd.append(newSound);
     const tabs = h('div', { class: 'mw-tabs', role: 'tablist', 'aria-label': 'MUNCH layer' });
     [['play', 'PLAY'], ['chop', 'CHOP'], ['twist', 'TWIST']].forEach(([k, l]) => {
@@ -213,6 +219,20 @@ function feed(s, st) {
   if (r === 'recording') { const c = h('button', { type: 'button', class: 'btn mw-cancel' }, 'Cancel'); c.onclick = A.recordCancel; btns.append(c); }
   else btns.append(importButton('big'));
   return h('div', { class: 'mw-feed', 'data-testid': 'munch-feed' }, refs.char, h('div', { class: 'mw-feed-r' }, h('h3', {}, title), h('p', {}, sub), btns));
+}
+
+/** a sample could not be written to this browser's storage: explain, retry, or (after confirmation) repair */
+function storageDialog() {
+  const err = A.samples.store.lastError();
+  const body = h('div', { class: 'dlg-form' },
+    h('p', {}, 'This sound plays now, but the browser refused to save it. After a reload it will be missing (your song keeps its slices and grooves; importing the same file again brings it back).'),
+    h('p', {}, 'Try again first. If that keeps failing, Repair rebuilds HarbuMatic’s sample storage: it rescues every sample it can still read, deletes only HarbuMatic’s sample database and saves everything again. Songs and other websites are not touched.'),
+    err ? h('p', { class: 'dlg-note', 'data-testid': 'munch-storage-diag' }, `Browser said: ${err.name} while ${err.phase === 'read' ? 'reading' : err.phase === 'open' ? 'opening' : 'saving'}${err.message && err.message !== err.name ? ` — ${err.message}` : ''}`) : null);
+  dialog({ title: 'Not saved on this device', body, actions: [
+    { label: 'Close' },
+    { label: 'Repair storage…', danger: true, onClick: () => setTimeout(() => confirmDialog('Repair sample storage?', 'HarbuMatic will rescue the samples it can read, delete its own sample database and save them again. Samples that cannot be read are lost (songs keep their references). This cannot be undone.', 'Repair', () => A.repairSampleStorage(), { danger: true }), 0) },
+    { label: 'Try again', primary: true, onClick: () => A.retrySaveSamples() },
+  ] });
 }
 
 /* ---------- PLAY ---------- */

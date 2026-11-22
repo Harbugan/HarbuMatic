@@ -395,21 +395,56 @@ export function assignSample(slotId, meta) {
   warnedMissing.delete(meta.id);
   save(); engine.applyParams(slotId); syncSamples(); emit('samples'); emit('pattern');
 }
-const sampleErrorText = e => (e instanceof SampleError ? e.message : 'That sample could not be imported.');
+const sampleErrorText = e => (e instanceof SampleError ? e.message : `That sample could not be imported. [${(e && e.name) || 'Error'}]`);
+let persistAsked = false;
+/** ask the browser to keep HarbuMatic's storage (fewer evictions on iPad); best effort, never prompts on Safari */
+function askPersist() {
+  if (persistAsked) return; persistAsked = true;
+  try { const st = navigator.storage; if (st && st.persist) st.persisted().then(p => p || st.persist()).catch(() => {}); } catch (e) { /* not available */ }
+}
 /** import an audio File (or { name, type, arrayBuffer() }) into the store and assign it; returns the metadata or null */
 export async function importSampleFile(file, slotId = store.ui.sel) {
   engine.init();
   const had = !!(slot(slotId) && slot(slotId).sample);
+  let bytes;
+  try { bytes = await file.arrayBuffer(); } catch (e) { emit('toast', `That file could not be read. [${(e && e.name) || 'Error'}]`); emit('munch', { kind: 'oops' }); return null; }
   try {
-    const bytes = await file.arrayBuffer();
-    const { meta, duplicate } = await samples.importBytes({ bytes, name: file.name || 'Sample', type: file.type || '' });
+    const { meta, duplicate, stored, error } = await samples.importBytes({ bytes, name: file.name || 'Sample', type: file.type || '' });
     assignSample(slotId, meta);
     if (!had) store.ui.munch.tab = 'play'; // a first sound: play it straight away
-    Object.assign(store.ui.munch, { sel: 0, marker: null, cursor: 0, zoom: 1, view: 0, bank: 0, magic: null });
-    emit('toast', duplicate ? `“${meta.name}” was already stored: using it` : `MUNCH ate “${meta.name}” (${meta.duration.toFixed(2)} s)`);
+    Object.assign(store.ui.munch, { sel: 0, marker: 0, cursor: 0, zoom: 1, view: 0, bank: 0, magic: null });
+    if (!stored) {
+      console.warn('[HarbuMatic] sample storage', samples.store.lastError());
+      emit('toast', `MUNCH ate “${meta.name}”, but it could not be saved on this device: it plays now and will be missing after a reload. ${error ? error.message : ''}`);
+    } else {
+      askPersist();
+      emit('toast', duplicate ? `“${meta.name}” was already stored: using it` : `MUNCH ate “${meta.name}” (${meta.duration.toFixed(2)} s)`);
+    }
     emit('munch', { kind: 'yum' }); emit('samples');
     return meta;
   } catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); emit('samples'); return null; }
+}
+/** samples of the current song that play from memory only (not saved on this device) */
+export const unsavedSamples = () => playingSampleIds().filter(id => samples.store.isUnsaved(id));
+/** try again to save the unsaved samples (quietly reports the outcome) */
+export async function retrySaveSamples() {
+  const r = await samples.store.retryUnsaved();
+  emit('samples');
+  emit('toast', r.failed.length ? `Still could not save ${r.failed.length === 1 ? 'the sample' : `${r.failed.length} samples`}. ${r.error ? r.error.message : ''}` : 'Saved on this device');
+  return r;
+}
+/**
+ * Repair sample storage (after the user confirmed): rescue what can be read, delete only HarbuMatic's sample
+ * database, recreate it and write everything back. Songs are not touched (they live in localStorage).
+ */
+export async function repairSampleStorage() {
+  let r;
+  try { r = await samples.store.repair(); }
+  catch (e) { emit('toast', `Repair failed. ${sampleErrorText(e)}`); return null; }
+  syncSamples(); emit('samples');
+  emit('toast', r.failed.length ? `Storage was reset, but ${r.failed.length} sample(s) still cannot be saved. ${r.error ? r.error.message : ''}`
+    : `Sample storage repaired: ${r.kept} sample${r.kept === 1 ? '' : 's'} kept${r.lost ? `, ${r.lost} could not be read and are lost` : ''}.`);
+  return r;
 }
 export const recorder = createRecorder({
   maxSeconds: samples.store.limits.maxSeconds,

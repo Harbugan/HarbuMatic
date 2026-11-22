@@ -42,7 +42,7 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
   function evict() {
     let total = bank.usage();
     if (total <= budgetBytes) return;
-    const order = [...entries.entries()].filter(([id, e]) => e.status === 'ready' && !pinned.has(id)).sort((a, b) => a[1].used - b[1].used);
+    const order = [...entries.entries()].filter(([id, e]) => e.status === 'ready' && !pinned.has(id) && !(store.isUnsaved && store.isUnsaved(id))) // unsaved samples exist only here.sort((a, b) => a[1].used - b[1].used);
     for (const [id, e] of order) {
       if (total <= budgetBytes) break;
       total -= bytesOf(e.buffer) + bytesOf(e.reversed);
