@@ -305,7 +305,6 @@ function chop(s, host) {
     b.onclick = fn; return b;
   };
   refs.cursor = h('span', { class: 'sr-only', 'aria-live': 'polite' }, cursorText()); // the display shows it too
-  const k = m.sel + 1;
   refs.tools = h('div', { class: 'mw-tools' },
     tool('scissors', 'CHOP HERE', () => A.chopAt(u().cursor), { cls: 'primary wide', testid: 'munch-chop-here', title: 'Add a marker at the cursor (tap the waveform to place it)' }),
     tool('split', 'Split', () => A.splitSliceAt(u().sel), { testid: 'munch-split', title: 'Split the selected slice in half' }),
@@ -318,7 +317,6 @@ function chop(s, host) {
   const ur = (icon, label, fn, dis) => { const b = h('button', { type: 'button', class: 'btn icon mw-si-b', 'aria-label': label, title: label, disabled: dis, html: ico(icon) }); b.onclick = fn; return b; };
   const info = h('div', { class: 'mw-sliceinfo', 'data-testid': 'munch-sliceinfo' }, ur('undo', 'Undo', A.undo, !A.history.canUndo), ur('redo', 'Redo', A.redo, !A.history.canRedo), refs.sliceInfo);
   const left = h('div', { class: 'mw-left' }, refs.tools, refs.cursor, pads(ref, n), info, magicPanel());
-  void k;
   const right = h('div', { class: 'mw-right' }, sequencer(ref, n, host));
   return h('div', { class: 'mw-chop' }, left, right);
 }
