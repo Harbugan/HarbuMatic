@@ -25,7 +25,7 @@ If sources conflict, flag the conflict rather than guessing. Never treat planned
 - Protect audio timing, Web Audio engine/voices, transport, and scheduler behavior.
 - Keep `src/music/` pure (no DOM dependencies) and keep scheduling decoupled from sample loading/decoding.
 - Route state mutations through `src/app/` actions and store; avoid parallel playback or state systems.
-- Preserve saved project compatibility, instrument definitions (`src/core/instruments.js`), version constants (`src/core/constants.js`), and the creator credit `Created by .::HARBUGAΠ::.`.
+- Preserve saved project compatibility, instrument definitions (`src/core/instruments.js`), version constants (`src/core/constants.js`), and the creator credit `Created by .::H∆RBUGΛП::.`.
 - Prioritize iPad touch ergonomics and offline/PWA (`sw.js`, `manifest.json`) behavior.
 
 ## Implementation & Delegation
