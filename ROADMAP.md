@@ -108,6 +108,19 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 ## v0.6.1 — Playability & Polish
 
+### Future UX exploration — Collapsible top instrument/transport area
+
+**Status: Agreed to track; not authorized for implementation now.** During the tablet-first playability review, evaluate an expanded and a highly compact/collapsed state for the top area (header, instrument strip and transport). The user's initial idea is a collapsed height around **20% of the current expanded area**, as an aspirational space-saving target rather than a fixed requirement.
+
+- Prioritize freeing vertical space for playing, sequencer editing and MUNCH workflows on landscape iPad.
+- Preserve quick, comfortable access to Play, Stop, future Pattern Record, active instrument selection and essential feedback.
+- Keep kawaii character identity visible in a smaller form when appropriate.
+- Ensure accessible touch targets, discoverable expand/collapse control, consistent behavior across JAM/SOUND/ARRANGE and no overlapping UI.
+- Evaluate whether the collapsed state should persist per project/session; decide through actual iPad UX testing.
+- Do not implement this as part of the next small Quick Volume or Live Pattern Recording PR; plan as a separate, focused UX change.
+
+
+
 **Decided sequence (2026-11-22):** Complete and verify v0.6 first, then a focused UX and quality round, then start v0.7 Ruff in the Jungle. This is a quality milestone, not a feature expansion.
 
 - Review preset discoverability, selection and consistency across BOP, GOO, BLIP, FUZZ and MUNCH.
