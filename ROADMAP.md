@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-23 (Dynamic Scene Library merged, PR #18)  
+> Last updated: 2026-11-23 (v0.6.1 UX review captured)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -111,6 +111,9 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 **Exit criterion:** A user can record/import a sound, creatively manipulate it, use it in music, and save the work in a portable project.
 
 ## v0.6.1 — Dynamic Scenes & Playability
+
+**UX review source of truth:** [docs/UX-REVIEW-061.md](docs/UX-REVIEW-061.md) tracks owner-observed issues, decided design directions, proposals and unresolved technical questions. This is planning, not authorization to implement. Key decisions: mode-specific JAM/SOUND/ARRANGE workspace, no-scroll-by-default landscape, simultaneous CHOP pads and sequencer, and dedicated CHOP pattern preview goal.
+
 
 **Implementation progress (2026-11-23):** Quick Volume & card alignment (PR #15) merged and user-verified on iPad. Five instruments by default (PR #16) merged and user-tested. Dynamic Scene Library (PR #18) merged: one empty scene for new projects, create/duplicate/rename/edit/copy-to/delete/reorder, maximum 64 scenes, dynamic labels, scene-local pattern/harmony deep-copy, Undo/Redo and `.hbn` round-trip. PR #18 reports 266/266 unit tests passing and a separate headless Chrome UI flow passing; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in that PR environment. Physical iPad verification of Dynamic Scenes confirmed by the owner on 2026-11-23. Remaining v0.6.1 work: iPad UX/preset review, compact top exploration and musical playability polish; scope each as separate tasks.
 
