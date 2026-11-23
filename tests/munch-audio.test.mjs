@@ -115,7 +115,7 @@ test('velocity scales the envelope peak; attack shapes the start', () => rig(asy
 }));
 
 test('polyphony is bounded: the oldest voice is stolen with a short fade, nothing is left running', () => rig(async ({ engine, voice, srcs, ctx }) => {
-  for (let i = 0; i < MUNCH_POLY + 4; i++) engine.trigger(M, i * .01, { p: 60, v: .8, dur: .5 }, false);
+  for (let i = 0; i < MUNCH_POLY + 4; i++) engine.trigger(M, i * .01, { p: 60 + i, v: .8, dur: .5 }, false); // different keys: polyphonic
   assert.equal(voice.activeCount(), MUNCH_POLY);
   assert.equal(voice.stats.stolen, 4);
   srcs().slice(0, 4).forEach(s => assert.ok(s.stopAt < .2, 'stolen voices stop quickly'));

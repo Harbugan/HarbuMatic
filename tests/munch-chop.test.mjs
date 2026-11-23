@@ -125,7 +125,7 @@ test('tape fit follows BPM changes and reports out-of-range requests', () => {
 
 test('pitch stays explicit: transpose × tune × fit, root and tune untouched by fit', () => {
   const base = { ...defaultParamsFor('munch'), root: 57, tune: 2 };
-  const fitted = { ...base, fit: '1' };
+  const fitted = { ...base, fit: '1', fitMode: 'tape' };
   const mel = { p: 69 }, sl = { p: 60, slice: 3 };
   // melodic: (69 − 57 + 2) st; slice: (60 − 60 + 2) st
   assert.ok(near(notePlaybackRate(mel, base, 2, 120), rateForSemitones(14)));
@@ -133,6 +133,10 @@ test('pitch stays explicit: transpose × tune × fit, root and tune untouched by
   assert.ok(near(notePlaybackRate(mel, fitted, 2.5, 120), rateForSemitones(14) * 1.25), 'fit multiplies, it does not replace');
   assert.ok(near(notePlaybackRate(sl, fitted, 2.5, 120), rateForSemitones(2) * 1.25), 'slices share the same tape speed');
   assert.equal(fitted.root, 57); assert.equal(fitted.tune, 2);
+  // stretch (the default): the fit changes the duration only; the pitch is transpose + tune alone
+  const stretched = { ...base, fit: '1' };
+  assert.ok(near(notePlaybackRate(mel, stretched, 2.5, 120), rateForSemitones(14)), 'stretch keeps the pitch');
+  assert.ok(near(notePlaybackRate(sl, stretched, 2.5, 120), rateForSemitones(2)));
 });
 
 test('slice home steps follow tempo and tape speed', () => {
@@ -142,14 +146,17 @@ test('slice home steps follow tempo and tape speed', () => {
   assert.deepEqual(sliceHomeSteps([.5, .75, 1], 4, 1, 120).map(Math.round), [0, 8], 'counted from the first slice');
 });
 
-test('new params default to Phase 3 behaviour and are validated', () => {
+test('new params: fit off, Stretch, choke on by default; all validated', () => {
   const d = defaultParamsFor('munch');
-  assert.equal(d.fit, 'off'); assert.equal(d.fitFine, 0); assert.equal(d.choke, false);
+  assert.equal(d.fit, 'off'); assert.equal(d.fitFine, 0); assert.equal(d.choke, true); assert.equal(d.fitMode, 'stretch');
   const p = createEmptyProject();
-  Object.assign(slotById(p, M).params, { fit: 'seven', fitFine: 3, choke: 'yes' });
+  Object.assign(slotById(p, M).params, { fit: 'seven', fitFine: 3, choke: 'yes', fitMode: 'elastic' });
   const v = validateProject(JSON.parse(JSON.stringify(p)));
   const m = slotById(v, M).params;
-  assert.equal(m.fit, 'off'); assert.equal(m.fitFine, .12); assert.equal(m.choke, false);
+  assert.equal(m.fit, 'off'); assert.equal(m.fitFine, .12); assert.equal(m.choke, true); assert.equal(m.fitMode, 'stretch');
+  Object.assign(slotById(p, M).params, { fitMode: 'tape', choke: false });
+  const t = slotById(validateProject(JSON.parse(JSON.stringify(p))), M).params;
+  assert.equal(t.fitMode, 'tape'); assert.equal(t.choke, false, 'a stored choke: false is kept');
 });
 
 test('a Phase 3 song loads unchanged: slices, slice notes and params, plus the new defaults', () => {
@@ -162,7 +169,7 @@ test('a Phase 3 song loads unchanged: slices, slice notes and params, plus the n
   const b = slotById(back, M);
   assert.deepEqual(b.sample, phase3.slots[4].sample);
   assert.deepEqual(b.patterns, phase3.slots[4].patterns);
-  assert.deepEqual(b.params, { ...phase3.slots[4].params, fit: 'off', fitFine: 0, choke: false });
+  assert.deepEqual(b.params, { ...phase3.slots[4].params, fit: 'off', fitFine: 0, choke: true, fitMode: 'stretch' });
   assert.deepEqual(back.snaps[2], phase3.snaps[2]);
   assert.deepEqual(importProject(JSON.parse(JSON.stringify(back))), back, 'idempotent');
 });

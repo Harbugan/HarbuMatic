@@ -13,6 +13,7 @@
 import { getInstrumentType } from '../core/instruments.js';
 import { playableSlots, slotById, slotAudible } from '../core/project.js';
 import { VOICE_FACTORIES, cutHz } from './voices.js';
+import { createAudioSession } from './session.js';
 
 export { cutHz };
 
@@ -32,7 +33,7 @@ function makeIR(ctx, sec) {
  * @param opts.samples  sample bank (src/samples/bank.js) handed to sampler voices; decoding stays in the bank
  */
 export function createEngine(getProject, { samples = null } = {}) {
-  const E = { ctx: null, ch: new Map(), gates: null, shared: null, onInterrupt: null, samples };
+  const E = { ctx: null, ch: new Map(), gates: null, shared: null, onInterrupt: null, samples, session: createAudioSession() };
   const slotParams = id => slotById(getProject(), id).params;
   const stepDur = () => 60 / getProject().bpm / 4;
   const audible = id => { const pr = getProject(), s = slotById(pr, id); return !!s && slotAudible(pr, s); };
@@ -40,8 +41,8 @@ export function createEngine(getProject, { samples = null } = {}) {
   function init() {
     if (E.ctx) { if (E.ctx.state !== 'running') E.ctx.resume().catch(() => {}); return E.ctx; }
     const AC = window.AudioContext || window.webkitAudioContext;
-    // iOS 17+: play even when the ring/silent switch is on
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* not supported */ }
+    // iOS 17+: play even when the ring/silent switch is on (the recorder switches to capture while the mic is open)
+    E.session.playback();
     const ctx = E.ctx = new AC({ latencyHint: 'interactive' });
     const G = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
     E.master = G(.85);
@@ -99,12 +100,16 @@ export function createEngine(getProject, { samples = null } = {}) {
     E.gates = {};
     for (const [id, entry] of E.ch) { const g = E.ctx.createGain(); g.gain.value = 1; g.connect(entry.voice.input); E.gates[id] = g; }
   }
+  /** Pause/Stop: close the session gates (queued notes go quiet) and silence every voice — also when the transport
+   *  was already stopped, so Stop always ends auditions, held keys and long one-shots (BUGS.md MUNCH-3) */
   function closeGates() {
-    if (!E.gates || !E.ctx) return;
-    const now = E.ctx.currentTime, old = E.gates;
-    Object.values(old).forEach(g => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, .006); });
-    setTimeout(() => Object.values(old).forEach(g => { try { g.disconnect(); } catch (e) { /* gone */ } }), 250);
-    E.gates = null;
+    if (!E.ctx) return;
+    if (E.gates) {
+      const now = E.ctx.currentTime, old = E.gates;
+      Object.values(old).forEach(g => { g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, .006); });
+      setTimeout(() => Object.values(old).forEach(g => { try { g.disconnect(); } catch (e) { /* gone */ } }), 250);
+      E.gates = null;
+    }
     silenceSustained();
   }
   /** stop sustained voices (the mono bass keeps running between notes) */

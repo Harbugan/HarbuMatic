@@ -224,43 +224,62 @@ export function remapSlotSlices(project, slotId, oldSlices, newSlices) {
 }
 
 /* ---------------------------------------------------------
-   Tape Fit (v0.6 Phase 4): fit the active (trimmed) region to whole bars at the project tempo by playback rate.
-   Tape-style: speed and pitch change together. Combined rate of a note:
-     2^((transpose + tune) / 12) × fitRatio      (transpose = p − root, or p − 60 for slice notes)
-   Root, transposition, tune and fit stay separate values. See docs/MUNCH-PHASE4.md §3.2.
+   Fit to Beat: fit the active (trimmed) region to whole bars at the project tempo. Two modes (fitMode):
+     stretch (default)  the duration changes, the pitch does not: the sample is time-stretched (src/samples/stretch.js)
+     tape               classic sampler: playback speed changes duration and pitch together
+   Timing is identical in both modes: the region lasts exactly `bars` bars at the current BPM. The time ratio
+     ratio = source / target × (1 + fitFine)      (source = trimmed seconds, target = bars × 4 × 60 / bpm)
+   is computed at trigger time, so a BPM change re-fits at once. Pitch of a note:
+     tape     2^((transpose + tune) / 12) × ratio
+     stretch  2^((transpose + tune) / 12)          (the stretched copy is played at the musical pitch only)
+   Root, transposition, tune and fit stay separate values. See docs/MUNCH-STABILIZATION.md.
    --------------------------------------------------------- */
 export const FIT_CHOICES = Object.freeze(['off', 'half', '1', '2', '4']);
+export const FIT_MODES = Object.freeze(['stretch', 'tape']);
 export const FIT_BARS = Object.freeze({ half: .5, 1: 1, 2: 2, 4: 4 });
-/** playback rates a fit may use: ±1 octave keeps the sound usable */
+/** time ratios a fit may use: ±1 octave keeps tape usable and stretch artefacts acceptable */
 export const FIT_RANGE = Object.freeze([.5, 2]);
 export const FIT_FINE_RANGE = Object.freeze([-.12, .12]);
 export const BEATS_PER_BAR = 4; // 4/4: the only meter HarbuMatic has
 
 /** seconds of `bars` bars of 4/4 at `bpm` */
 export const barsSeconds = (bars, bpm) => bars * BEATS_PER_BAR * 60 / bpm;
+export const fitModeOf = params => (params && params.fitMode === 'tape' ? 'tape' : 'stretch');
 
 /**
  * Everything about a fit choice for a sample of `duration` seconds at `bpm`:
- *   { on, bars, source, target, ratio, rate, ok, clamped, semitones }
- * ratio  = source / target × (1 + fitFine)   (what an exact fit needs)
- * rate   = ratio clamped to FIT_RANGE        (what playback uses); 1 when off
- * ok     = the exact fit is inside FIT_RANGE
+ *   { on, mode, bars, source, target, ratio, rate, ok, clamped, semitones, pitchRate, stretch }
+ * ratio      = source / target × (1 + fitFine)   (what an exact fit needs)
+ * rate       = ratio clamped to FIT_RANGE        (the time ratio playback uses); 1 when off
+ * ok         = the exact fit is inside FIT_RANGE
+ * pitchRate  = the playback-rate share that changes pitch: rate (tape) or 1 (stretch)
+ * semitones  = the pitch change the fit causes (0 in stretch mode)
+ * stretch    = the time-stretch factor of the buffer (1 / rate in stretch mode, 1 for tape)
  */
 export function fitInfo(params, duration, bpm, choice = params && params.fit) {
-  const bars = FIT_BARS[choice];
+  const bars = FIT_BARS[choice], mode = fitModeOf(params);
   const [a, b] = trimRegion(params || {});
   const source = Math.max(0, num(duration, 0)) * (b - a);
-  if (!bars || !(source > 0) || !(bpm > 0)) return { on: false, bars: 0, source, target: 0, ratio: 1, rate: 1, ok: true, clamped: false, semitones: 0 };
+  if (!bars || !(source > 0) || !(bpm > 0)) return { on: false, mode, bars: 0, source, target: 0, ratio: 1, rate: 1, ok: true, clamped: false, semitones: 0, pitchRate: 1, stretch: 1 };
   const target = barsSeconds(bars, bpm), fine = num(params.fitFine, 0, FIT_FINE_RANGE[0], FIT_FINE_RANGE[1]);
   const ratio = source / target * (1 + fine);
   const rate = Math.min(FIT_RANGE[1], Math.max(FIT_RANGE[0], ratio));
   const ok = ratio >= FIT_RANGE[0] - 1e-9 && ratio <= FIT_RANGE[1] + 1e-9;
-  return { on: true, bars, source, target, ratio, rate, ok, clamped: !ok, semitones: 12 * Math.log2(rate) };
+  const tape = mode === 'tape';
+  return { on: true, mode, bars, source, target, ratio, rate, ok, clamped: !ok, semitones: tape ? 12 * Math.log2(rate) : 0, pitchRate: tape ? rate : 1, stretch: tape ? 1 : 1 / rate };
 }
-/** the tape-fit playback-rate factor (1 when Fit is off) */
+/** the fit's time ratio (1 when Fit is off) — how much faster the sample runs through time, in either mode */
 export const fitRate = (params, duration, bpm) => fitInfo(params, duration, bpm).rate;
-/** full playback rate of a note: pitch (transpose + tune) × tape fit */
-export const notePlaybackRate = (note, params, duration, bpm) => rateForSemitones(noteSemitones(note, params)) * fitRate(params, duration, bpm);
+/** what a voice needs: { tapeRate, stretch } — exactly one of them differs from 1 when Fit is on */
+export function fitPlayback(params, duration, bpm) {
+  const f = fitInfo(params, duration, bpm);
+  return { tapeRate: f.pitchRate, stretch: f.stretch };
+}
+/**
+ * full playback rate of a note against the buffer it plays: pitch (transpose + tune) × the fit's pitch share
+ * (stretch mode plays a pre-stretched buffer, so its playback rate carries only the musical pitch)
+ */
+export const notePlaybackRate = (note, params, duration, bpm) => rateForSemitones(noteSemitones(note, params)) * fitInfo(params, duration, bpm).pitchRate;
 /** the fit choices that are usable (inside FIT_RANGE) for this sample at this tempo */
 export const fitChoicesOk = (params, duration, bpm) => Object.fromEntries(FIT_CHOICES.map(c => [c, c === 'off' || fitInfo({ ...params, fit: c }, duration, bpm).ok]));
 

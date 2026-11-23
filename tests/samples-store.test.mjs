@@ -74,11 +74,14 @@ test('empty, unsupported, too large and too long files are refused with a clear 
   await assert.rejects(noDecoder.importBytes({ bytes: makeWav(), name: 'a' }), code('not-ready'));
 });
 
-test('a full disk gives a quota error and stores nothing (asset and metadata are written together)', async () => {
+test('a full disk gives a quota error and stores nothing (asset and metadata are written together); the sample still plays from memory', async () => {
   const { store, backend } = newStore({ quotaBytes: 100000 });
   await store.importBytes({ bytes: makeWav({ seconds: .5, rate: 44100 }), name: 'fits.wav' }); // ~44 kB
-  await assert.rejects(store.importBytes({ bytes: makeWav({ seconds: 1, rate: 44100, freq: 220 }), name: 'big.wav' }), e => code('quota')(e) && /storage/i.test(e.message));
+  const r = await store.importBytes({ bytes: makeWav({ seconds: 1, rate: 44100, freq: 220 }), name: 'big.wav' });
+  assert.equal(r.stored, false); assert.ok(r.buffer, 'decoded audio is returned');
+  assert.ok(code('quota')(r.error) && /storage/i.test(r.error.message));
   assert.equal(backend.db.bytes.size, 1); assert.equal(backend.db.meta.size, 1);
+  assert.deepEqual(store.unsaved(), [r.meta.id]);
 });
 
 test('missing and damaged assets are reported, never silently replaced', async () => {
@@ -168,4 +171,69 @@ test('loads wait for the audio context; imports before it exists are refused cle
   assert.ok(await p);
   assert.equal(await bank.whenSettled([meta.id], 20), true);
   assert.equal(typeof decodeWith(createFakeContext()), 'function');
+});
+
+/* ---------- v0.6 stabilization: storage failures (BUGS.md MUNCH-2) ---------- */
+test('a write the browser refuses keeps the decoded sample playable from memory and reports the browser error', async () => {
+  const { store, backend } = newStore({ failures: [{ op: 'put', name: 'UnknownError', times: 1 }] });
+  const r = await store.importBytes({ bytes: makeWav({ seconds: .5 }), name: 'a.wav' });
+  assert.equal(r.stored, false); assert.ok(r.buffer);
+  assert.equal(r.error.code, 'storage');
+  assert.match(r.error.message, /UnknownError while saving/);
+  assert.notEqual(r.error.code, 'unsupported', 'storage and decoding errors stay distinct');
+  assert.equal(backend.db.meta.size, 0);
+  assert.ok(store.isUnsaved(r.meta.id));
+  const bytes = await store.getBytes(r.meta.id); // the bank can still (re)decode it in this session
+  assert.ok(bytes.byteLength > 0);
+  assert.equal(store.lastError().name, 'UnknownError');
+});
+
+test('retryUnsaved writes pending samples once storage works again; repeated imports keep working', async () => {
+  const { store, backend } = newStore({ failures: [{ op: 'put', name: 'InvalidStateError', times: 2 }] });
+  const a = await store.importBytes({ bytes: makeWav({ seconds: .5, freq: 300 }), name: 'a.wav' });
+  const b = await store.importBytes({ bytes: makeWav({ seconds: .5, freq: 400 }), name: 'b.wav' });
+  assert.deepEqual(store.unsaved().sort(), [a.meta.id, b.meta.id].sort());
+  const r = await store.retryUnsaved();
+  assert.deepEqual(r.failed, []); assert.equal(r.saved.length, 2);
+  assert.deepEqual(store.unsaved(), []);
+  assert.ok(await store.has(a.meta.id)); assert.ok(await store.has(b.meta.id));
+  const c = await store.importBytes({ bytes: makeWav({ seconds: .5, freq: 500 }), name: 'c.wav' });
+  assert.equal(c.stored, true); assert.equal(backend.db.meta.size, 3);
+});
+
+test('an unreadable lookup before the write does not block the import', async () => {
+  const { store } = newStore({ failures: [{ op: 'get', name: 'UnknownError', times: 2 }] });
+  const r = await store.importBytes({ bytes: makeWav({ seconds: .5 }), name: 'a.wav' });
+  assert.equal(r.stored, true);
+});
+
+test('a read failure is a storage error, not "missing"', async () => {
+  const { store } = newStore();
+  const { meta } = await store.importBytes({ bytes: makeWav({ seconds: .5 }), name: 'a.wav' });
+  store.backend.failures.push({ op: 'get', name: 'UnknownError', times: 1 });
+  await assert.rejects(store.getBytes(meta.id), e => e.code === 'storage' && /while reading/.test(e.message));
+});
+
+test('repair rescues readable samples and unsaved ones, deletes only the sample database and writes everything back', async () => {
+  const { store, backend } = newStore();
+  const a = await store.importBytes({ bytes: makeWav({ seconds: .5, freq: 300 }), name: 'a.wav' });
+  backend.failures.push({ op: 'put', name: 'UnknownError', times: 1 });
+  const b = await store.importBytes({ bytes: makeWav({ seconds: .5, freq: 400 }), name: 'b.wav' });
+  assert.equal(b.stored, false);
+  const r = await store.repair();
+  assert.equal(backend.destroyed, 1);
+  assert.equal(r.kept, 2); assert.equal(r.lost, 0); assert.deepEqual(r.failed, []);
+  assert.ok(await store.has(a.meta.id)); assert.ok(await store.has(b.meta.id));
+  assert.deepEqual(store.unsaved(), []);
+});
+
+test('the bank never evicts a sample that exists only in memory', async () => {
+  const { store } = newStore({ failures: [{ op: 'put', name: 'UnknownError', times: 1 }] });
+  const ctx = createFakeContext();
+  const bank = createSampleBank({ store, budgetBytes: 1 });
+  bank.attach(ctx);
+  const r = await bank.importBytes({ bytes: makeWav({ seconds: .5 }), name: 'only-here.wav' });
+  assert.equal(r.stored, false);
+  await bank.importBytes({ bytes: makeWav({ seconds: .5, freq: 330 }), name: 'saved.wav' }); // over budget → eviction pass
+  assert.equal(bank.state(r.meta.id).status, 'ready');
 });

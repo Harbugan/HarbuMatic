@@ -538,13 +538,26 @@ async function rollPoint(page, step, rowOrPitch) {
     ok((await slices()).length === 10, 'Undo brings the marker back');
     await pg.click('#hRedo'); await pg.waitForTimeout(100);
     ok((await slices()).length === 9, 'Redo removes it again');
-    await pg.click('[data-testid=munch-split]'); await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(100);
-    ok((await slices()).length === 9, 'Split, then back to eight equal slices');
+    await pg.click('[data-testid=munch-split]'); await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(120);
+    await pg.click('.dbtn.primary'); await pg.waitForTimeout(100); // Equal… asks 4 / 8 / 16 (8 is the default choice)
+    ok((await slices()).length === 9, 'Split, then Equal… → back to eight equal slices');
+    await pg.click('[data-testid=munch-reset]'); await pg.waitForTimeout(120);
+    await pg.click('.dbtn:has-text("16")'); await pg.waitForTimeout(100);
+    ok((await slices()).length === 17, 'Equal… can also make sixteen slices (sixteenths of a bar)');
+    await pg.click('#hUndo'); await pg.waitForTimeout(100);
+    // picking a slice picks its start marker: ◀ ▶ and Delete work without hunting for a handle
+    await pg.click('[data-testid=munch-pads] .mw-pad[data-k="3"]'); await pg.waitForTimeout(80);
+    const selm = await H(() => ({ sel: window.__harbu.store.ui.munch.marker, dis: document.querySelector('[data-testid=munch-nudge-r]').disabled, info: document.querySelector('.mw-si-t')?.textContent || '' }));
+    ok(selm.sel === 3 && !selm.dis && /SLICE 4/.test(selm.info), `tapping pad 4 selects slice 4 and its start marker, so Earlier/Later are ready (${JSON.stringify(selm)})`);
+    const startBefore = (await slices())[3];
+    await pg.click('[data-testid=munch-nudge-l]'); await pg.waitForTimeout(60);
+    ok((await slices())[3] < startBefore, 'Earlier moves the start of the selected slice');
+    await pg.click('#hUndo'); await pg.waitForTimeout(80);
     // Fit to Beat
     await pg.click('[data-testid=munch-fit] [data-fit="1"]'); await pg.waitForTimeout(80);
-    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /tape ×/.test(await H(() => document.querySelector('.mw-status').textContent)), 'FIT 1 bar is on and the head shows the tape speed');
+    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /stretch ×.*pitch kept/.test(await H(() => document.querySelector('.mw-status').textContent)), 'FIT 1 bar is on and the head shows the stretch (pitch kept, the default)');
     await pg.click('[data-testid=munch-fit] [data-fit="4"]'); await pg.waitForTimeout(80);
-    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /too slow/.test(await toast()), 'a fit that is too far for tape is refused with a clear message');
+    ok((await H(() => window.__harbu.store.project.slots[4].params.fit)) === '1' && /too slow/.test(await toast()), 'a fit that is too far is refused with a clear message');
     // MAGIC CHOP: generate, it plays, Undo returns to the pattern, Keep closes
     const patJSON = () => H(() => { const p = window.__harbu.store.project; return JSON.stringify(p.slots[4].patterns[p.scenes[p.scene].id]); });
     const mine = await patJSON();
@@ -622,8 +635,103 @@ async function rollPoint(page, step, rowOrPitch) {
     await dp.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); });
     await dp.waitForTimeout(150);
     await dp.click('[data-testid=munch-rec]'); await dp.waitForTimeout(300);
-    ok(/denied/.test(await dp.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join())) && (await dp.evaluate(() => window.__harbu.A.recorder.state)) === 'idle', 'denied microphone permission gives a clear message');
+    ok(/blocked.*Website Settings.*NotAllowedError/.test(await dp.evaluate(() => [...document.querySelectorAll('.toast')].map(t => t.textContent).join())) && (await dp.evaluate(() => window.__harbu.A.recorder.state)) === 'idle', 'denied microphone permission gives a clear, actionable message with the browser error name');
     await dctx.close();
+
+    console.log('\n— MUNCH v0.6 stabilization (iPad audio session, storage failures, Stretch/Tape, Stop, pads) —');
+    // iPad emulation: WebKit's Audio Session API refuses capture while the type is 'playback' (the cause of MUNCH-1)
+    {
+      const ictx = await mb.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true, permissions: ['microphone'] });
+      await ictx.addInitScript(() => {
+        const ses = { type: 'auto' }; navigator.audioSession = ses; window.__sessionLog = [];
+        const md = navigator.mediaDevices, gum = md.getUserMedia.bind(md);
+        md.getUserMedia = c => { window.__sessionLog.push(ses.type); return ses.type === 'playback' ? Promise.reject(new DOMException('Capture is not allowed in this audio session', 'InvalidStateError')) : gum(c); };
+      });
+      const ip = await ictx.newPage(); const ierrs = []; ip.on('pageerror', e => ierrs.push(e.message));
+      await ip.goto(URL + '?munch=dev'); await ip.evaluate(() => localStorage.clear()); await ip.reload(); await ip.click('#startBtn'); await ip.waitForTimeout(250);
+      await ip.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await ip.waitForTimeout(150);
+      ok((await ip.evaluate(() => navigator.audioSession.type)) === 'playback', 'iPad emulation: the engine uses the "playback" audio session (plays through the silent switch)');
+      await ip.click('[data-testid=munch-rec]'); await ip.waitForTimeout(700);
+      const st = await ip.evaluate(() => ({ rec: window.__harbu.A.recorder.state, ses: navigator.audioSession.type, log: window.__sessionLog.join() }));
+      ok(st.rec === 'recording' && st.ses === 'play-and-record' && st.log === 'play-and-record', `iPad emulation: RECORD switches to play-and-record before asking for the microphone and records (${JSON.stringify(st)})`);
+      await ip.click('[data-testid=munch-rec]');
+      await ip.waitForFunction(() => window.__harbu.store.project.slots[4].sample, null, { timeout: 5000 }).catch(() => {});
+      const after = await ip.evaluate(() => ({ s: !!window.__harbu.store.project.slots[4].sample, ses: navigator.audioSession.type, rec: window.__harbu.A.recorder.state, ctx: window.__harbu.A.engine.ctx.state }));
+      ok(after.s && after.ses === 'playback' && after.rec === 'idle' && after.ctx === 'running', `iPad emulation: STOP & KEEP gives a sample, restores "playback" and the audio keeps running (${JSON.stringify(after)})`);
+      await ip.click('[data-testid=munch-rec]'); await ip.waitForTimeout(500); await ip.click('[data-testid=munch-rec]'); await ip.waitForTimeout(900);
+      ok((await ip.evaluate(() => window.__harbu.A.recorder.state + ',' + navigator.audioSession.type)) === 'idle,playback', 'iPad emulation: a second recording works too');
+      ok(!ierrs.length, `iPad emulation: no errors${ierrs.length ? ' — ' + ierrs[0] : ''}`);
+      await ictx.close();
+    }
+    // storage: a stale database, a dead connection, and a browser that refuses to store at all
+    {
+      const sctx = await mb.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true });
+      const sp = await sctx.newPage(); const serrs = []; sp.on('pageerror', e => serrs.push(e.message));
+      await sp.goto(URL + '?munch=dev'); await sp.evaluate(() => localStorage.clear());
+      await sp.evaluate(() => new Promise(r => { const d = indexedDB.deleteDatabase('harbumatic-samples'); d.onsuccess = d.onerror = () => { const q = indexedDB.open('harbumatic-samples', 1); q.onupgradeneeded = () => q.result.createObjectStore('meta', { keyPath: 'id' }); q.onsuccess = () => { q.result.close(); r(); }; }; }));
+      await sp.reload(); await sp.click('#startBtn'); await sp.waitForTimeout(250);
+      await sp.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await sp.waitForTimeout(150);
+      await sp.setInputFiles('[data-testid=munch-file]', { name: 'stale.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 1, freq: 300 })) });
+      await sp.waitForTimeout(500);
+      const stale = await sp.evaluate(async () => { const s = window.__harbu.store.project.slots[4].sample; return { s: !!s, saved: s && await window.__harbu.A.samples.store.has(s.id), unsaved: window.__harbu.A.unsavedSamples().length }; });
+      ok(stale.s && stale.saved && !stale.unsaved, `a stale sample database (v1 without its audio store) is repaired by an upgrade and the import is stored (${JSON.stringify(stale)})`);
+      await sp.evaluate(() => { const o = IDBDatabase.prototype.transaction; let n = 0; IDBDatabase.prototype.transaction = function (...a) { if (n++ === 0) throw new DOMException('Connection to Indexed Database server lost. Refresh the page to try again', 'UnknownError'); return o.apply(this, a); }; });
+      await sp.setInputFiles('[data-testid=munch-file]', { name: 'reconnect.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 1, freq: 350 })) });
+      await sp.waitForTimeout(500);
+      const rc = await sp.evaluate(async () => { const s = window.__harbu.store.project.slots[4].sample; return { name: s.name, saved: await window.__harbu.A.samples.store.has(s.id), reconnects: window.__harbu.A.samples.store.backend.reconnects }; });
+      ok(rc.name === 'reconnect.wav' && rc.saved && rc.reconnects >= 1, `a lost storage connection is reopened and the import is stored (${JSON.stringify(rc)})`);
+      await sp.evaluate(() => { window.__putFail = true; const o = IDBObjectStore.prototype.put; IDBObjectStore.prototype.put = function (...a) { if (window.__putFail) throw new DOMException('simulated', 'UnknownError'); return o.apply(this, a); }; });
+      await sp.setInputFiles('[data-testid=munch-file]', { name: 'refused.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 1, freq: 400 })) });
+      await sp.waitForTimeout(600);
+      const rf = await sp.evaluate(() => ({ name: window.__harbu.store.project.slots[4].sample.name, st: window.__harbu.A.sampleState('slot-05').status, btn: !!document.querySelector('[data-testid=munch-unsaved]'), status: document.querySelector('.mw-status').textContent, toast: [...document.querySelectorAll('.toast')].map(t => t.textContent).join(' | ') }));
+      ok(rf.name === 'refused.wav' && rf.st === 'ready' && rf.btn && /NOT saved/.test(rf.status) && /could not be saved.*UnknownError/.test(rf.toast), `storage refused: the sound still plays, is marked "Not saved" and the toast names the browser error (${rf.status})`);
+      await sp.click('[data-testid=munch-unsaved]'); await sp.waitForTimeout(150);
+      ok(/UnknownError/.test(await sp.evaluate(() => document.querySelector('[data-testid=munch-storage-diag]')?.textContent || '')), 'the Not saved dialog shows what the browser said');
+      await sp.evaluate(() => { window.__putFail = false; });
+      await sp.click('.dbtn.primary'); await sp.waitForTimeout(500);
+      const ok2 = await sp.evaluate(async () => ({ unsaved: window.__harbu.A.unsavedSamples().length, saved: await window.__harbu.A.samples.store.has(window.__harbu.store.project.slots[4].sample.id), btn: !!document.querySelector('[data-testid=munch-unsaved]') }));
+      ok(!ok2.unsaved && ok2.saved && !ok2.btn, `Try again saves it once storage works (${JSON.stringify(ok2)})`);
+      await sp.evaluate(() => window.__harbu.A.flushSave());
+      await sp.reload(); await sp.click('#startBtn'); await sp.waitForTimeout(800);
+      ok((await sp.evaluate(() => window.__harbu.A.samples.state(window.__harbu.store.project.slots[4].sample.id).status)) === 'ready', 'after reload the retried sample is there');
+      const rep = await sp.evaluate(async () => { const r = await window.__harbu.A.repairSampleStorage(); return { kept: r.kept, lost: r.lost, ok: await window.__harbu.A.samples.store.has(window.__harbu.store.project.slots[4].sample.id) }; });
+      ok(rep.kept >= 3 && rep.lost === 0 && rep.ok, `Repair rescues every readable sample and writes it back (${JSON.stringify(rep)})`);
+      ok(!serrs.length, `storage flows: no errors${serrs.length ? ' — ' + serrs[0] : ''}`);
+      await sctx.close();
+    }
+    // Stretch / Tape, Stop while stopped, pads that hold
+    {
+      const { c: tctx, pg: tp, errs: terrs, H: TH } = await mopen(1194, 834);
+      await TH(() => window.__harbu.A.selectSlot('slot-05')); await tp.waitForTimeout(150);
+      await tp.setInputFiles('[data-testid=munch-file]', { name: 'loop.wav', mimeType: 'audio/wav', buffer: Buffer.from(makeWav({ seconds: 2, rate: 44100, freq: 220 })) });
+      await tp.waitForTimeout(400);
+      ok((await TH(() => document.querySelector('[data-testid=munch-fitmode]')?.dataset.fitmode)) === 'stretch', 'Stretch is the default fit mode and visible next to FIT');
+      await tp.click('[data-testid=munch-fit] [data-fit="1"]'); // 2 s = 1 bar at 120 BPM; at 100 BPM it stretches ×1.2
+      await TH(() => window.__harbu.A.setBpm(100)); await tp.waitForTimeout(100);
+      await tp.waitForFunction(() => window.__harbu.A.stretchStatus() === 'ready', null, { timeout: 8000 }).catch(() => {});
+      const sv = await TH(() => ({ st: window.__harbu.A.stretchStatus(), mode: window.__harbu.A.samples.stretchMode, text: document.querySelector('.mw-status').textContent }));
+      ok(sv.st === 'ready' && sv.mode === 'worker' && /pitch kept/.test(sv.text), `Stretch renders in a Worker and the head says the pitch is kept (${JSON.stringify(sv)})`);
+      const rate = await TH(() => { const A = window.__harbu.A; A.engine.init(); const v = A.engine.audition('slot-05', 60, .8); return v && v.rate; });
+      ok(rate != null && Math.abs(rate - 1) < .002, `Stretch plays the fitted sound at its own pitch (rate ${rate})`);
+      await tp.click('[data-testid=munch-fitmode]'); await tp.waitForTimeout(150);
+      const tv = await TH(() => ({ m: window.__harbu.store.project.slots[4].params.fitMode, text: document.querySelector('.mw-status').textContent, rate: window.__harbu.A.engine.audition('slot-05', 60, .8).rate }));
+      ok(tv.m === 'tape' && /tape ×/.test(tv.text) && Math.abs(tv.rate - 2 / 2.4) < .001, `TAPE: pitch follows the speed (${JSON.stringify(tv)})`);
+      await TH(() => window.__harbu.A.setFitMode('stretch'));
+      await TH(() => { window.__harbu.A.stop(); window.__harbu.A.auditionSample(); }); await tp.waitForTimeout(80);
+      const n0 = await TH(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount());
+      await TH(() => window.__harbu.A.stop());
+      ok(n0 >= 1 && (await TH(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount())) === 0, 'Stop while stopped ends a long audition');
+      await tp.click('[data-testid=munch-tab-chop]'); await tp.waitForTimeout(150);
+      await TH(() => { const A = window.__harbu.A; A.checkpoint(); window.__harbu.store.project.slots[4].params.mode = 'gate'; });
+      const pad = await tp.$('[data-testid=munch-pads] .mw-pad[data-k="2"]'), box = await pad.boundingBox();
+      await tp.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await tp.mouse.down(); await tp.waitForTimeout(150);
+      const held = await TH(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount());
+      await tp.mouse.up(); await tp.waitForTimeout(250);
+      const rel = await TH(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount());
+      ok(held === 1 && rel === 0, `a pad in Gate mode plays while held and stops on release (${held} → ${rel})`);
+      ok(!terrs.length, `Stretch/Stop/pad flows: no errors${terrs.length ? ' — ' + terrs[0] : ''}`);
+      await tctx.close();
+    }
     await mb.close();
   }
 

@@ -14,7 +14,7 @@ import { sliceCount, sliceRegion, FIT_CHOICES, fitChoicesOk, fitInfo } from '../
 import { MAGIC_STYLES, MAGIC_LABEL } from '../music/magicchop.js';
 import { h } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
-import { Knob, Seg } from '../ui/controls.js';
+import { Knob, Seg, dialog, confirmDialog } from '../ui/controls.js';
 import { catSVG, sparks } from '../ui/characters.js';
 import { Wave, drawWave, zoomWave, zoomLevels, cursorText, SLICE_COLORS } from './munch-wave.js';
 
@@ -63,6 +63,7 @@ export function refreshMunchSel() {
   if (refs.grid) refs.grid.querySelectorAll('.mw-row').forEach(r => r.classList.toggle('sel', +r.dataset.k === m.sel));
   if (refs.cursor) refs.cursor.textContent = cursorText();
   if (refs.tools) refs.tools.querySelectorAll('[data-needs=marker]').forEach(b => { b.disabled = m.marker == null; });
+  if (refs.sliceInfo) refs.sliceInfo.textContent = sliceInfoText();
 }
 /** params changed (knob drag, fit): refresh knob values and the head readout without rebuilding */
 export function refreshMunchParams() {
@@ -107,11 +108,14 @@ function statusLine() {
   if (A.recorder.state === 'recording') return `Listening… ${A.recorder.elapsed().toFixed(1)} s`;
   if (!ref) return STATUS.none;
   if (st.status !== 'ready') return STATUS[st.status] || st.status;
+  if (A.samples.store.isUnsaved(ref.id)) return 'Plays now · NOT saved on this device';
   const f = fitInfo(s.params, ref.duration, store.project.bpm);
   const base = `${ref.duration.toFixed(2)} s · ${ref.channels === 1 ? 'mono' : 'stereo'} · ${sliceCount(ref.slices)} slices`;
   if (!f.on) return `${base} · original speed`;
+  const far = f.clamped ? ` · can't fit at ${store.project.bpm} BPM` : '';
+  if (f.mode === 'stretch') return `${base} · stretch ×${(1 / f.rate).toFixed(2)} · pitch kept${A.stretchStatus() === 'pending' ? ' · stretching…' : ''}${far}`;
   const st2 = f.semitones >= 0 ? `+${f.semitones.toFixed(1)}` : f.semitones.toFixed(1);
-  return `${base} · tape ×${f.rate.toFixed(2)} (${st2} st)${f.clamped ? ` · can't fit at ${store.project.bpm} BPM` : ''}`;
+  return `${base} · tape ×${f.rate.toFixed(2)} (${st2} st)${far}`;
 }
 function head(s, st, empty) {
   const ref = s.sample, hd = h('div', { class: 'mw-head' });
@@ -123,6 +127,11 @@ function head(s, st, empty) {
     const hear = h('button', { type: 'button', class: 'btn icon mw-hear', 'aria-label': 'Hear the whole sound', title: 'Hear the whole sound', html: ico('play') });
     hear.onclick = () => A.auditionSample();
     const newSound = h('div', { class: 'mw-newsound' }, hear, recButton('mini'), importButton('mini'));
+    if (ref && A.samples.store.isUnsaved(ref.id)) {
+      const warn = h('button', { type: 'button', class: 'btn mini mw-unsaved', 'data-testid': 'munch-unsaved', title: 'This sound is not saved on this device' }, h('span', { html: ico('upload') }), h('span', { class: 'btn-l' }, 'Not saved'));
+      warn.onclick = storageDialog;
+      newSound.prepend(warn);
+    }
     hd.append(newSound);
     const tabs = h('div', { class: 'mw-tabs', role: 'tablist', 'aria-label': 'MUNCH layer' });
     [['play', 'PLAY'], ['chop', 'CHOP'], ['twist', 'TWIST']].forEach(([k, l]) => {
@@ -145,11 +154,19 @@ function fitControl(s) {
   FIT_CHOICES.forEach(c => {
     const on = cur === c;
     const b = h('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: (on ? 'on' : '') + (ok[c] ? '' : ' far'), 'data-fit': c,
-      title: c === 'off' ? 'Original speed' : `${FIT_LABEL[c]} bar${c === 'half' || c === '1' ? '' : 's'} at ${store.project.bpm} BPM${ok[c] ? '' : ' — too far for tape'}`,
+      title: c === 'off' ? 'Original speed' : `${FIT_LABEL[c]} bar${c === 'half' || c === '1' ? '' : 's'} at ${store.project.bpm} BPM${ok[c] ? '' : ' — too far to fit'}`,
       'aria-label': c === 'off' ? 'Original speed' : `Fit to ${c === 'half' ? 'half a bar' : c + (c === '1' ? ' bar' : ' bars')}` }, FIT_LABEL[c]);
     b.onclick = () => A.setFit(c);
     box.append(b);
   });
+  // how the fit is made: STRETCH keeps the pitch (default), TAPE lets the pitch follow the speed. One big toggle.
+  const mode = s.params.fitMode === 'tape' ? 'tape' : 'stretch', other = mode === 'tape' ? 'stretch' : 'tape';
+  const modes = h('button', { type: 'button', class: 'mw-fitmode ' + mode, 'data-testid': 'munch-fitmode', 'data-fitmode': mode,
+    title: mode === 'stretch' ? 'Stretch: tempo changes the length, the pitch stays. Tap for Tape.' : 'Tape: speed and pitch change together. Tap for Stretch.',
+    'aria-label': `Fit mode: ${mode === 'stretch' ? 'Stretch, pitch kept' : 'Tape, pitch follows speed'}. Tap to switch to ${other}.` },
+    h('b', {}, mode === 'stretch' ? 'STRETCH' : 'TAPE'), h('small', {}, mode === 'stretch' ? 'pitch kept' : 'pitch moves'));
+  modes.onclick = () => A.setFitMode(other);
+  box.append(modes);
   return box;
 }
 function character(size) {
@@ -179,8 +196,10 @@ function importButton(size) {
 }
 function recButton(size) {
   const big = size === 'big', r = A.recorder.state;
-  if (!A.recordingSupported()) {
-    return big ? h('div', { class: 'mw-big rec', 'aria-disabled': 'true' }, h('span', { class: 'mw-big-i', html: ico('mic') }), h('span', { class: 'mw-big-t' }, h('b', {}, 'RECORD'), h('small', {}, 'not supported in this browser'))) : h('span');
+  const sup = A.recordingSupport();
+  if (!sup.ok) {
+    const why = sup.reason === 'insecure' ? 'needs an https page' : 'not supported in this browser';
+    return big ? h('div', { class: 'mw-big rec', 'aria-disabled': 'true', 'data-testid': 'munch-rec-off' }, h('span', { class: 'mw-big-i', html: ico('mic') }), h('span', { class: 'mw-big-t' }, h('b', {}, 'RECORD'), h('small', {}, why))) : h('span');
   }
   const on = r === 'recording';
   const b = h('button', { type: 'button', class: (big ? 'mw-big rec' : 'btn icon mw-rec') + (on ? ' on' : ''), 'data-testid': 'munch-rec', disabled: r === 'starting' || r === 'stopping',
@@ -211,6 +230,20 @@ function feed(s, st) {
   if (r === 'recording') { const c = h('button', { type: 'button', class: 'btn mw-cancel' }, 'Cancel'); c.onclick = A.recordCancel; btns.append(c); }
   else btns.append(importButton('big'));
   return h('div', { class: 'mw-feed', 'data-testid': 'munch-feed' }, refs.char, h('div', { class: 'mw-feed-r' }, h('h3', {}, title), h('p', {}, sub), btns));
+}
+
+/** a sample could not be written to this browser's storage: explain, retry, or (after confirmation) repair */
+function storageDialog() {
+  const err = A.samples.store.lastError();
+  const body = h('div', { class: 'dlg-form' },
+    h('p', {}, 'This sound plays now, but the browser refused to save it. After a reload it will be missing (your song keeps its slices and grooves; importing the same file again brings it back).'),
+    h('p', {}, 'Try again first. If that keeps failing, Repair rebuilds HarbuMatic’s sample storage: it rescues every sample it can still read, deletes only HarbuMatic’s sample database and saves everything again. Songs and other websites are not touched.'),
+    err ? h('p', { class: 'dlg-note', 'data-testid': 'munch-storage-diag' }, `Browser said: ${err.name} while ${err.phase === 'read' ? 'reading' : err.phase === 'open' ? 'opening' : 'saving'}${err.message && err.message !== err.name ? ` — ${err.message}` : ''}`) : null);
+  dialog({ title: 'Not saved on this device', body, actions: [
+    { label: 'Close' },
+    { label: 'Repair storage…', danger: true, onClick: () => setTimeout(() => confirmDialog('Repair sample storage?', 'HarbuMatic will rescue the samples it can read, delete its own sample database and save them again. Samples that cannot be read are lost (songs keep their references). This cannot be undone.', 'Repair', () => A.repairSampleStorage(), { danger: true }), 0) },
+    { label: 'Try again', primary: true, onClick: () => A.retrySaveSamples() },
+  ] });
 }
 
 /* ---------- PLAY ---------- */
@@ -273,14 +306,17 @@ function chop(s, host) {
   };
   refs.cursor = h('span', { class: 'sr-only', 'aria-live': 'polite' }, cursorText()); // the display shows it too
   refs.tools = h('div', { class: 'mw-tools' },
-    tool('scissors', 'CHOP HERE', () => A.chopAt(u().cursor), { cls: 'primary wide', testid: 'munch-chop-here', title: 'Add a marker at the cursor' }),
+    tool('scissors', 'CHOP HERE', () => A.chopAt(u().cursor), { cls: 'primary wide', testid: 'munch-chop-here', title: 'Add a marker at the cursor (tap the waveform to place it)' }),
     tool('split', 'Split', () => A.splitSliceAt(u().sel), { testid: 'munch-split', title: 'Split the selected slice in half' }),
-    tool('left', 'Nudge', () => A.nudgeBoundary(-1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-l', title: 'Move the selected marker a little earlier' }),
-    tool('right', 'Nudge', () => A.nudgeBoundary(1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-r', title: 'Move the selected marker a little later' }),
-    tool('trash', 'Delete', () => A.deleteBoundary(), { needs: 'marker', testid: 'munch-delete', title: 'Delete the selected marker' }),
-    tool('repeat', '8 equal', () => A.resetSlices(8), { testid: 'munch-reset', title: 'Back to eight equal slices' }));
+    tool('left', 'Earlier', () => A.nudgeBoundary(-1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-l', title: 'Move the selected marker 10 ms earlier' }),
+    tool('right', 'Later', () => A.nudgeBoundary(1), { needs: 'marker', cls: 'icon', testid: 'munch-nudge-r', title: 'Move the selected marker 10 ms later' }),
+    tool('trash', 'Delete', () => A.deleteBoundary(), { needs: 'marker', testid: 'munch-delete', title: 'Delete the selected marker (the slice joins the one before it)' }),
+    tool('repeat', 'Equal…', equalDialog, { testid: 'munch-reset', title: 'Start over with 4, 8 or 16 equal slices' }));
   refs.tools.querySelectorAll('.btn.icon .btn-l').forEach(l => l.remove());
-  const left = h('div', { class: 'mw-left' }, refs.tools, refs.cursor, pads(ref, n), magicPanel());
+  refs.sliceInfo = h('span', { class: 'mw-si-t', 'aria-live': 'polite' }, sliceInfoText());
+  const ur = (icon, label, fn, dis) => { const b = h('button', { type: 'button', class: 'btn icon mw-si-b', 'aria-label': label, title: label, disabled: dis, html: ico(icon) }); b.onclick = fn; return b; };
+  const info = h('div', { class: 'mw-sliceinfo', 'data-testid': 'munch-sliceinfo' }, ur('undo', 'Undo', A.undo, !A.history.canUndo), ur('redo', 'Redo', A.redo, !A.history.canRedo), refs.sliceInfo);
+  const left = h('div', { class: 'mw-left' }, refs.tools, refs.cursor, pads(ref, n), info, magicPanel());
   const right = h('div', { class: 'mw-right' }, sequencer(ref, n, host));
   return h('div', { class: 'mw-chop' }, left, right);
 }
@@ -294,8 +330,7 @@ function pads(ref, n) {
     const reg = sliceRegion(ref.slices, k), len = (reg[1] - reg[0]) * ref.duration;
     const b = h('button', { type: 'button', class: 'mw-pad' + (k === m.sel ? ' sel' : ''), 'data-k': k, disabled: !ready, style: `--pc:${SLICE_COLORS[k % 4]}`, 'aria-label': `Pad ${k + 1}: play slice ${k + 1}` },
       h('b', {}, String(k + 1)), h('small', {}, len < 1 ? `${Math.round(len * 1000)} ms` : `${len.toFixed(2)} s`));
-    b.addEventListener('pointerdown', e => { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); });
-    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); A.auditionSlice(k); A.selectSlice(k); flash(b); } });
+    bindPad(b, k);
     grid.append(b);
   }
   if (n > 8) { // second bank: a slim column beside the pads, so the panel keeps its height
@@ -310,6 +345,33 @@ function pads(ref, n) {
   refs.pads = grid;
   wrap.append(grid);
   return wrap;
+}
+/** "SLICE 3 · 250 ms · 0.50–0.75 s · marker ●3" for the selected slice */
+function sliceInfoText() {
+  const s = slot(), ref = s && s.sample, m = u(); if (!ref) return '';
+  const reg = sliceRegion(ref.slices, m.sel); if (!reg) return '';
+  const a = reg[0] * ref.duration, b = reg[1] * ref.duration, len = b - a;
+  return `SLICE ${m.sel + 1} · ${len < 1 ? Math.round(len * 1000) + ' ms' : len.toFixed(2) + ' s'} · ${a.toFixed(2)}–${b.toFixed(2)} s`;
+}
+function equalDialog() {
+  const n = sliceCount(slot().sample.slices);
+  dialog({ title: 'Equal slices', body: h('p', {}, `Replace the ${n} slices with equal ones. Your grooves stay: every step moves to the slice that now holds its sound. Undo brings the old markers back.`),
+    actions: [{ label: 'Cancel' }, ...[4, 8, 16].map(c => ({ label: String(c), primary: c === 8, onClick: () => A.resetSlices(c) }))] });
+}
+/** pads behave like keys: press = play (velocity from where you press), release = end a Gate/Loop note */
+function bindPad(b, k) {
+  const on = (id, v) => { b.classList.add('down'); held.set(id, { handle: A.munchPadOn(k, v), el: b }); A.selectSlice(k); flash(b); };
+  const off = id => { const x = held.get(id); if (!x) return; held.delete(id); A.munchPadOff(x.handle); x.el.classList.remove('down'); };
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const r = b.getBoundingClientRect(), v = .45 + .55 * Math.max(0, Math.min(1, (e.clientY - r.top) / Math.max(1, r.height)));
+    try { b.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
+    on(e.pointerId, v);
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, e => off(e.pointerId)));
+  b.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); on('pad' + k, .9); } });
+  b.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); off('pad' + k); } });
+  b.addEventListener('click', e => e.preventDefault());
 }
 function magicPanel() {
   const m = u(), pending = !!(m.magic && m.magic.slot === sel() && m.magic.scene === store.project.scene);
