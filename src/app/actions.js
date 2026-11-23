@@ -2,13 +2,14 @@
 // Views call actions; actions save, record history and emit events; main.js re-renders.
 
 import { store, emit, P, pat, slot, typeOf, isDrumSlot, ensureSelection, isSamplerSlot } from './store.js';
-import { MELODIC, SCENE_LETTERS } from '../core/constants.js';
+import { MELODIC, MAX_SCENES, sceneLabel } from '../core/constants.js';
 import { clone, clamp } from '../core/util.js';
 import { createHistory } from '../core/history.js';
 import { createLibrary } from '../core/persistence.js';
 import {
   createEmptyProject, createDemoProject, importProject, newBlock, clampReps, ProjectError,
-  playableSlots, patternAt, setPatternAt, sceneIdAt, typeOfSlot,
+  playableSlots, patternAt, setPatternAt, sceneIdAt, sceneIndexOf, blockScene, typeOfSlot,
+  nextSceneId, nextSceneName, duplicateSceneName,
 } from '../core/project.js';
 import {
   exportPackage, parsePackage, restorePackage, isZipBytes, PackageError,
@@ -62,12 +63,86 @@ export function save(now = false) {
 }
 export function flushSave() { if (saveTimer) save(true); }
 
+/** Keep UI scene references (ARRANGE library selection, block selection, MUNCH pending magic) valid after scene mutations or undo/redo. */
+function reconcileUiScenes(prev, next) {
+  const maxSc = Math.max(0, next.scenes.length - 1);
+  if (store.ui.libSel != null) {
+    const prevLibId = prev ? sceneIdAt(prev, store.ui.libSel) : null;
+    const mapped = prevLibId ? sceneIndexOf(next, prevLibId) : -1;
+    store.ui.libSel = mapped >= 0 ? mapped : clamp(store.ui.libSel, 0, maxSc);
+  }
+  if (store.ui.arrSel && !next.arrangement.some(b => b.id === store.ui.arrSel)) store.ui.arrSel = null;
+  const magic = store.ui.munch && store.ui.munch.magic;
+  if (magic) {
+    const prevMagicId = prev ? sceneIdAt(prev, magic.scene) : null;
+    const mapped = prevMagicId ? sceneIndexOf(next, prevMagicId) : -1;
+    if (mapped >= 0) magic.scene = mapped;
+    else store.ui.munch.magic = null;
+  }
+}
+
+/** Keep active/paused transport position and queued scene valid after scene delete, reorder or undo/redo. */
+function reconcileTransport(prev, next) {
+  const prevPos = transport.pos;
+  if (!prevPos) {
+    if (transport.pending != null) transport.reconcile(null, null);
+    return;
+  }
+  const maxSc = Math.max(0, next.scenes.length - 1);
+  const prevSceneId = prev ? sceneIdAt(prev, prevPos.scene) : null;
+  const prevPendingId = prev && transport.pending != null ? sceneIdAt(prev, transport.pending) : null;
+  const prevBlockId = prev && prevPos.song && prev.arrangement[prevPos.block] ? prev.arrangement[prevPos.block].id : null;
+
+  if (prevPos.song) {
+    if (next.arrangement.length === 0) {
+      transport.stop();
+      return;
+    }
+    if (!next.songMode) {
+      const mapped = prevSceneId ? sceneIndexOf(next, prevSceneId) : -1;
+      const nextPos = mapped >= 0
+        ? { ...prevPos, song: false, block: 0, rep: 0, scene: mapped }
+        : { song: false, block: 0, rep: 0, scene: clamp(next.scene, 0, maxSc), step: 0, fresh: true };
+      transport.reconcile(nextPos, null);
+      return;
+    }
+    const newBlockIdx = prevBlockId ? next.arrangement.findIndex(b => b.id === prevBlockId) : -1;
+    if (newBlockIdx >= 0) {
+      const newSceneIdx = blockScene(next, next.arrangement[newBlockIdx]);
+      const sameScene = sceneIdAt(next, newSceneIdx) === prevSceneId;
+      const nextPos = sameScene
+        ? { ...prevPos, song: true, block: newBlockIdx, scene: newSceneIdx }
+        : { song: true, block: newBlockIdx, rep: 0, scene: newSceneIdx, step: 0, fresh: true };
+      transport.reconcile(nextPos, null);
+      return;
+    }
+    const fallbackBlock = clamp(prevPos.block, 0, next.arrangement.length - 1);
+    const fallbackScene = blockScene(next, next.arrangement[fallbackBlock]);
+    transport.reconcile({ song: true, block: fallbackBlock, rep: 0, scene: fallbackScene, step: 0, fresh: true }, null);
+    return;
+  }
+
+  const mappedScene = prevSceneId ? sceneIndexOf(next, prevSceneId) : -1;
+  const nextPos = mappedScene >= 0
+    ? { ...prevPos, song: false, scene: mappedScene }
+    : { song: false, block: 0, rep: 0, scene: clamp(next.scene, 0, maxSc), step: 0, fresh: true };
+  let nextPending = null;
+  if (prevPendingId) {
+    const mappedPending = sceneIndexOf(next, prevPendingId);
+    if (mappedPending >= 0 && mappedPending !== nextPos.scene) nextPending = mappedPending;
+  }
+  transport.reconcile(nextPos, nextPending);
+}
+
 function restoreSnapshot(json) {
-  const keepId = store.project.id;
+  const prev = store.project;
+  const keepId = prev.id;
   store.project = JSON.parse(json);
   store.project.id = keepId;
+  store.project.scene = clamp(store.project.scene, 0, Math.max(0, store.project.scenes.length - 1));
   ensureSelection();
-  if (transport.pos && store.project.arrangement.length === 0 && transport.pos.song) transport.stop();
+  reconcileUiScenes(prev, store.project);
+  reconcileTransport(prev, store.project);
   engine.applyAll(); syncSamples(); prepareStretch();
   save(); emit('project');
 }
@@ -261,6 +336,7 @@ function navigated(m) {
 }
 export function selectScene(i) {
   const p = store.project;
+  if (!Number.isInteger(i) || i < 0 || i >= p.scenes.length) return;
   if (p.scene === i) { transport.queueScene(i); emit('scene'); return; }
   p.scene = i; save();
   transport.queueScene(i);
@@ -351,8 +427,8 @@ function autoEvolveHook(pos, boundary) {
   if (!store.ui.autoEvolve) return;
   const t = store.ui.sel, sc = store.project.scene;
   if (pos.scene !== sc) return;
-  const len = patternAt(store.project, t, sc).len;
-  if (!boundary(pos, len)) return;
+  const pt = patternAt(store.project, t, sc);
+  if (!pt || !boundary(pos, pt.len)) return;
   // runs inside the scheduler, before this step is scheduled → the new loop plays the evolved pattern
   runTransform('evolve', t, { silent: true });
   emit('evolved');
@@ -401,24 +477,133 @@ export function clearPattern() {
 }
 
 /* ---------- scenes + arrangement ---------- */
-export function renameScene(i, name) { checkpoint(); store.project.scenes[i].name = String(name).trim().slice(0, 24) || store.project.scenes[i].name; save(); emit('arrangement'); emit('scene'); }
-export function copyScene(a, b) {
-  checkpoint();
+const validSceneIndex = (p, i) => Number.isInteger(i) && i >= 0 && i < p.scenes.length;
+
+/** Create an independent empty scene (never auto-added to Song Arrangement). */
+export function createScene({ name, select = true } = {}) {
   const p = store.project;
-  p.slots.forEach(s => { setPatternAt(p, s.id, b, clone(patternAt(p, s.id, a))); });
-  p.scenes[b].harmony = clone(p.scenes[a].harmony);
-  save(); emit('pattern'); emit('arrangement'); emit('toast', `Scene ${SCENE_LETTERS[a]} copied to ${SCENE_LETTERS[b]}`);
+  if (p.scenes.length >= MAX_SCENES) { emit('toast', `A song can hold up to ${MAX_SCENES} scenes`); return null; }
+  checkpoint();
+  const id = nextSceneId(p);
+  const cleanName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 24) : nextSceneName(p);
+  const sc = { id, name: cleanName, harmony: null };
+  p.scenes.push(sc);
+  p.slots.forEach(s => { s.patterns[id] = createPatternFor(s.type); });
+  const idx = p.scenes.length - 1;
+  if (select) {
+    p.scene = idx;
+    store.ui.libSel = idx;
+    transport.queueScene(idx);
+  }
+  save(); emit('scene'); emit('arrangement');
+  emit('toast', `New scene ${sceneLabel(idx)} · ${sc.name}`);
+  return { id, index: idx, scene: sc };
 }
-export function clearScene(i) {
-  checkpoint();
+
+/** Duplicate a scene with an independent deep copy of all instrument patterns and scene harmony (never auto-added to Song Arrangement). */
+export function duplicateScene(i = store.project.scene, { name, select = true } = {}) {
   const p = store.project;
+  if (!validSceneIndex(p, i)) return null;
+  if (p.scenes.length >= MAX_SCENES) { emit('toast', `A song can hold up to ${MAX_SCENES} scenes`); return null; }
+  checkpoint();
+  const src = p.scenes[i];
+  const id = nextSceneId(p);
+  const cleanName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 24) : duplicateSceneName(p, src.name);
+  const sc = { id, name: cleanName, harmony: src.harmony == null ? null : clone(src.harmony) };
+  p.scenes.push(sc);
+  p.slots.forEach(s => {
+    const srcPat = s.patterns[src.id];
+    s.patterns[id] = srcPat ? clone(srcPat) : createPatternFor(s.type);
+  });
+  const idx = p.scenes.length - 1;
+  if (select) {
+    p.scene = idx;
+    store.ui.libSel = idx;
+    transport.queueScene(idx);
+  }
+  save(); emit('scene'); emit('arrangement');
+  emit('toast', `Duplicated ${sceneLabel(i)} → ${sceneLabel(idx)} · ${sc.name}`);
+  return { id, index: idx, scene: sc };
+}
+
+export function renameScene(i, name) {
+  const p = store.project;
+  if (!validSceneIndex(p, i)) return;
+  const clean = String(name ?? '').trim().slice(0, 24);
+  if (!clean || clean === p.scenes[i].name) return;
+  checkpoint();
+  p.scenes[i].name = clean;
+  save(); emit('arrangement'); emit('scene');
+}
+
+export function copyScene(a, b) {
+  const p = store.project;
+  if (!validSceneIndex(p, a) || !validSceneIndex(p, b) || a === b) return;
+  checkpoint();
+  p.slots.forEach(s => { setPatternAt(p, s.id, b, clone(patternAt(p, s.id, a))); });
+  p.scenes[b].harmony = p.scenes[a].harmony == null ? null : clone(p.scenes[a].harmony);
+  save(); emit('pattern'); emit('arrangement'); emit('lab');
+  emit('toast', `Scene ${sceneLabel(a)} copied to ${sceneLabel(b)}`);
+}
+
+export function clearScene(i) {
+  const p = store.project;
+  if (!validSceneIndex(p, i)) return;
+  checkpoint();
   p.slots.forEach(s => { setPatternAt(p, s.id, i, createPatternFor(s.type)); });
   p.scenes[i].harmony = null;
-  save(); emit('pattern'); emit('arrangement'); emit('toast', `Scene ${SCENE_LETTERS[i]} cleared`);
+  save(); emit('pattern'); emit('arrangement'); emit('lab');
+  emit('toast', `Scene ${sceneLabel(i)} cleared`);
 }
-export function addToSong(sc, at = null) {
+
+/** Delete a scene and any arrangement blocks pointing to it. Never deletes the final remaining scene. */
+export function deleteScene(i) {
+  const p = store.project;
+  if (!validSceneIndex(p, i)) return false;
+  if (p.scenes.length <= 1) { emit('toast', 'A song needs at least one scene'); return false; }
+  const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
+  const removed = p.scenes[i], removedId = removed.id;
+  const prevSelId = sceneIdAt(p, p.scene);
   checkpoint();
-  const b = newBlock(sceneIdAt(store.project, sc)), arr = store.project.arrangement;
+  p.scenes.splice(i, 1);
+  p.slots.forEach(s => { delete s.patterns[removedId]; });
+  const beforeArr = p.arrangement.length;
+  p.arrangement = p.arrangement.filter(b => b.sceneId !== removedId);
+  if (!p.arrangement.length) p.songMode = false;
+  p.scene = prevSelId === removedId ? Math.min(i, p.scenes.length - 1) : Math.max(0, sceneIndexOf(p, prevSelId));
+  reconcileUiScenes(prev, p);
+  reconcileTransport(prev, p);
+  save(); emit('scene'); emit('arrangement'); emit('pattern');
+  const removedBlocks = beforeArr - p.arrangement.length;
+  emit('toast', removedBlocks
+    ? `Deleted “${removed.name}” (removed ${removedBlocks} song block${removedBlocks === 1 ? '' : 's'})`
+    : `Deleted “${removed.name}”`);
+  return true;
+}
+
+/** Reorder a scene without breaking arrangement references, patterns or live playback. */
+export function moveScene(from, to) {
+  const p = store.project;
+  if (!validSceneIndex(p, from)) return false;
+  to = clamp(to, 0, p.scenes.length - 1);
+  if (from === to) return false;
+  const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
+  const prevSelId = sceneIdAt(p, p.scene);
+  checkpoint();
+  const [sc] = p.scenes.splice(from, 1);
+  p.scenes.splice(to, 0, sc);
+  p.scene = Math.max(0, sceneIndexOf(p, prevSelId));
+  reconcileUiScenes(prev, p);
+  reconcileTransport(prev, p);
+  save(); emit('scene'); emit('arrangement');
+  return true;
+}
+
+export function addToSong(sc, at = null) {
+  const sid = sceneIdAt(store.project, sc);
+  if (!sid) return;
+  checkpoint();
+  const b = newBlock(sid), arr = store.project.arrangement;
   if (at == null) arr.push(b); else arr.splice(at, 0, b);
   store.ui.arrSel = b.id; store.ui.revealSel = true; save(); emit('arrangement');
 }
@@ -432,7 +617,7 @@ export function moveBlock(id, to) {
   checkpoint(); const [b] = arr.splice(i, 1); arr.splice(to, 0, b); save(); emit('arrangement');
 }
 export function setReps(id, reps) { const i = blockIndex(id); if (i < 0) return; checkpoint(`reps:${id}`); store.project.arrangement[i].reps = clampReps(reps); save(); emit('arrangement'); }
-export function setBlockScene(id, sc) { const i = blockIndex(id); if (i < 0) return; checkpoint(); store.project.arrangement[i].sceneId = sceneIdAt(store.project, sc); save(); emit('arrangement'); }
+export function setBlockScene(id, sc) { const i = blockIndex(id), sid = sceneIdAt(store.project, sc); if (i < 0 || !sid) return; checkpoint(); store.project.arrangement[i].sceneId = sid; save(); emit('arrangement'); }
 export function clearSong() { checkpoint(); store.project.arrangement = []; store.ui.arrSel = null; if (transport.pos && transport.pos.song) transport.stop(); save(); emit('arrangement'); }
 export function playFromBlock(id) {
   const i = blockIndex(id); if (i < 0) return;
@@ -441,8 +626,9 @@ export function playFromBlock(id) {
   transport.playFromBlock(i); emit('arrangement');
 }
 export function previewScene(i) {
-  engine.init(); engine.applyAll();
   const p = store.project;
+  if (!validSceneIndex(p, i)) return;
+  engine.init(); engine.applyAll();
   if (p.songMode) { p.songMode = false; emit('arrangement'); }
   p.scene = i; save();
   if (transport.state === 'playing') transport.queueScene(i);

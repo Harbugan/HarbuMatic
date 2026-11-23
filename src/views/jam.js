@@ -3,7 +3,7 @@
 
 import { store, pat, typeOf, isDrumSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { SCENE_LETTERS } from '../core/constants.js';
+import { sceneLabel } from '../core/constants.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg } from '../ui/controls.js';
@@ -30,7 +30,7 @@ export function renderJamBar() {
   const sc = store.project.scene;
   if (!u.expanded && !['draw', 'erase'].includes(u.tool)) u.tool = 'draw'; // standard mode: simple tools only
   if (!TOOLS.some(([k]) => k === u.tool)) u.tool = 'draw';
-  bar.append(h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${SCENE_LETTERS[sc]} · ${store.project.scenes[sc].name}`)));
+  bar.append(h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`)));
   const tools = h('div', { class: 'tgroup' });
   (u.expanded ? TOOLS : TOOLS.slice(0, 2)).forEach(([k, label]) => tools.append(btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) })));
   bar.append(tools);

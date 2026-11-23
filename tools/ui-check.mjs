@@ -401,10 +401,33 @@ async function rollPoint(page, step, rowOrPitch) {
   await page.fill('.dlg-input', 'Test song');
   await page.click('.dbtn.primary'); await page.waitForTimeout(200);
   let s = await state(page);
-  ok(s.name === 'Test song' && s.songs === 2 && s.notes.synth === 0 && s.kicks === 0 && !s.arrangement.length, 'New Song creates an empty song and keeps the old one');
+  const sc0 = await page.evaluate(() => window.__harbu.store.project.scenes.length);
+  ok(s.name === 'Test song' && s.songs === 2 && sc0 === 1 && s.notes.synth === 0 && s.kicks === 0 && !s.arrangement.length, 'New Song creates an empty song with one scene and keeps the old one');
   await page.evaluate(id => window.__harbu.A.selectSlot(id), SLOT.bass);
   await page.click('.lbtn.big'); await page.waitForTimeout(100);
   ok((await state(page)).notes.bass > 0, 'Generate creates a bass line in the empty song');
+
+  // dynamic scene library: duplicate independence, new scene, rename, copy to confirm, delete confirm, >6 scenes, undo
+  await page.click('#rtabSeg >> text=SCENES'); await page.waitForTimeout(80);
+  ok(await page.isDisabled('[data-testid=scene-delete]'), 'cannot delete the final remaining scene');
+  const origBass = await page.evaluate(id => JSON.stringify(window.__harbu.store.project.slots.find(x => x.id === id).patterns['scene-01']), SLOT.bass);
+  await page.click('[data-testid=scene-dup]'); await page.waitForTimeout(100);
+  ok((await page.evaluate(() => window.__harbu.store.project.scenes.length === 2 && window.__harbu.store.project.arrangement.length === 0)), 'Duplicate Scene adds an independent scene without adding it to Song Arrangement');
+  await page.evaluate(() => { const { A, store } = window.__harbu; A.clearPattern(); });
+  await page.waitForTimeout(80);
+  const origAfter = await page.evaluate(id => JSON.stringify(window.__harbu.store.project.slots.find(x => x.id === id).patterns['scene-01']), SLOT.bass);
+  ok(origAfter === origBass, 'editing the duplicate never modifies the original scene');
+  await page.click('[data-testid=scene-new]'); await page.waitForTimeout(80);
+  ok((await page.evaluate(() => window.__harbu.store.project.scenes.length)) === 3, 'New Scene creates an empty scene');
+  await page.click('[data-testid=scene-rename]'); await page.fill('.dlg-input', 'Bridge'); await page.click('.dialog .dbtn.primary'); await page.waitForTimeout(80);
+  ok((await page.evaluate(() => window.__harbu.store.project.scenes[2].name)) === 'Bridge', 'Rename updates scene name');
+  await page.click('[data-testid=scene-delete]'); await page.waitForTimeout(80);
+  ok(await page.isVisible('.dialog .dbtn.danger'), 'Delete asks for confirmation');
+  await page.click('.dialog .dbtn.danger'); await page.waitForTimeout(80);
+  ok((await page.evaluate(() => window.__harbu.store.project.scenes.length)) === 2, 'Confirmed delete removes the scene');
+  await page.click('#hUndo'); await page.waitForTimeout(100);
+  ok((await page.evaluate(() => window.__harbu.store.project.scenes.length === 3 && window.__harbu.store.project.scenes[2].name === 'Bridge')), 'Undo restores deleted scene');
+  await page.click('#rtabSeg >> text=LAB'); await page.waitForTimeout(80);
 
   // open the previous song again
   await page.click('#hSong'); await page.click('text=Open…');

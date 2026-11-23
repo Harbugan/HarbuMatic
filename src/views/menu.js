@@ -82,7 +82,7 @@ export function settingsDialog() {
       h('li', {}, 'Pick an instrument card, tap the grid to add notes, tap a note again to remove it.'),
       h('li', {}, 'Press Generate in the Lab for a new idea — Mutate, Evolve and Remix keep it recognisable.'),
       h('li', {}, 'Deep edit opens every tool: velocity, chance, slides, locks, length, zoom and octaves.'),
-      h('li', {}, 'Scenes are loops (A–F). ARRANGE lines them up into a song.')),
+      h('li', {}, 'Scenes are loops. Create or duplicate scenes in SCENES or ARRANGE, then line them up into a song.')),
     h('label', { class: 'dlg-l' }, 'Keyboard (optional)'),
     h('div', { class: 'keys' },
       ...[['Space', 'Play / pause'], ['Esc', 'Stop (back to start)'], ['1–4', 'Select BOP · GOO · BLIP · FUZZ'], ['B E L', 'Draw · Erase · Lock'], ['↑ ↓', 'Octave up / down'], ['F', 'Deep edit on/off'], ['G M', 'Generate · Mutate'], ['⌘/Ctrl Z', 'Undo (Shift = redo)']].flatMap(([k, v]) => [h('kbd', {}, k), h('span', {}, v)])),

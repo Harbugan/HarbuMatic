@@ -9,7 +9,7 @@
 
 import { store, slot, P, pat } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { SCENE_LETTERS } from '../core/constants.js';
+import { sceneLabel } from '../core/constants.js';
 import { sliceCount, sliceRegion, FIT_CHOICES, fitChoicesOk, fitInfo } from '../core/samples.js';
 import { MAGIC_STYLES, MAGIC_LABEL } from '../music/magicchop.js';
 import { h } from '../ui/dom.js';
@@ -407,7 +407,8 @@ function sequencer(ref, n, host) {
   const head = h('div', { class: 'mw-seqhead' });
   const scenes = h('div', { class: 'mw-scenes', role: 'group', 'aria-label': 'Scene' });
   store.project.scenes.forEach((s, i) => {
-    const b = h('button', { type: 'button', class: 'mw-scene' + (i === sc ? ' on' : ''), 'aria-pressed': String(i === sc), title: `Scene ${SCENE_LETTERS[i]} · ${s.name}`, 'aria-label': `Scene ${SCENE_LETTERS[i]}` }, SCENE_LETTERS[i]);
+    const badge = sceneLabel(i);
+    const b = h('button', { type: 'button', class: 'mw-scene' + (i === sc ? ' on' : ''), 'aria-pressed': String(i === sc), title: `Scene ${badge} · ${s.name}`, 'aria-label': `Scene ${badge}` }, badge);
     b.onclick = () => A.selectScene(i);
     scenes.append(b);
   });

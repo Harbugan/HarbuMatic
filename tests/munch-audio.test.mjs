@@ -191,6 +191,8 @@ test('MUNCH patterns play through the transport: tempo, swing, slices and melodi
 }));
 
 test('scene changes and song mode switch MUNCH patterns like any instrument; mute/solo and Pause/Stop apply', () => rig(async ({ p, engine, ctx, srcs, voice }) => {
+  p.scenes.push({ id: 'scene-02', name: 'Scene 2', harmony: null });
+  p.slots.forEach(s => { s.patterns['scene-02'] = structuredClone(s.patterns['scene-01']); });
   setPatternAt(p, M, 0, { len: 16, notes: [{ s: 0, p: 60, l: 1, v: .9, slice: 0 }] });
   setPatternAt(p, M, 1, { len: 16, notes: [{ s: 0, p: 60, l: 1, v: .9, slice: 7 }] });
   p.arrangement = [newBlock(sceneIdAt(p, 0)), newBlock(sceneIdAt(p, 1))]; p.songMode = true;

@@ -7,18 +7,18 @@ import {
 } from '../src/core/project.js';
 import { createLibrary, memoryStorage } from '../src/core/persistence.js';
 import { createHistory } from '../src/core/history.js';
-import { NSCENES } from '../src/core/constants.js';
 import { LEGACY_TRACKS } from '../src/core/instruments.js';
 
 const v4 = JSON.parse(readFileSync(new URL('./fixtures/v4-demo.json', import.meta.url), 'utf8'));
 const slotOf = (p, track) => p.slots[LEGACY_TRACKS.indexOf(track)];
 
-test('new song is genuinely empty but fully playable', () => {
+test('new song is genuinely empty with one scene and fully playable', () => {
   const p = createEmptyProject({ name: 'Blank' });
   assert.equal(p.v, SCHEMA_VERSION);
   assert.equal(p.name, 'Blank');
   assert.deepEqual(p.arrangement, []);
-  assert.equal(p.scenes.length, NSCENES);
+  assert.equal(p.scenes.length, 1);
+  assert.equal(p.scenes[0].id, 'scene-01');
   assert.deepEqual(p.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch']);
   p.slots.forEach(s => {
     assert.deepEqual(Object.keys(s.patterns), p.scenes.map(sc => sc.id));
@@ -67,14 +67,20 @@ test('validation repairs damaged data instead of dropping the song', () => {
   const p = createDemoProject();
   const blip = slotById(p, 'slot-03'), bop = slotById(p, 'slot-01');
   p.bpm = 9999; blip.patterns['scene-02'].notes.push({ s: 500, p: 60, l: 1, v: 1 }, { s: 2, p: 'x', l: -4, v: 7 });
-  bop.patterns['scene-01'].steps.kick.length = 3; p.arrangement.push({ sceneId: 'scene-42' }, { scene: 42 }); p.scenes = [];
+  bop.patterns['scene-01'].steps.kick.length = 3; p.arrangement.push({ sceneId: 'scene-42' }, { scene: 42 });
   const fixed = validateProject(p);
   assert.equal(fixed.bpm, 200);
   assert.equal(patternAt(fixed, 'slot-01', 0).steps.kick.length, 16);
   assert.ok(patternAt(fixed, 'slot-03', 1).notes.every(n => n.s < 32 && n.l >= 1 && n.v <= 1));
   assert.ok(fixed.arrangement.every(b => sceneIndexOf(fixed, b.sceneId) >= 0));
   assert.equal(fixed.arrangement.length, 3);
-  assert.equal(fixed.scenes.length, NSCENES);
+  assert.equal(fixed.scenes.length, 6);
+  // a damaged song with an empty scenes list repairs to one valid scene (never zero)
+  const wiped = createDemoProject(); wiped.scenes = [];
+  const repaired = validateProject(wiped);
+  assert.equal(repaired.scenes.length, 1);
+  assert.equal(repaired.scenes[0].id, 'scene-01');
+  assert.ok(repaired.arrangement.every(b => b.sceneId === 'scene-01'));
 });
 
 test('exported JSON round-trips', () => {
