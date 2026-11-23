@@ -341,17 +341,19 @@ async function rollPoint(page, step, rowOrPitch) {
   ok(sp.transport === 'playing' && sp.pos.song && sp.pos.block === 0 && sp.pos.scene === 3, 'Play from here starts the song at that block');
   await page.click('#stop');
 
-  // export downloads a file
+  // export downloads a portable .hbn file
   const [dl] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__harbu.A.exportProject())]);
-  ok(/harbumatic-.*\.json$/.test(dl.suggestedFilename()), 'Export produces a .json file');
-  { // the exported file is a v6 song with stable slot ids, and importing it again restores it
-    const exported = JSON.parse(await (await import('node:fs/promises')).readFile(await dl.path(), 'utf8'));
-    ok(exported.v === 6 && exported.slots.map(x => `${x.id}:${x.type}`).join() === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && !exported.tracks, 'Export writes schema v6 with five slot ids (MUNCH placeholder included)');
+  ok(/harbumatic-.*\.hbn$/.test(dl.suggestedFilename()), 'Export produces a .hbn file');
+  { // the exported .hbn package carries a v6 project with stable slot ids, and importing it again restores it
+    const { parsePackage } = await import('../src/core/package.js');
+    const hbnBytes = await (await import('node:fs/promises')).readFile(await dl.path());
+    const { project: exported, manifest } = await parsePackage(hbnBytes);
+    ok(manifest.format === 'harbumatic-package' && manifest.v === 1 && exported.v === 6 && exported.slots.map(x => `${x.id}:${x.type}`).join() === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && !exported.tracks, 'Export writes a v1 .hbn package with schema v6 and five slot ids (MUNCH placeholder included)');
     const before = await state(page);
-    await page.setInputFiles('#fileIn', { name: 'again.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+    await page.setInputFiles('#fileIn', { name: 'again.hbn', mimeType: 'application/octet-stream', buffer: hbnBytes });
     await page.waitForTimeout(250);
     const again = await state(page);
-    ok(again.songs === before.songs + 1 && JSON.stringify(again.arrangement) === JSON.stringify(before.arrangement) && again.kicks === before.kicks, 'importing the exported file restores the song as a new entry');
+    ok(again.songs === before.songs + 1 && JSON.stringify(again.arrangement) === JSON.stringify(before.arrangement) && again.kicks === before.kicks, 'importing the exported .hbn file restores the song as a new entry');
   }
 
   // instrument slots: four playable cards with stable slot ids, keyboard 1–4 selects them, no MUNCH card outside the preview
@@ -617,14 +619,24 @@ async function rollPoint(page, step, rowOrPitch) {
     await H(() => window.__harbu.A.duplicateProject());
     ok((await H(() => JSON.stringify(window.__harbu.store.project.slots[4].sample))) === JSON.stringify(ref), 'Save a copy keeps the sample reference and slices');
     const [dl] = await Promise.all([pg.waitForEvent('download'), H(() => window.__harbu.A.exportProject())]);
-    const exported = JSON.parse(await fs.readFile(await dl.path(), 'utf8'));
-    ok(exported.slots[4].sample.id === ref.id && /not portable/.test(await toast()), 'Export keeps the reference and warns that the audio is not included');
+    ok(/\.hbn$/.test(dl.suggestedFilename()), 'MUNCH export produces a portable .hbn package');
+    const hbnBuf = await fs.readFile(await dl.path());
+    const { parsePackage } = await import('../src/core/package.js');
+    const pkg = await parsePackage(hbnBuf);
+    ok(pkg.project.slots[4].sample.id === ref.id && pkg.samples.length === 1 && pkg.samples[0].id === ref.id && /with 1 sample/.test(await toast()), 'MUNCH .hbn export embeds the original sample audio');
     // missing asset: reference kept, clear warning, the feed panel says how to bring it back
     await pg.evaluate(id => window.__harbu.A.samples.store.remove(id), ref.id);
     await H(() => window.__harbu.A.flushSave());
     await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(800);
     await H(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await pg.waitForTimeout(200);
     ok((await H(() => window.__harbu.store.project.slots[4].sample.id)) === ref.id && (await H(() => /missing here/.test(document.querySelector('[data-testid=munch-feed]')?.textContent || ''))) && /missing on this device/.test(await toast()), 'a missing sample keeps its reference, warns, and MUNCH asks for the same file');
+    // exporting while sample is missing aborts cleanly without falling back to JSON
+    const failRes = await H(() => window.__harbu.A.exportProject());
+    ok(failRes && !failRes.ok && /missing/.test(await toast()), 'Export aborts clearly when a referenced MUNCH sample is missing');
+    // importing the portable .hbn restores the deleted sample to ready state
+    await pg.setInputFiles('#fileIn', { name: dl.suggestedFilename(), mimeType: 'application/octet-stream', buffer: hbnBuf });
+    await pg.waitForTimeout(600);
+    ok((await H(() => window.__harbu.A.samples.state(ref.id).status)) === 'ready', 'importing the .hbn package restores the embedded sample to ready state');
     await pg.click('#play'); await pg.waitForTimeout(600); await pg.click('#stop');
     ok(!errs.length, `no errors in the MUNCH flows${errs.length ? ' — ' + errs[0] : ''}`);
     await mctx.close();

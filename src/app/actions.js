@@ -10,6 +10,10 @@ import {
   createEmptyProject, createDemoProject, importProject, newBlock, clampReps, ProjectError,
   playableSlots, patternAt, setPatternAt, sceneIdAt, typeOfSlot,
 } from '../core/project.js';
+import {
+  exportPackage, parsePackage, restorePackage, isZipBytes, PackageError,
+  PACKAGE_EXTENSION, PACKAGE_MIME, PACKAGE_LIMITS,
+} from '../core/package.js';
 import { createPatternFor, isPlayableType } from '../core/instruments.js';
 import {
   sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH, insertSliceBoundary, splitSlice,
@@ -74,15 +78,17 @@ export function redo() { const s = history.redo(JSON.stringify(store.project)); 
 export function patternEdited() { save(); emit('pattern'); }
 
 /* ---------- project lifecycle ---------- */
-function adopt(project, msg) {
+function adopt(project, msg, { saved = false } = {}) {
   transport.stop();
-  flushSave();
+  if (!saved) flushSave();
   store.project = project;
   ensureSelection();
   history.clear();
   Object.assign(store.ui, { scrollX: 0, zoom: 1, arrSel: null, libSel: null });
-  save(true); engine.applyAll(); syncSamples();
+  if (!saved) save(true);
+  engine.applyAll(); syncSamples();
   emit('project'); emit('history');
+  if (saved) emit('library');
   if (msg) emit('toast', msg);
 }
 export function bootProject() {
@@ -119,25 +125,114 @@ export function duplicateProject() {
   copy.id = createEmptyProject().id; copy.name = `${store.project.name} (copy)`; copy.created = new Date().toISOString();
   adopt(copy, `Saved a copy: “${copy.name}”`);
 }
-export function exportProject() {
-  const refs = sampleRefsOf(store.project);
-  const data = JSON.stringify(store.project, null, 1);
-  const safe = store.project.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'song';
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-  a.download = `harbumatic-${safe}.json`;
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  // a JSON file only references samples (they stay in this browser): say so, never imply it is portable
-  emit('toast', refs.length ? 'Song exported without its audio: the MUNCH sample stays on this device, so this file is not portable yet' : 'Song exported as a file');
+function uniqueProjectId(lib = library) {
+  const used = new Set(lib.list().map(x => x.id));
+  if (store.project && store.project.id) used.add(store.project.id);
+  let id = createEmptyProject().id;
+  while (used.has(id)) id = createEmptyProject().id;
+  return id;
 }
-export async function importFile(file) {
+function referencedSampleIds(lib = library) {
+  const ids = new Set(sampleRefsOf(store.project));
+  for (const item of lib.list()) {
+    const p = store.project && item.id === store.project.id ? store.project : lib.load(item.id);
+    if (p) sampleRefsOf(p).forEach(id => ids.add(id));
+  }
+  return ids;
+}
+function downloadBlob(bytes, filename, type = PACKAGE_MIME) {
+  if (typeof document === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) return;
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+export async function exportProject({ sampleStore = samples.store, download = downloadBlob, limits = PACKAGE_LIMITS } = {}) {
   try {
-    const p = importProject(JSON.parse(await file.text()));
-    p.id = createEmptyProject().id; // never overwrite an existing library entry
-    adopt(p, `Imported “${p.name}”`);
+    const pkg = await exportPackage(store.project, { sampleStore, limits });
+    const safe = store.project.name.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'song';
+    const filename = `harbumatic-${safe}${PACKAGE_EXTENSION}`;
+    download(pkg.bytes, filename, PACKAGE_MIME);
+    const n = pkg.sampleCount;
+    emit('toast', n
+      ? `Exported “${store.project.name}” (${PACKAGE_EXTENSION}) with ${n} sample${n === 1 ? '' : 's'}`
+      : `Exported “${store.project.name}” (${PACKAGE_EXTENSION})`);
+    return { ok: true, filename, bytes: pkg.bytes, manifest: pkg.manifest, sampleCount: n };
   } catch (e) {
-    emit('toast', e instanceof ProjectError ? e.message : 'That file is not a HarbuMatic project');
+    emit('toast', e instanceof PackageError ? e.message : 'Could not export portable project (.hbn).');
+    return { ok: false, error: e };
+  }
+}
+export async function importFile(file, { sampleStore = samples.store, decode, lib = library, limits = PACKAGE_LIMITS } = {}) {
+  if (!file) return null;
+  const lim = { ...PACKAGE_LIMITS, ...limits };
+  try {
+    const name = String(file.name || '').toLowerCase();
+    const isHbnName = name.endsWith(PACKAGE_EXTENSION);
+    const isJsonName = name.endsWith('.json');
+    if (typeof file.size === 'number') {
+      if (isJsonName && file.size > lim.maxProjectBytes) throw new PackageError('too-large', 'That project file is too large.');
+      if (!isJsonName && file.size > lim.maxArchiveBytes) {
+        throw new PackageError('too-large', `That .hbn file is too large (${Math.ceil(file.size / 1048576)} MB; max ${Math.round(lim.maxArchiveBytes / 1048576)} MB).`);
+      }
+    }
+
+    let rawJsonText = null;
+    let packageBytes = null;
+    if (isJsonName) {
+      rawJsonText = typeof file.text === 'function' ? await file.text() : new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+    } else {
+      const u8 = new Uint8Array(await file.arrayBuffer());
+      if (isHbnName || isZipBytes(u8)) packageBytes = u8;
+      else rawJsonText = new TextDecoder('utf-8', { fatal: true }).decode(u8);
+    }
+
+    if (packageBytes) {
+      const parsed = await parsePackage(packageBytes, { limits: lim });
+      let dec = decode;
+      if (parsed.samples.length > 0 && dec === undefined && sampleStore === samples.store) {
+        if (canSound()) engine.init();
+        dec = samples.attached ? samples.decode : undefined;
+      }
+      const restored = await restorePackage(parsed, { sampleStore, decode: dec, referenced: referencedSampleIds(lib) });
+      [...restored.restored, ...restored.reused].forEach(id => warnedMissing.delete(id));
+
+      const p = restored.project;
+      flushSave();
+      const prevCurrent = lib.currentId();
+      p.id = uniqueProjectId(lib); // never overwrite an existing library entry
+      p.modified = new Date().toISOString();
+      const savedOk = lib.save(p) && !!lib.load(p.id);
+      if (!savedOk) {
+        try { lib.remove(p.id); } catch (e) { /* best effort */ }
+        if (prevCurrent) lib.setCurrent(prevCurrent);
+        await restored.cleanup();
+        throw new PackageError('storage-error', 'Could not save the imported song to this browser’s storage.');
+      }
+      if (parsed.samples.length > 0) askPersist();
+      const n = parsed.samples.length;
+      adopt(p, n ? `Imported “${p.name}” with ${n} sample${n === 1 ? '' : 's'}` : `Imported “${p.name}”`, { saved: true });
+      return p;
+    }
+
+    const p = importProject(JSON.parse(rawJsonText));
+    flushSave();
+    const prevCurrent = lib.currentId();
+    p.id = uniqueProjectId(lib); // never overwrite an existing library entry
+    p.modified = new Date().toISOString();
+    const savedOk = lib.save(p) && !!lib.load(p.id);
+    if (!savedOk) {
+      try { lib.remove(p.id); } catch (e) { /* best effort */ }
+      if (prevCurrent) lib.setCurrent(prevCurrent);
+      throw new PackageError('storage-error', 'Could not save the imported song to this browser’s storage.');
+    }
+    adopt(p, `Imported “${p.name}”`, { saved: true });
+    return p;
+  } catch (e) {
+    emit('toast', e instanceof PackageError || e instanceof ProjectError ? e.message : 'That file is not a HarbuMatic project');
+    return null;
   }
 }
 
