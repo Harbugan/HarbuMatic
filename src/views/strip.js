@@ -6,6 +6,7 @@ import { DRUM_IDS, SCENE_LETTERS } from '../core/constants.js';
 import { getInstrumentType, isPlayableType } from '../core/instruments.js';
 import { patternAt, anySolo } from '../core/project.js';
 import { $, h } from '../ui/dom.js';
+import { Knob } from '../ui/controls.js';
 import { ico } from '../ui/icons.js';
 import { catSVG, registerCat, CAT } from '../ui/characters.js';
 import { playhead } from '../ui/sequencer.js';
@@ -102,32 +103,61 @@ export function buildCards() {
     const solo = h('button', { type: 'button', class: 'pill solo', 'aria-pressed': 'false', title: `Solo ${m.name}` }, 'S');
     mute.onclick = e => { e.stopPropagation(); A.toggleMute(id); };
     solo.onclick = e => { e.stopPropagation(); A.toggleSolo(id); };
+    const vol = Knob({
+      label: `${m.name} volume`,
+      min: 0, max: 1,
+      value: P(id)?.vol ?? m.defaultParams.vol,
+      def: m.defaultParams.vol,
+      size: 'card-vol',
+      title: `${m.name} volume — drag, double-tap to reset`,
+      onChange: v => A.setParam(id, 'vol', v),
+      onEnd: A.sealHistory,
+    });
+    const stop = e => e.stopPropagation();
+    ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'wheel'].forEach(ev => vol.el.addEventListener(ev, stop));
+    vol.el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === 'Home' || e.key === 'End' || e.key.startsWith('Arrow')) e.stopPropagation();
+    });
     const mini = h('div', { class: 'mini-steps' }, Array.from({ length: 16 }, () => h('i')));
     card.append(
       h('div', { class: 'card-cat' }, catEl),
-      h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), led), h('div', { class: 'card-type' }, m.description), h('div', { class: 'card-ms' }, mute, solo)),
+      h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), led), h('div', { class: 'card-type' }, m.description), h('div', { class: 'card-ms' }, mute, solo, vol.el)),
       mini);
     card.addEventListener('click', e => {
-      if (e.target.closest('.pill')) return;
+      if (e.target.closest('.pill, .knob')) return;
       A.selectSlot(id);
       A.engine.audition(id, auditionPitch(m, store.project.key, 'pitch', id), .8);
     });
-    card.addEventListener('keydown', e => { if (e.key === 'Enter') A.selectSlot(id); });
+    card.addEventListener('keydown', e => {
+      if (e.target.closest('.pill, .knob')) return;
+      if (e.key === 'Enter') A.selectSlot(id);
+    });
     host.append(card);
-    registerCat(id, { el: catEl, rig: catEl.querySelector('.rig'), led, card, mute, solo, mini, type: s.type });
+    registerCat(id, { el: catEl, rig: catEl.querySelector('.rig'), led, card, mute, solo, vol, mini, type: s.type });
   });
 }
-/** dev preview only: a planned instrument's card with the real layout, but inert (no select, audition, M/S) */
+/** dev preview only: a planned instrument's card with the real layout, but inert (no select, audition, M/S, volume) */
 function plannedCard(s) {
   const m = getInstrumentType(s.type);
   const pill = (cls, t) => h('button', { type: 'button', class: `pill ${cls}`, disabled: true, tabindex: -1 }, t);
+  const vol = Knob({ label: `${m.name} volume`, min: 0, max: 1, value: m.defaultParams.vol, def: m.defaultParams.vol, size: 'card-vol' });
+  vol.el.setAttribute('tabindex', '-1');
+  vol.el.setAttribute('aria-disabled', 'true');
   return h('div', { class: 'card planned', 'data-t': m.visual.css, 'data-slot': s.id, 'aria-disabled': 'true', inert: '', title: `${m.name} — preview, not playable yet` },
     h('div', { class: 'card-cat' }, h('div', { class: 'cat ' + m.visual.css, html: catSVG(s.type) })),
-    h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), h('i', { class: 'led' })), h('div', { class: 'card-type' }, `${m.description} · soon`), h('div', { class: 'card-ms' }, pill('mute', 'M'), pill('solo', 'S'))),
+    h('div', { class: 'card-info' }, h('div', { class: 'card-head' }, h('span', { class: 'card-name' }, m.name), h('i', { class: 'led' })), h('div', { class: 'card-type' }, `${m.description} · soon`), h('div', { class: 'card-ms' }, pill('mute', 'M'), pill('solo', 'S'), vol.el)),
     h('div', { class: 'mini-steps' }, Array.from({ length: 16 }, () => h('i'))));
 }
 /** rebuild the cards only when the set of carded slots (or their types) changed */
 export function syncCards() { if (cardSlotList().map(s => `${s.id}:${s.type}`).join() !== cardSlots) buildCards(); }
+/** keep card volume knobs in step with params (SOUND, presets, undo/redo) without interrupting an active drag */
+export function syncCardVolume(id = null) {
+  const list = id ? (CAT[id] ? [id] : []) : Object.keys(CAT);
+  list.forEach(t => {
+    const c = CAT[t];
+    if (c && c.vol && !c.vol.dragging) c.vol.set(P(t).vol);
+  });
+}
 export function occupancy(id, sc, cells) {
   const s = slot(id), p = patternAt(store.project, id, sc), out = Array(cells).fill(false), k = cells / p.len;
   if (getInstrumentType(s.type).pattern === 'drum') DRUM_IDS.forEach(d => p.steps[d].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));
@@ -144,6 +174,7 @@ export function updateCards() {
     c.card.classList.toggle('silent', solo ? !tr.solo : tr.mute);
     c.mute.classList.toggle('on', tr.mute); c.mute.setAttribute('aria-pressed', String(tr.mute));
     c.solo.classList.toggle('on', tr.solo); c.solo.setAttribute('aria-pressed', String(tr.solo));
+    if (c.vol && !c.vol.dragging) c.vol.set(P(t).vol);
     const occ = occupancy(t, pr.scene, 16);
     [...c.mini.children].forEach((i, k) => i.classList.toggle('on', occ[k]));
   });

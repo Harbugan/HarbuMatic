@@ -120,6 +120,10 @@
   :root { --right-w: 272px; }
   .strip { grid-template-columns: 222px minmax(0, 1fr); }
   .transport { grid-template-columns: 58px 50px minmax(0, 1fr); }
+  .device.compact .transport { grid-template-columns: 50px 46px 162px; gap: 6px; }
+  .device.compact .transport .bpm { gap: 4px; }
+  .device.compact .bpm-box { align-items: center; padding-top: 0; }
+  .device.compact .bpm-box b { font-size: 20px; }
   .mode { padding: 0 13px; }
   .brand .wordmark { font-size: 24px; }
   .device .cat { width: 70px; height: 62px; } /* leaves room for M + S on ~1024 px wide landscape (BUG-002) */

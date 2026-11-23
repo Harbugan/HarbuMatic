@@ -236,6 +236,113 @@ async function rollPoint(page, step, rowOrPitch) {
     await page.click('#hUndo'); await page.waitForTimeout(60);
   }
 
+  // HBM-061-01: always-visible compact VOL knob right of M and S, aligned on one axis, isolated from card select/audition, synced with SOUND & history
+  {
+    const align = await page.evaluate(() => [...document.querySelectorAll('#cards .card')].map(c => {
+      const m = c.querySelector('.pill.mute').getBoundingClientRect();
+      const s = c.querySelector('.pill.solo').getBoundingClientRect();
+      const v = c.querySelector('.knob.card-vol').getBoundingClientRect();
+      return {
+        rightOfMS: v.left >= s.right - 1 && s.left >= m.right - 1,
+        dCy: Math.max(Math.abs((v.top + v.height / 2) - (m.top + m.height / 2)), Math.abs((s.top + s.height / 2) - (m.top + m.height / 2))),
+        sizeOk: v.width >= 40 && v.height >= 40,
+      };
+    }));
+    ok(align.length === 4 && align.every(a => a.rightOfMS && a.dCy <= 2 && a.sizeOk), `every card has a 40×40+ VOL knob right of M/S on the same vertical axis (${JSON.stringify(align[0])})`);
+
+    // adjust a non-selected card's VOL while playing: no selection change, no audition, audio gain updates, undo/redo + double-tap reset work
+    await page.evaluate(() => { window.__harbu.A.selectSlot('slot-01'); window.__harbu.A.togglePlay(); });
+    await page.waitForTimeout(120);
+    const gooVol = page.locator('#cards .card[data-slot="slot-02"] .knob.card-vol');
+    const vb = await gooVol.boundingBox();
+    const v0 = await page.evaluate(() => window.__harbu.store.project.slots[1].params.vol);
+    await page.evaluate(() => { window.__audCount = 0; const orig = window.__harbu.A.engine.audition; window.__origAud = orig; window.__harbu.A.engine.audition = (...a) => { window.__audCount++; return orig(...a); }; });
+    await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2 + 60, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(80);
+    const afterDrag = await page.evaluate(() => ({
+      sel: window.__harbu.store.ui.sel,
+      vol: window.__harbu.store.project.slots[1].params.vol,
+      aria: Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')),
+      aud: window.__audCount,
+    }));
+    ok(afterDrag.sel === 'slot-01' && afterDrag.aud === 0 && afterDrag.vol < v0 - 0.15 && Math.abs(afterDrag.aria - afterDrag.vol) < 0.02, `dragging non-selected card VOL while playing changes volume without selecting or auditioning (${JSON.stringify(afterDrag)})`);
+
+    // click and Enter on the knob never select the card; ArrowUp adjusts volume
+    await gooVol.click();
+    await gooVol.focus();
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(50);
+    const afterEnter = await page.evaluate(() => ({ sel: window.__harbu.store.ui.sel, aud: window.__audCount }));
+    ok(afterEnter.sel === 'slot-01' && afterEnter.aud === 0, 'click and Enter on card VOL knob do not select or audition the card');
+    await page.keyboard.press('ArrowUp');
+    await page.waitForTimeout(50);
+    const afterArrow = await page.evaluate(() => window.__harbu.store.project.slots[1].params.vol);
+    ok(afterArrow > afterDrag.vol && (await page.evaluate(() => window.__harbu.store.ui.sel)) === 'slot-01', 'ArrowUp on focused card VOL knob raises volume without selecting the card');
+    await page.evaluate(() => { window.__harbu.A.sealHistory(); window.__harbu.A.engine.audition = window.__origAud; });
+
+    // double-tap resets to instrument registry default (GOO = 0.72)
+    await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2);
+    await page.mouse.down(); await page.mouse.up();
+    await page.waitForTimeout(70);
+    await page.mouse.down(); await page.mouse.up();
+    await page.waitForTimeout(80);
+    const afterReset = await page.evaluate(() => ({
+      vol: window.__harbu.store.project.slots[1].params.vol,
+      aria: Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')),
+      sel: window.__harbu.store.ui.sel,
+    }));
+    ok(Math.abs(afterReset.vol - 0.72) < 0.005 && Math.abs(afterReset.aria - 0.72) < 0.02 && afterReset.sel === 'slot-01', `double-tap resets GOO card VOL to registry default 0.72 (${JSON.stringify(afterReset)})`);
+
+    // undo/redo updates card VOL knob
+    await page.click('#hUndo'); await page.waitForTimeout(80);
+    const afterUndo = await page.evaluate(() => Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')));
+    await page.click('#hRedo'); await page.waitForTimeout(80);
+    const afterRedo = await page.evaluate(() => Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')));
+    ok(Math.abs(afterUndo - afterArrow) < 0.02 && Math.abs(afterRedo - 0.72) < 0.02, `Undo/Redo synchronizes card VOL knob (${afterUndo} → ${afterRedo})`);
+
+    // sync with SOUND view in both directions without rebuilding the dragged control
+    await page.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-02'); window.__harbu.A.setMode('sound'); });
+    await page.waitForTimeout(150);
+    const soundVol = page.locator('#viewSound .knob[aria-label="Volume"]');
+    const sb = await soundVol.boundingBox();
+    await page.evaluate(() => { window.__cardVolNode = document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol'); });
+    await page.mouse.move(sb.x + sb.width / 2, sb.y + 25); await page.mouse.down(); await page.mouse.move(sb.x + sb.width / 2, sb.y + 85, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(80);
+    const syncedFromSound = await page.evaluate(() => ({
+      sound: Number(document.querySelector('#viewSound .knob[aria-label="Volume"]').getAttribute('aria-valuenow')),
+      card: Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')),
+      sameNode: window.__cardVolNode === document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol'),
+    }));
+    ok(Math.abs(syncedFromSound.sound - syncedFromSound.card) < 0.02 && syncedFromSound.sameNode, `SOUND Volume drag synchronizes card VOL knob without rebuilding (${JSON.stringify(syncedFromSound)})`);
+
+    // drag card VOL while SOUND is open: SOUND knob updates and card knob node stays intact
+    await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2); await page.mouse.down(); await page.mouse.move(vb.x + vb.width / 2, vb.y + vb.height / 2 - 55, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(80);
+    const syncedToSound = await page.evaluate(() => ({
+      sound: Number(document.querySelector('#viewSound .knob[aria-label="Volume"]').getAttribute('aria-valuenow')),
+      card: Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')),
+      sameNode: window.__cardVolNode === document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol'),
+    }));
+    ok(Math.abs(syncedToSound.sound - syncedToSound.card) < 0.02 && syncedToSound.card > syncedFromSound.card + 0.1 && syncedToSound.sameNode, `card VOL drag synchronizes SOUND Volume knob without rebuilding (${JSON.stringify(syncedToSound)})`);
+
+    // save + reload persists volume on the card VOL knob
+    await page.evaluate(() => window.__harbu.A.flushSave());
+    await page.reload(); await page.click('#startBtn'); await page.waitForTimeout(250);
+    await page.evaluate(() => window.__harbu.A.stop());
+    const afterReload = await page.evaluate(() => ({
+      param: window.__harbu.store.project.slots[1].params.vol,
+      card: Number(document.querySelector('#cards .card[data-slot="slot-02"] .knob.card-vol').getAttribute('aria-valuenow')),
+    }));
+    ok(Math.abs(afterReload.param - syncedToSound.card) < 0.02 && Math.abs(afterReload.card - afterReload.param) < 0.02, `reloading restores saved volume on the card VOL knob (${JSON.stringify(afterReload)})`);
+
+    // restore clean JAM state on slot-01 with original volume
+    await page.evaluate(v => { window.__harbu.A.setParam('slot-02', 'vol', v, false); window.__harbu.A.flushSave(); window.__harbu.A.history.clear(); window.__harbu.A.setMode('jam'); window.__harbu.A.selectSlot('slot-01'); }, v0);
+    await page.waitForTimeout(120);
+  }
+
   // release identity: one footer line, exact credit, never on top of a control
   {
     const id = await page.evaluate(() => {
@@ -598,6 +705,23 @@ async function rollPoint(page, step, rowOrPitch) {
     ok((await H(() => { const p = window.__harbu.store.project.slots[4].params; return [p.tune, p.start, p.reverse].join(); })) === '7,0.2,true', 'pitch, trim and reverse are stored as non-destructive params');
     ok(await H(() => !!window.__harbu.A.samples.buffer(window.__harbu.store.project.slots[4].sample.id, true)), 'reverse prepares the reversed copy ahead of playback');
     ok(await H(() => document.querySelectorAll('.mw-twist .knob').length >= 12), 'TWIST shows its knobs');
+    // MUNCH card VOL knob syncs with TWIST Volume and resets to 0.8 on double-tap
+    {
+      const mv = pg.locator('#cards .card[data-slot="slot-05"] .knob.card-vol'), mb2 = await mv.boundingBox();
+      await pg.mouse.move(mb2.x + mb2.width / 2, mb2.y + mb2.height / 2);
+      await pg.mouse.down(); await pg.mouse.move(mb2.x + mb2.width / 2, mb2.y + mb2.height / 2 + 55, { steps: 5 }); await pg.mouse.up();
+      await pg.waitForTimeout(80);
+      const msync = await H(() => ({
+        param: window.__harbu.store.project.slots[4].params.vol,
+        card: Number(document.querySelector('#cards .card[data-slot="slot-05"] .knob.card-vol').getAttribute('aria-valuenow')),
+        twist: Number(document.querySelector('.mw-twist .knob[aria-label="Volume"]').getAttribute('aria-valuenow')),
+      }));
+      ok(msync.param < 0.7 && Math.abs(msync.card - msync.param) < 0.02 && Math.abs(msync.twist - msync.param) < 0.02, `MUNCH card VOL knob stays in sync with TWIST Volume (${JSON.stringify(msync)})`);
+      await pg.mouse.move(mb2.x + mb2.width / 2, mb2.y + mb2.height / 2);
+      await pg.mouse.down(); await pg.mouse.up(); await pg.waitForTimeout(70); await pg.mouse.down(); await pg.mouse.up();
+      await pg.waitForTimeout(80);
+      ok(Math.abs((await H(() => window.__harbu.store.project.slots[4].params.vol)) - 0.8) < 0.005, 'double-tap resets MUNCH card VOL to registry default 0.8');
+    }
     // recording from the (fake) microphone: replaces the sound, keeps the groove
     await pg.click('[data-testid=munch-rec]'); await pg.waitForTimeout(1200);
     ok((await H(() => window.__harbu.A.recorder.state)) === 'recording' && (await H(() => document.querySelector('.mw-char')?.dataset.face)) === 'listen', 'recording starts and MUNCH listens');
