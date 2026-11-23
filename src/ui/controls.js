@@ -50,7 +50,7 @@ export function Knob({ label, min = 0, max = 1, value, def, size = '', color, fm
     if (['ArrowDown', 'ArrowLeft'].includes(e.key)) { onStart && onStart(); setV(v - d); e.preventDefault(); e.stopPropagation(); }
   });
   draw();
-  return { el, set: nv => { v = clamp(nv, min, max); draw(); }, get value() { return v; } };
+  return { el, set: nv => { v = clamp(nv, min, max); draw(); }, get value() { return v; }, get dragging() { return drag !== null; } };
 }
 
 /** segmented control: opts = [[value, label], ...] */

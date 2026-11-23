@@ -130,3 +130,27 @@ test('autosave writes v6 and the saved song re-imports identically', () => {
   assert.deepEqual(back, importProject(JSON.parse(JSON.stringify(store.project))));
   assert.equal(slotById(back, 'slot-04').mute, true);
 });
+
+test('per-slot volume edits coalesce per drag, undo/redo, emit params and persist without changing selection', () => {
+  load('v5-demo.json');
+  const startVol = slotById(store.project, 'slot-02').params.vol;
+  // continuous drag coalesces into one undo step without selecting slot-02
+  A.setParam('slot-02', 'vol', 0.4);
+  A.setParam('slot-02', 'vol', 0.25);
+  A.sealHistory();
+  assert.equal(store.ui.sel, 'slot-01');
+  assert.equal(slotById(store.project, 'slot-02').params.vol, 0.25);
+  // a second gesture after sealHistory is its own undo step
+  A.setParam('slot-02', 'vol', 0.9);
+  A.sealHistory();
+  assert.equal(slotById(store.project, 'slot-02').params.vol, 0.9);
+  A.undo();
+  assert.equal(slotById(store.project, 'slot-02').params.vol, 0.25);
+  A.undo();
+  assert.equal(slotById(store.project, 'slot-02').params.vol, startVol);
+  A.redo();
+  assert.equal(slotById(store.project, 'slot-02').params.vol, 0.25);
+  A.save(true);
+  const reloaded = A.library.load(store.project.id);
+  assert.equal(slotById(reloaded, 'slot-02').params.vol, 0.25);
+});

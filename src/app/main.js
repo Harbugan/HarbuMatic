@@ -10,7 +10,7 @@ import { ico } from '../ui/icons.js';
 import { toast, dialogOpen, closeDialog } from '../ui/controls.js';
 import { catSVG, catReact, uniReact, setCatsIdle, startIdleLife, CAT } from '../ui/characters.js';
 import * as Seq from '../ui/sequencer.js';
-import { buildTransport, renderTransport, buildCards, updateCards, drawScreen, updateWiggle } from '../views/strip.js';
+import { buildTransport, renderTransport, buildCards, updateCards, syncCardVolume, drawScreen, updateWiggle } from '../views/strip.js';
 import { renderJamBar, updateLeds } from '../views/jam.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs } from '../views/sound.js';
@@ -62,7 +62,7 @@ function wire() {
   on('selection', () => { setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') applyLayout(); });
   on('scene', () => { Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderScenes(); renderLab(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
-  on('params', id => { if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
+  on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
   // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
   // is being dragged only the display redraws, so the gesture is never interrupted by a rebuild.
