@@ -1,7 +1,7 @@
 # HarbuMatic — Bug & Improvement Tracker
 
-> Last updated: 2026-11-22  
-> Current baseline: **v0.5.1** (MUNCH dev preview from v0.6 Phase 4)  
+> Last updated: 2026-11-23  
+> Current development baseline: **v0.6.1** (five instruments always available; Dynamic Scene Library merged in PR #18)  
 > Stabilization: **v0.6 MUNCH stabilization** — MUNCH-1 … MUNCH-4 implemented, awaiting physical iPad verification (see `docs/MUNCH-STABILIZATION.md`)
 
 This file tracks reproducible bugs and smaller usability improvements. It complements [ROADMAP.md](ROADMAP.md), which covers larger product capabilities.
@@ -128,14 +128,17 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### ENH-001 — Dynamic Scene Library: start with one, grow as needed
 - **Type:** Enhancement (not a bug)
 - **Priority:** P3 — Low / product review
-- **Status:** Planned for v0.6.1 (not part of v0.5.1)
+- **Status:** Resolved — implemented in PR #18 and owner-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** The Scene Library is limited to six scenes.
 - **Desired:** New projects start with one scene. Add empty scenes as needed; duplicate a scene including its patterns and scene-local content; copy content into another scene with overwrite confirmation; rename, reorder and delete scenes (never the last). Preserve existing projects and arrangement references.
 - **Design questions:** Dynamic scene creation/removal? Practical upper limit? Scene duplication? How to display and navigate larger libraries?
 - **Technical considerations:** Review fixed-size assumptions across scene IDs, pattern storage, song chains, rendering, serialization, migrations, and scene switching.
 - **Acceptance (provisional):** Users can create, select, rename, duplicate, arrange, and persist additional scenes beyond the original six; existing projects remain compatible.
-- **Decision:** Scheduled for v0.6.1 Expand & Finish. v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
+- **Decision:** Implemented in v0.6.1 (PR #18). v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
+
+- **Implementation evidence (PR #18):** New projects start with one scene; up to 64 scenes; create, duplicate (independent deep copy), rename, edit, copy to, delete and reorder; Undo/Redo, arrangement reconciliation and `.hbn` round-trip. `npm test` PASS 266/266; separate headless Chrome UI flow PASS; standard `npm run test:ui` and `npm run test:baseline` NOT RUN in PR environment.
+- **Physical-device verification:** Confirmed by owner on physical iPad (2026-11-23).
 
 ## v0.5.1 proposed scope
 
@@ -152,7 +155,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 | BUG-002 | 0.5.1 | Headless Chromium, 7 viewports (1024×768 … 768×1024) | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
 | BUG-003 | 0.5.1 | Headless Chromium, mouse drag | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
 | BUG-004 | 0.5.1 | Headless Chromium, 7 viewports | Pass (automated) | Owner confirms physical iPad acceptance (2026-11-23) |
-| ENH-001 | — | — | Not implemented | Planned for v0.6.1 |
+| ENH-001 | v0.6.1 PR #18 | Unit 266/266 + separate headless Chrome UI | Implemented, merged | Owner-verified on physical iPad (2026-11-23) |
 | MUNCH-1 | 0.5.1 + stabilization | Node (fake WebKit env) + headless Chromium with emulated iPad Audio Session | Pass (automated) | Reproduced first (InvalidStateError under `playback`). iPad: **not tested** |
 | MUNCH-2 | 0.5.1 + stabilization | Node (failure injection) + headless Chromium IndexedDB | Pass (automated) | Root cause unconfirmed. iPad: **not tested** |
 | MUNCH-3 | 0.5.1 + stabilization | Node (fake Web Audio) + headless Chromium | Pass (automated) | Stop-while-stopped reproduced in code. iPad: **not tested** |

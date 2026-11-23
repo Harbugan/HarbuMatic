@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-23 (v0.6.1 development baseline)  
+> Last updated: 2026-11-23 (Dynamic Scene Library merged, PR #18)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -30,7 +30,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Decided** — after v0.6, before Ruff in the Jungle |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — Quick Volume PR #15 and Dynamic Scene Library PR #18 merged; focused iPad polish remains |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -110,7 +110,9 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Exit criterion:** A user can record/import a sound, creatively manipulate it, use it in music, and save the work in a portable project.
 
-## v0.6.1 — Playability & Polish
+## v0.6.1 — Dynamic Scenes & Playability
+
+**Implementation progress (2026-11-23):** Quick Volume & card alignment (PR #15) merged and user-verified on iPad. Five instruments by default (PR #16) merged and user-tested. Dynamic Scene Library (PR #18) merged: one empty scene for new projects, create/duplicate/rename/edit/copy-to/delete/reorder, maximum 64 scenes, dynamic labels, scene-local pattern/harmony deep-copy, Undo/Redo and `.hbn` round-trip. PR #18 reports 266/266 unit tests passing and a separate headless Chrome UI flow passing; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in that PR environment. Physical iPad verification of Dynamic Scenes confirmed by the owner on 2026-11-23. Remaining v0.6.1 work: iPad UX/preset review, compact top exploration and musical playability polish; scope each as separate tasks.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
@@ -134,7 +136,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - Polish character, microinteractions and visual consistency only where they improve playability.
 - Run physical iPad Safari checks and regression tests for transport, timing, sequencer, scenes, projects, sampling and export.
 
-**Dynamic Scene Library (ENH-001) is in scope:** new projects start with exactly one scene; add an empty scene, duplicate all scene-local musical content, copy into another scene with overwrite confirmation, rename and delete (never delete the last scene). Preserve stable scene IDs, current-version song-chain references, undo/reversibility and current-version project save/reopen. Scene-specific patterns/settings are copied; global instrument settings should not be unexpectedly overwritten. Test iPad touch, current-version project persistence and .hbn round-trip; no legacy migration requirement.
+**Dynamic Scene Library (ENH-001) implemented and merged in PR #18:** new projects start with one empty scene; create, duplicate, copy to (overwrite confirmation), rename, edit, reorder and delete (last scene protected), up to 64 scenes. Duplicate deep-copies all five scene patterns and scene harmony; global instrument sound parameters and FX remain shared. Scene mutations reconcile transport and arrangement references, support Undo/Redo and current-version `.hbn` round-trip. Automated unit and separate headless Chrome UI checks passed; physical iPad acceptance confirmed by the owner on 2026-11-23.
 
 **Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
 
@@ -227,11 +229,13 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
-| Dynamic Scene Library (ENH-001) scheduled for v0.6.1 | **Decided placement** |
+| Dynamic Scene Library (ENH-001) in v0.6.1 | **Implemented, merged PR #18 and owner-verified on physical iPad (2026-11-23)** |
 | v0.6 .hbn schema supports variable scene counts ahead of the v0.6.1 UI | **Decided architectural requirement** |
 | Song WAV Export deferred to v0.9; not a v0.6 blocker | **Decided 2026-11-23** |
 | BUG-001…004 verified and accepted on physical iPad; minor remaining polish deferred to v0.6.1 | **User-confirmed 2026-11-23** |
 | v0.6.1 resets the project-data compatibility baseline; develop and test version by version, no required legacy .hbn/JSON migration | **Decided 2026-11-23** |
+| Quick Volume and Mute/Solo alignment (PR #15) | **Merged; user-verified on iPad** |
+| Five instruments by default, without URL flags (PR #16) | **Merged; user-tested** |
 | Exact versions for other future features | **Provisional** |
 | Sampling shared across instruments vs. sampler slot | **Resolved: shared engine with standalone MUNCH instrument** |
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |
