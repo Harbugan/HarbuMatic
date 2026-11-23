@@ -128,7 +128,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### ENH-001 — Dynamic Scene Library: start with one, grow as needed
 - **Type:** Enhancement (not a bug)
 - **Priority:** P3 — Low / product review
-- **Status:** Ready for Test — implemented and merged in PR #18; physical iPad acceptance pending
+- **Status:** Resolved — implemented in PR #18 and owner-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** The Scene Library is limited to six scenes.
 - **Desired:** New projects start with one scene. Add empty scenes as needed; duplicate a scene including its patterns and scene-local content; copy content into another scene with overwrite confirmation; rename, reorder and delete scenes (never the last). Preserve existing projects and arrangement references.
@@ -138,7 +138,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - **Decision:** Implemented in v0.6.1 (PR #18). v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
 
 - **Implementation evidence (PR #18):** New projects start with one scene; up to 64 scenes; create, duplicate (independent deep copy), rename, edit, copy to, delete and reorder; Undo/Redo, arrangement reconciliation and `.hbn` round-trip. `npm test` PASS 266/266; separate headless Chrome UI flow PASS; standard `npm run test:ui` and `npm run test:baseline` NOT RUN in PR environment.
-- **Physical-device verification:** Not yet separately confirmed by owner.
+- **Physical-device verification:** Confirmed by owner on physical iPad (2026-11-23).
 
 ## v0.5.1 proposed scope
 
@@ -155,7 +155,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 | BUG-002 | 0.5.1 | Headless Chromium, 7 viewports (1024×768 … 768×1024) | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
 | BUG-003 | 0.5.1 | Headless Chromium, mouse drag | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
 | BUG-004 | 0.5.1 | Headless Chromium, 7 viewports | Pass (automated) | Owner confirms physical iPad acceptance (2026-11-23) |
-| ENH-001 | v0.6.1 PR #18 | Unit 266/266 + separate headless Chrome UI | Implemented, merged | Physical iPad acceptance pending |
+| ENH-001 | v0.6.1 PR #18 | Unit 266/266 + separate headless Chrome UI | Implemented, merged | Owner-verified on physical iPad (2026-11-23) |
 | MUNCH-1 | 0.5.1 + stabilization | Node (fake WebKit env) + headless Chromium with emulated iPad Audio Session | Pass (automated) | Reproduced first (InvalidStateError under `playback`). iPad: **not tested** |
 | MUNCH-2 | 0.5.1 + stabilization | Node (failure injection) + headless Chromium IndexedDB | Pass (automated) | Root cause unconfirmed. iPad: **not tested** |
 | MUNCH-3 | 0.5.1 + stabilization | Node (fake Web Audio) + headless Chromium | Pass (automated) | Stop-while-stopped reproduced in code. iPad: **not tested** |
