@@ -24,12 +24,12 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | Version | Theme | Intended outcome | Status |
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
-| **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, consistent navigation, alignment, version and creator signature | **In review** — fixes implemented, iPad verification pending |
-| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5 (.hbn, WAV export) not started |
-| **v0.6.1** | Playability & Polish | Focused cross-instrument UX and musical quality pass on physical iPad; no major new features | **Decided** — after v0.6, before Ruff in the Jungle |
+| **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
+| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Decided** — after v0.6, before Ruff in the Jungle |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
-| **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Dynamic Scene Library, automation, stronger finishing/export tools | Replacement and Scene Library placement decided; other scope proposed |
+| **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
 | **v1.0** | The Little Music Machine | Stable, polished, installable tablet music app | Target |
 
 The roadmap is directional, **not** a promise of release dates or a locked implementation order.
@@ -86,16 +86,16 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
 
-**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`** (`docs/MUNCH-PHASE4.md`); (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented, awaiting physical iPad verification** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable project format, WAV export and iPad QA. Each phase must preserve existing musical behavior.
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`** (`docs/MUNCH-PHASE4.md`); (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented, awaiting physical iPad verification** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable .hbn project format (Phase 5A merged), iPad QA; Song WAV Export deferred to v0.9. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
 - Pitch, reverse, and basic sample playback controls. **Decided:** Stretch (preserve pitch when tempo changes) is the default tempo-fit behavior; Tape (pitch follows speed) is the alternative. **Implemented** (WSOLA anchored at slice boundaries, rendered in a Worker); iPad listening test outstanding.
 - Make slices usable from the sequencer.
-- Initial **WAV audio export** so musical ideas can leave the app.
+- **Song WAV Export moved to v0.9**; not a v0.6 release blocker.
 - Introduce **.hbn** as the native HarbuMatic project extension (**decided**).
   - Versioned, validated format for patterns, scenes, arrangement, instruments, parameters, and metadata.
-  - **Design for a variable number of scenes now** (stable IDs, dynamic collections and backward compatibility); the UI for creating more than six scenes is scheduled for v0.9.
+  - **Design for a variable number of scenes now** (stable IDs, dynamic collections and backward compatibility); the dynamic scene UI is scheduled for v0.6.1.
   - Support embedded or packaged sample assets as sampling arrives.
   - Preserve a migration path from existing JSON projects.
   - Prefer a portable container format if sample assets make plain JSON impractical.
@@ -129,6 +129,8 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - Evaluate musical usefulness of Generate, Mutate, Evolve, Happy Accident Lab and MAGIC CHOP; preserve locks, user intent and undoability.
 - Polish character, microinteractions and visual consistency only where they improve playability.
 - Run physical iPad Safari checks and regression tests for transport, timing, sequencer, scenes, projects, sampling and export.
+
+**Dynamic Scene Library (ENH-001) is in scope:** new projects start with exactly one scene; add an empty scene, duplicate all scene-local musical content, copy into another scene with overwrite confirmation, rename and delete (never delete the last scene). Preserve stable scene IDs, song-chain references, undo/reversibility and legacy multi-scene projects. Scene-specific patterns/settings are copied; global instrument settings should not be unexpectedly overwritten. Test iPad touch and migration.
 
 **Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
 
@@ -171,7 +173,7 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 - Select alternative instrument engines within the existing five-slot layout; do not silently erase existing patterns or instrument state.
 - Candidate future engines: sampler, FM synth, or other characterful instruments (**examples, not commitments**).
 - Define behavior when replacing an instrument with existing patterns/automation.
-- **Dynamic Scene Library (ENH-001):** create, select, rename, duplicate, delete, reorder and persist more than six scenes, with touch-friendly navigation and a sensible technical limit.
+- **Dynamic Scene Library moved to v0.6.1 (ENH-001).**
 - Preserve compatibility with existing six-scene projects and the v0.6 .hbn schema; ensure scene references and song chains remain valid.
 - Stronger arrangement transitions, automation, export, and light finishing/mastering tools.
 - Review instrument names **BOP / GOO / BLIP / FUZZ**; current names are not permanently locked.
@@ -221,8 +223,10 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
-| Dynamic Scene Library (ENH-001) scheduled for v0.9 | **Decided placement** |
+| Dynamic Scene Library (ENH-001) scheduled for v0.6.1 | **Decided placement** |
 | v0.6 .hbn schema supports variable scene counts ahead of the v0.9 UI | **Decided architectural requirement** |
+| Song WAV Export deferred to v0.9; not a v0.6 blocker | **Decided 2026-11-23** |
+| BUG-001…004 verified and accepted on physical iPad; minor remaining polish deferred to v0.6.1 | **User-confirmed 2026-11-23** |
 | Exact versions for other future features | **Provisional** |
 | Sampling shared across instruments vs. sampler slot | **Resolved: shared engine with standalone MUNCH instrument** |
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |
