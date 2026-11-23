@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-22 (MUNCH stabilization)  
+> Last updated: 2026-11-23 (The Catpound concept)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Product direction
@@ -29,10 +29,24 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.6.1** | Playability & Polish | Focused cross-instrument UX and musical quality pass on physical iPad; no major new features | **Decided** — after v0.6, before Ruff in the Jungle |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
-| **v0.9** | Expand & Finish | User-facing instrument replacement, Dynamic Scene Library, automation, stronger finishing/export tools | Replacement and Scene Library placement decided; other scope proposed |
+| **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Dynamic Scene Library, automation, stronger finishing/export tools | Replacement and Scene Library placement decided; other scope proposed |
 | **v1.0** | The Little Music Machine | Stable, polished, installable tablet music app | Target |
 
 The roadmap is directional, **not** a promise of release dates or a locked implementation order.
+
+## Future instrument experience — The Catpound (decided concept, not for current implementation)
+
+**The Catpound** is a dedicated, playful instrument-selection screen accessible from the top navigation near SOUND. It is not merely a dropdown or generic instrument list: it is where the player assembles their band of kawaii instrument cats.
+
+- **Your Band (top):** exactly four simultaneous active instrument slots, visually showing the selected cats.
+- **The Catpound (below):** a collection of available instrument cats side by side, each with its own identity and sound.
+- **Interaction:** drag cats into an active slot to join or replace the band; drag a cat out to free its slot; allow rearrangement. Provide a clear tap-to-select alternative for touch accessibility and precision.
+- **Creative safety:** replacing or removing a cat must not silently destroy patterns, instrument settings, scenes or saved work. Design reversible replacement and clear restoration semantics.
+- **Architecture:** distinguish instrument type, slot identity and saved musical data; migrate existing five-instrument projects safely toward the long-term four-active-slot model.
+- **Placement:** provisionally v0.9 alongside instrument replacement; revisit scope and release placement before implementation. No UI or code changes requested now.
+- **Open design questions:** exact handling of existing patterns on replacement, whether multiple instances of one instrument are allowed, and how inactive instrument state is stored.
+
+**Design intent:** choosing instruments should feel like assembling a little band of characters, not configuring a DAW.
 
 ## v0.5 — The Foundation
 
