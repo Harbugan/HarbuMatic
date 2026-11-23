@@ -12,10 +12,10 @@
 //   ui        sequencer tools, audition note (pitch is at A minor; the UI transposes it to the song key;
 //             soundPitch = preview note in the SOUND view when it differs), piano-roll view defaults
 //   status    'ready'   — playable and shown in the UI
-//             'preview' — has an engine, but is playable only while preview instruments are enabled
-//                         (setPreviewInstruments, set from the ?munch=dev flag). Otherwise it behaves as 'planned'.
+//             'preview' — has an engine, playable only while preview instruments are enabled
+//                         (setPreviewInstruments). Otherwise it behaves as 'planned'.
 //             'planned' — known to the schema and kept in every song (data persists), but never scheduled,
-//                         never soloed, never selected and never shown outside the dev preview (?preview=five)
+//                         never soloed, never selected and never shown in the UI
 //   paramRanges / paramChoices   optional limits validation applies to stored params (types without them keep
 //             the original v0.5 behaviour: any finite number / any string of the right type)
 //   keepUnknownParams   keep primitive params this build does not know (a later build's additions) instead of
@@ -64,14 +64,13 @@ const TYPES = {
     ui: { tools: ['draw', 'erase', 'vel', 'prob', 'lock'], audition: { pitch: 76, length: .6, soundPitch: 69 }, viewTop: 86, viewCenter: 76, noteLength: 8 },
     defaultParams: { vol: .5, pan: 0, tone: .45, noise: .35, crush: .25, shimmer: .35, attack: .6, release: 1.4, drive: .3, driveOn: false, delayOn: true, reverbOn: true, delay: .35, reverb: .6 },
   },
-  // Sampler (v0.6). Every song holds one MUNCH slot (slot-05 by default). Phase 3: it has a sample engine but
-  // is a 'preview' instrument, playable only with ?munch=dev, until its final UI ships (Phase 4).
+  // Sampler (v0.6). Every song holds one MUNCH slot (slot-05 by default), active alongside BOP, GOO, BLIP and FUZZ.
   // Notes are melodic, or trigger a slice when they carry `slice` (see src/core/samples.js). The sample itself
   // is referenced by slot.sample; trim, pitch, reverse and play mode are non-destructive params.
-  // ui.layers names the interaction layers of the planned design (PLAY: record/import + melodic keys,
+  // ui.layers names the interaction layers (PLAY: record/import + melodic keys,
   // CHOP: slice pads + MAGIC CHOP, TWIST: waveform, pitch, reverse, loop).
   munch: {
-    type: 'munch', name: 'MUNCH', description: 'Sampler', status: 'preview',
+    type: 'munch', name: 'MUNCH', description: 'Sampler', status: 'ready',
     role: null, engine: 'munch', pattern: 'notes', defaultLength: 16,
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, samples: true, slices: true },
     visual: { color: '#9FD6EE', dark: '#5DB4D9', darker: '#3586A8', headphones: '#F5D19A', css: 'munch', character: 'munch' },
@@ -110,8 +109,7 @@ export function getInstrumentType(id) {
 }
 let previewEnabled = false;
 /**
- * Switch 'preview' instruments (MUNCH in v0.6 Phase 3) on or off for this session. The app calls it once at boot
- * (?munch=dev); tests toggle it. Off by default, so a normal session plays exactly what Phase 2 played.
+ * Switch future 'preview' instruments on or off for this session. Off by default.
  */
 export function setPreviewInstruments(on) { previewEnabled = !!on; }
 export const previewInstrumentsEnabled = () => previewEnabled;

@@ -3,7 +3,7 @@
 import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P, isSamplerSlot } from './store.js';
 import * as A from './actions.js';
 import { APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
-import { getInstrumentType, setPreviewInstruments } from '../core/instruments.js';
+import { getInstrumentType } from '../core/instruments.js';
 import { sceneHasContent } from '../core/project.js';
 import { $, $$ } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
@@ -142,13 +142,6 @@ function keys(e) {
 
 /* ---------- boot ---------- */
 function init() {
-  // dev-only layout preview: ?preview=five shows the planned MUNCH slot as an inert fifth card (never in normal use)
-  // dev-only sample engine preview: ?munch=dev makes MUNCH a playable fifth instrument with a test bench in SOUND
-  try {
-    const q = new URLSearchParams(location.search);
-    store.ui.previewPlanned = q.get('preview') === 'five';
-    if (q.get('munch') === 'dev') { setPreviewInstruments(true); store.ui.munchDev = true; }
-  } catch (e) { /* no location */ }
   const { fresh, warning } = A.bootProject();
   const warn = () => { if (warning) toast(warning, 8000); }; // shown once the start overlay is gone, where the toast is visible
   $('#ident').textContent = `HarbuMatic ${VERSION_LABEL} · ${APP_CREDIT}`;

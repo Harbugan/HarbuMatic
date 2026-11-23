@@ -62,8 +62,6 @@ body.coarse .btn.icon { width: var(--tap); min-width: var(--tap); }
 .card[data-t=synth] { --c: var(--lav); --cd: var(--lav-d); --cdd: var(--lav-dd); }
 .card[data-t=fuzz] { --c: var(--peach); --cd: var(--peach-d); --cdd: var(--peach-dd); }
 .card[data-t=munch] { --c: var(--sky); --cd: var(--sky-d); --cdd: var(--sky-dd); }
-.card.planned { cursor: default; } /* dev preview placeholder (?preview=five): looks like a card, does nothing */
-.card.planned .pill, .card.planned .knob { cursor: default; pointer-events: none; }
 .card.sel { transform: translateY(-2px); box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--cd), 0 2px 0 #ffffffaa inset, 0 -4px 0 color-mix(in srgb, var(--cd) 55%, transparent) inset, 0 14px 22px -10px var(--cdd); }
 .card.silent { filter: saturate(.35) brightness(.98); }
 .card-cat { grid-row: 1; grid-column: 1; display: grid; place-items: center; }

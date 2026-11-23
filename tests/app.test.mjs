@@ -12,12 +12,12 @@ import { importProject, patternAt, sceneIndexOf, slotById, createSlot, nextSlotI
 const fx = f => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const load = f => { store.project = importProject(fx(f)); store.ui.sel = 'slot-01'; A.history.clear(); };
 
-test('boot starts on the demo song with slot-01 (BOP) selected', () => {
+test('boot starts on the demo song with slot-01 (BOP) selected and all five slots visible', () => {
   const { fresh } = A.bootProject();
   assert.equal(fresh, true);
   assert.equal(store.ui.sel, 'slot-01');
   assert.equal(typeOf().name, 'BOP');
-  assert.deepEqual(visibleSlots().map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04']);
+  assert.deepEqual(visibleSlots().map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
 });
 
 test('selection uses slot ids; tools a type lacks fall back to Draw', () => {
@@ -30,25 +30,31 @@ test('selection uses slot ids; tools a type lacks fall back to Draw', () => {
   assert.equal(store.ui.sel, 'slot-03', 'unknown slot ids are ignored');
 });
 
-test('selection moves off a slot that is not visible', () => {
+test('MUNCH is visible and selectable by default; ensureSelection recovers from missing slot', () => {
   load('v5-demo.json');
   assert.equal(slotById(store.project, 'slot-05').type, 'munch', 'the migrated song holds a MUNCH slot');
-  store.ui.sel = 'slot-05'; ensureSelection();
-  assert.equal(store.ui.sel, 'slot-01', 'MUNCH is never selected while it is planned');
-  assert.ok(!visibleSlots().some(s => s.type === 'munch'));
+  assert.ok(visibleSlots().some(s => s.type === 'munch'), 'MUNCH is visible by default');
   A.selectSlot('slot-05');
-  assert.equal(store.ui.sel, 'slot-01', 'selectSlot refuses a planned instrument');
+  assert.equal(store.ui.sel, 'slot-05', 'selectSlot selects MUNCH by default');
+  store.ui.sel = 'slot-99'; ensureSelection();
+  assert.equal(store.ui.sel, 'slot-01', 'ensureSelection falls back to first visible slot when selection is missing');
 });
 
-test('mute / solo toggle per slot and undo', () => {
+test('mute / solo toggle per slot (including MUNCH) and undo', () => {
   load('v5-demo.json');
   A.toggleMute('slot-03');
   assert.equal(slotById(store.project, 'slot-03').mute, true);
   A.toggleSolo('slot-02');
   assert.equal(slotById(store.project, 'slot-02').solo, true);
-  A.undo(); A.undo();
+  A.toggleMute('slot-05');
+  assert.equal(slotById(store.project, 'slot-05').mute, true);
+  A.toggleSolo('slot-05');
+  assert.equal(slotById(store.project, 'slot-05').solo, true);
+  A.undo(); A.undo(); A.undo(); A.undo();
   assert.equal(slotById(store.project, 'slot-03').mute, false);
   assert.equal(slotById(store.project, 'slot-02').solo, false);
+  assert.equal(slotById(store.project, 'slot-05').mute, false);
+  assert.equal(slotById(store.project, 'slot-05').solo, false);
   A.redo();
   assert.equal(slotById(store.project, 'slot-03').mute, true);
 });

@@ -6,13 +6,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as A from '../src/app/actions.js';
 import { store, pat } from '../src/app/store.js';
-import { setPreviewInstruments } from '../src/core/instruments.js';
 import { createDemoProject, slotById, patternAt, importProject } from '../src/core/project.js';
 import { defaultSlices, sliceCount, fitInfo } from '../src/core/samples.js';
 
 const M = 'slot-05', ID = 'smp-' + 'cd'.repeat(32);
 function fresh({ duration = 2 } = {}) {
-  setPreviewInstruments(true);
   store.project = createDemoProject(); store.project.scene = 0;
   slotById(store.project, M).sample = { id: ID, name: 'break.wav', duration, sampleRate: 44100, channels: 2, slices: defaultSlices(8) };
   Object.assign(store.ui, { sel: 'slot-01', mode: 'jam', expanded: false });
@@ -22,8 +20,6 @@ function fresh({ duration = 2 } = {}) {
 }
 const notesOf = (sc = store.project.scene) => patternAt(store.project, M, sc).notes;
 const slicesIn = sc => notesOf(sc).filter(n => n.slice != null).map(n => `${n.s}:${n.slice}`).join();
-
-test.after(() => setPreviewInstruments(false));
 
 test('selecting MUNCH opens its SOUND workspace; leaving returns to where it came from', () => {
   fresh();
@@ -58,13 +54,6 @@ test('the four classic instruments never change the mode', () => {
     A.setMode(m);
     for (const id of ['slot-02', 'slot-03', 'slot-04', 'slot-01']) { A.selectSlot(id); assert.equal(store.ui.mode, m, `${id} in ${m}`); }
   }
-});
-
-test('without the preview MUNCH cannot be selected and nothing moves', () => {
-  fresh(); setPreviewInstruments(false);
-  A.selectSlot(M);
-  assert.equal(store.ui.sel, 'slot-01'); assert.equal(store.ui.mode, 'jam');
-  setPreviewInstruments(true);
 });
 
 test('CHOP HERE, split and delete remap the groove in every scene; undo/redo restore boundaries and notes', () => {

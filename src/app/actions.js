@@ -238,7 +238,7 @@ export async function importFile(file, { sampleStore = samples.store, decode, li
 
 /* ---------- selection / modes ---------- */
 export function selectSlot(id) {
-  if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments (MUNCH) cannot be selected
+  if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments cannot be selected
   const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
   if (!typeOf(id).ui.tools.includes(u.tool)) u.tool = 'draw'; // e.g. Slide exists only where slides do
