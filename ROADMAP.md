@@ -1,8 +1,12 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-23 (The Catpound concept)  
+> Last updated: 2026-11-23 (v0.6.1 development baseline)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
+
+## Development baseline — decided 2026-11-23
+
+**Version-by-version experimental development:** v0.6.1 establishes a new baseline for project and scene data. During pre-1.0 development, older `.hbn`/JSON projects and browser-stored test projects are disposable and need not migrate or remain readable. Do not add legacy migration layers or compatibility tests unless explicitly requested. A version change may reset test data when needed; warn before destructive changes and never silently delete data. Preserve working audio, transport, instruments, UI, current-version save/reopen, and `.hbn` round-trip behavior. Retain Git history as the recovery path. This policy is about old project data, not permission to introduce regressions.
 
 ## Product direction
 
@@ -25,7 +29,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
-| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST, .hbn and initial WAV export | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
+| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
 | **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Decided** — after v0.6, before Ruff in the Jungle |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
@@ -76,7 +80,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - Display the application version from one canonical source and the exact creator credit **Created by .::H∆RBUGΛП::.** consistently and discreetly.
 - Verify transport, sequencer editing, scenes, project save/open, audio behavior, and iPad landscape interaction before release.
 
-**Out of scope:** ENH-001 Dynamic Scene Library; scheduled for v0.9. Do not silently expand this bugfix release.
+**Out of scope:** ENH-001 Dynamic Scene Library; scheduled for v0.6.1. Do not silently expand this bugfix release.
 
 **Exit criterion:** v0.5 core workflows remain reliable, reported regressions are verified fixed, and the release identity is correct.
 
@@ -95,9 +99,9 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - **Song WAV Export moved to v0.9**; not a v0.6 release blocker.
 - Introduce **.hbn** as the native HarbuMatic project extension (**decided**).
   - Versioned, validated format for patterns, scenes, arrangement, instruments, parameters, and metadata.
-  - **Design for a variable number of scenes now** (stable IDs, dynamic collections and backward compatibility); the dynamic scene UI is scheduled for v0.6.1.
+  - **Design for a variable number of scenes now** (stable IDs and dynamic collections); the dynamic scene UI is scheduled for v0.6.1.
   - Support embedded or packaged sample assets as sampling arrives.
-  - Preserve a migration path from existing JSON projects.
+  - Historical JSON migration was implemented earlier; maintaining it is no longer required after the v0.6.1 baseline.
   - Prefer a portable container format if sample assets make plain JSON impractical.
 
 **Scope guardrails:** No instrument swapping UI or unlimited slots in v0.6. Beyond the decided Stretch/Tape fit: no advanced time-stretch modes, transient detection, full parameter-lock system or full jungle break engine in v0.6. MAGIC CHOP must create musically useful, editable patterns with Undo; avoid arbitrary note soup. Verify iPad Safari recording, timing, touch and sample memory limits before release.
@@ -130,7 +134,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - Polish character, microinteractions and visual consistency only where they improve playability.
 - Run physical iPad Safari checks and regression tests for transport, timing, sequencer, scenes, projects, sampling and export.
 
-**Dynamic Scene Library (ENH-001) is in scope:** new projects start with exactly one scene; add an empty scene, duplicate all scene-local musical content, copy into another scene with overwrite confirmation, rename and delete (never delete the last scene). Preserve stable scene IDs, song-chain references, undo/reversibility and legacy multi-scene projects. Scene-specific patterns/settings are copied; global instrument settings should not be unexpectedly overwritten. Test iPad touch and migration.
+**Dynamic Scene Library (ENH-001) is in scope:** new projects start with exactly one scene; add an empty scene, duplicate all scene-local musical content, copy into another scene with overwrite confirmation, rename and delete (never delete the last scene). Preserve stable scene IDs, current-version song-chain references, undo/reversibility and current-version project save/reopen. Scene-specific patterns/settings are copied; global instrument settings should not be unexpectedly overwritten. Test iPad touch, current-version project persistence and .hbn round-trip; no legacy migration requirement.
 
 **Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
 
@@ -174,7 +178,7 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 - Candidate future engines: sampler, FM synth, or other characterful instruments (**examples, not commitments**).
 - Define behavior when replacing an instrument with existing patterns/automation.
 - **Dynamic Scene Library moved to v0.6.1 (ENH-001).**
-- Preserve compatibility with existing six-scene projects and the v0.6 .hbn schema; ensure scene references and song chains remain valid.
+- Preserve current-version scene references and song chains; pre-v0.6.1 project compatibility is not required.
 - Stronger arrangement transitions, automation, export, and light finishing/mastering tools.
 - Review instrument names **BOP / GOO / BLIP / FUZZ**; current names are not permanently locked.
 
@@ -197,7 +201,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 1. **Instrument slot abstraction:** five slots from v0.6; separate stable slot identity from instrument type/engine identity, preparing for future replacement.
 2. **Audio source abstraction:** synthesis now, sample playback/recording later.
 3. **Transport/sync abstraction:** internal clock now, external MIDI Clock/Link integration later.
-4. **Versioned project schema:** plan for .hbn, embedded sample assets, and migrations.
+4. **Project format:** use .hbn with embedded sample assets; v0.6.1 is the experimental data baseline, without mandatory historical migrations.
 5. **Independent music logic:** generation and transformations testable without UI/audio rendering.
 6. **Tablet input model:** gestures, hit targets, pointer cancellation, and no hover-only essential actions.
 7. **Export pathway:** future offline rendering/bounce and project packaging without coupling to the visual UI.
@@ -224,9 +228,10 @@ These are **forward-looking constraints**, not requests to build every future fe
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
 | Dynamic Scene Library (ENH-001) scheduled for v0.6.1 | **Decided placement** |
-| v0.6 .hbn schema supports variable scene counts ahead of the v0.9 UI | **Decided architectural requirement** |
+| v0.6 .hbn schema supports variable scene counts ahead of the v0.6.1 UI | **Decided architectural requirement** |
 | Song WAV Export deferred to v0.9; not a v0.6 blocker | **Decided 2026-11-23** |
 | BUG-001…004 verified and accepted on physical iPad; minor remaining polish deferred to v0.6.1 | **User-confirmed 2026-11-23** |
+| v0.6.1 resets the project-data compatibility baseline; develop and test version by version, no required legacy .hbn/JSON migration | **Decided 2026-11-23** |
 | Exact versions for other future features | **Provisional** |
 | Sampling shared across instruments vs. sampler slot | **Resolved: shared engine with standalone MUNCH instrument** |
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |

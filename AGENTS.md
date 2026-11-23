@@ -25,8 +25,15 @@ If sources conflict, flag the conflict rather than guessing. Never treat planned
 - Protect audio timing, Web Audio engine/voices, transport, and scheduler behavior.
 - Keep `src/music/` pure (no DOM dependencies) and keep scheduling decoupled from sample loading/decoding.
 - Route state mutations through `src/app/` actions and store; avoid parallel playback or state systems.
-- Preserve saved project compatibility, instrument definitions (`src/core/instruments.js`), version constants (`src/core/constants.js`), and the creator credit `Created by .::H∆RBUGΛП::.`.
+- Preserve current-version project integrity and save/reopen behavior (historical project-format compatibility is not required from v0.6.1), instrument definitions (`src/core/instruments.js`), version constants (`src/core/constants.js`), and the creator credit `Created by .::H∆RBUGΛП::.`.
 - Prioritize iPad touch ergonomics and offline/PWA (`sw.js`, `manifest.json`) behavior.
+
+## Experimental Project-Data Policy (v0.6.1 onward)
+- Develop and test version by version. Old `.hbn`/JSON projects and browser-stored test projects from earlier versions do not need migration or backward compatibility.
+- Do not add or maintain historical migration layers, fixtures or compatibility tests unless the task explicitly requires them. Do not remove legacy code solely for cleanup without task scope.
+- A new version may intentionally invalidate/reset test projects. Disclose destructive implications and ask before deleting or resetting any stored data; never silently clear browser storage.
+- Preserve all existing working musical features, audio timing, transport, UI behavior, current-version `.hbn` export/import and project save/reopen. Historical data compatibility is waived, not regression quality.
+- Keep Git history for recovery. Follow explicit task contracts for any schema change.
 
 ## Implementation & Delegation
 - Make the smallest clean, complete change that satisfies the task contract.
@@ -39,4 +46,4 @@ If sources conflict, flag the conflict rather than guessing. Never treat planned
 - Keep final responses concise: list files changed, test results, remaining risks/iPad checks needed, and commit/PR status if applicable.
 
 ## Escalation
-Stop and ask before changing established musical/transport behavior, breaking project schema/compatibility, introducing dependencies or major architectural shifts, deleting/migrating user data, or expanding task scope.
+Stop and ask before changing established musical/transport behavior, introducing dependencies or major architectural shifts, deleting/resetting user data, or expanding task scope. Schema changes are permitted within an explicitly scoped task under the experimental project-data policy; flag destructive consequences first.
