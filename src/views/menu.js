@@ -24,8 +24,8 @@ export function openMenu() {
     item('edit', 'Rename…', null, () => promptDialog('Rename song', store.project.name, 'Rename', v => A.renameProject(v), { maxlength: 60 })),
     item('dup', 'Save a copy', 'duplicate and keep working on the copy', A.duplicateProject),
     h('hr'),
-    item('download', 'Export file', 'download a .json backup / share', A.exportProject),
-    item('upload', 'Import file…', 'open a .json song (v0.4 or v0.5)', () => $('#fileIn').click()),
+    item('download', 'Export file', 'download a portable .hbn song', A.exportProject),
+    item('upload', 'Import file…', 'open a .hbn or legacy .json song', () => $('#fileIn').click()),
     item('song', 'Load demo song', 'adds the demo as a new song', A.loadDemo),
     h('hr'),
     item('gear', 'Settings & help', null, settingsDialog));
