@@ -99,12 +99,10 @@ const AUDIO = [
   { name: 'demo, whole song', secs: 16, songMode: true },
   { name: 'edge song (v5 import: swing, offsets, chance, slides, mute, lofi kit, crush)', secs: 14, edge: true },
   { name: 'edge, scene E loop with synth muted', secs: 8, edge: true, songMode: false, scene: 4 },
-  // MUNCH enabled but without a sample: the four instruments must sound exactly as on the baseline
-  { name: 'demo, scene B loop with the MUNCH preview enabled (?munch=dev)', secs: 9, query: '?munch=dev' },
 ];
 
-// MUNCH (dev preview) on the current build only: it must actually make sound through the offline engine
-const MUNCH = { name: 'MUNCH solo: slices + melodic note (current build)', secs: 3, query: '?munch=dev', munch: true };
+// MUNCH (default fifth instrument) on the current build: it must actually make sound through the offline engine
+const MUNCH = { name: 'MUNCH solo: slices + melodic note (current build)', secs: 3, munch: true };
 
 async function shots(browser, url) {
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, reducedMotion: 'reduce' });

@@ -98,14 +98,16 @@ test('mute and solo: muted slots are silent, solo wins over mute, hits are still
   assert.deepEqual([...rolesIn(runScenario(solo, sc).calls)], ['synth']);
 });
 
-test('slots of a planned type (MUNCH) are skipped, and two slots of one type play independently', () => {
+test('MUNCH dispatches by default without altering other slots, and two slots of one type play independently', () => {
   const p = importProject(fx('v5-demo.json')); p.scene = 1; p.songMode = false;
   const baseCalls = runScenario(structuredClone(p), { steps: 32, seed: 3 }).calls;
   const withMunch = structuredClone(p);
   const munch = slotById(withMunch, 'slot-05');
-  assert.equal(munch.type, 'munch', 'the migrated song holds a MUNCH placeholder');
+  assert.equal(munch.type, 'munch', 'the migrated song holds a MUNCH slot');
   munch.patterns[withMunch.scenes[1].id].notes.push({ s: 0, p: 60, l: 1, v: 1 });
-  assert.deepEqual(runScenario(withMunch, { steps: 32, seed: 3 }).calls, baseCalls, 'MUNCH placeholder changes nothing');
+  const got = runScenario(withMunch, { steps: 32, seed: 3 });
+  assert.ok(got.rawEvents.some(e => e.hits['slot-05']), 'MUNCH dispatches by default');
+  assert.deepEqual(got.calls.filter(c => c[2] !== null), baseCalls, 'BOP, GOO, BLIP, FUZZ calls unchanged');
 
   const twin = createEmptyProject();
   const blip2 = createSlot('blip', nextSlotId(twin), twin.scenes.map(s => s.id));

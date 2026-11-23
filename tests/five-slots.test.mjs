@@ -118,44 +118,50 @@ test('save → load and export → re-import keep all five slots', () => {
   assert.deepEqual(importProject(JSON.parse(JSON.stringify(back))), p, 'export file (plain JSON) re-imports identically');
 });
 
-/* ---------- MUNCH stays planned ---------- */
-test('MUNCH is a disabled preview by default: not playable, not listed, not selectable', () => {
+/* ---------- MUNCH active by default ---------- */
+test('MUNCH is ready by default: playable, listed, selectable', () => {
   const m = getInstrumentType('munch');
-  assert.equal(m.status, 'preview'); assert.equal(m.engine, 'munch'); assert.equal(isPlayableType('munch'), false);
-  assert.deepEqual(m.ui.layers, ['play', 'chop', 'twist'], 'interaction layers of the agreed design are named for later phases');
-  assert.ok(!playableSlots(createEmptyProject()).some(s => s.type === 'munch'));
+  assert.equal(m.status, 'ready'); assert.equal(m.engine, 'munch'); assert.equal(isPlayableType('munch'), true);
+  assert.deepEqual(m.ui.layers, ['play', 'chop', 'twist'], 'interaction layers are named');
+  assert.ok(playableSlots(createEmptyProject()).some(s => s.type === 'munch'));
 });
 
-test('MUNCH placeholders stay silent and never affect mute/solo of the others', () => {
+test('MUNCH participates in mute/solo and scheduling; empty MUNCH leaves v0.5 dispatch unchanged', () => {
   const base = importProject(fx('v5-edge.json')); base.scene = 1; base.songMode = false;
   const sc = { steps: 96, seed: 5 };
   const ref = dispatch(structuredClone(base), sc);
   assert.ok(ref.calls.length > 20, 'the reference really plays');
   const loud = structuredClone(base), m = slotById(loud, 'slot-05');
-  Object.values(m.patterns).forEach(pt => { pt.len = 64; pt.notes = [0, 4, 8, 12].map(s => ({ s, p: 60, l: 2, v: 1 })); });
-  for (const [mute, solo] of [[false, false], [false, true], [true, false], [true, true]]) {
-    m.mute = mute; m.solo = solo;
-    assert.equal(anySolo(loud), false, 'a planned solo is not a solo');
-    assert.deepEqual(dispatch(structuredClone(loud), sc), ref, `same voices and UI events with MUNCH mute=${mute} solo=${solo}`);
-  }
-  // a real solo still works while MUNCH is soloed
+  Object.values(m.patterns).forEach(pt => { pt.len = 32; pt.notes = [0, 4, 8, 12].map(s => ({ s, p: 60, l: 2, v: 1 })); });
+  const withMunch = dispatch(structuredClone(loud), sc);
+  assert.ok(withMunch.calls.some(c => c[0] === 'slot-05'), 'MUNCH notes are dispatched by default');
+  assert.deepEqual(withMunch.calls.filter(c => c[0] !== 'slot-05'), ref.calls, 'other four instruments dispatch identically');
+  m.mute = true;
+  assert.deepEqual(dispatch(structuredClone(loud), sc).calls, ref.calls, 'muting MUNCH silences only MUNCH');
+  m.mute = false; m.solo = true;
+  assert.equal(anySolo(loud), true, 'soloing MUNCH activates solo');
+  assert.deepEqual(playableSlots(loud).map(s => slotAudible(loud, s)), [false, false, false, false, true]);
   slotById(loud, 'slot-02').solo = true;
-  assert.deepEqual(playableSlots(loud).map(s => slotAudible(loud, s)), [false, true, false, false]);
+  assert.deepEqual(playableSlots(loud).map(s => slotAudible(loud, s)), [false, true, false, false, true]);
 });
 
-test('MUNCH placeholders do not change scene length, song-mode timing or "has content"', () => {
+test('empty MUNCH leaves demo scene lengths and timing unchanged; MUNCH notes count as scene content', () => {
   const p = createDemoProject();
   const lens = p.scenes.map((_, i) => maxLen(p, i)), content = p.scenes.map((_, i) => sceneHasContent(p, i));
-  Object.values(slotById(p, 'slot-05').patterns).forEach(pt => { pt.len = 64; pt.notes = [{ s: 60, p: 60, l: 4, v: 1 }]; });
-  assert.deepEqual(p.scenes.map((_, i) => maxLen(p, i)), lens);
-  assert.deepEqual(p.scenes.map((_, i) => sceneHasContent(p, i)), content, 'an empty scene with only MUNCH notes still counts as empty');
+  assert.equal(content[5], false, 'demo scene F starts empty');
+  const m = slotById(p, 'slot-05');
+  m.patterns[p.scenes[5].id] = { len: 64, notes: [{ s: 0, p: 60, l: 4, v: 1 }] };
+  assert.equal(sceneHasContent(p, 5), true, 'a scene with MUNCH notes counts as having content');
+  assert.equal(maxLen(p, 5), 64, 'MUNCH pattern length contributes to scene length');
+  // other scenes untouched
+  assert.deepEqual(p.scenes.slice(0, 5).map((_, i) => maxLen(p, i)), lens.slice(0, 5));
   p.songMode = true;
   const walk = proj => { let pos = startPosition(proj), out = []; for (let i = 0; i < 400; i++) { out.push(`${pos.scene}:${pos.step}:${pos.block}`); pos = advance(pos, proj, null).pos; } return out.join(); };
   const plain = createDemoProject(); plain.songMode = true;
-  assert.equal(walk(p), walk(plain));
+  assert.equal(walk(p), walk(plain), 'song mode arrangement (which does not include scene F) keeps identical timing');
 });
 
-test('MUNCH placeholders do not reach musical generation', () => {
+test('MUNCH does not reach musical generation', () => {
   const p = createDemoProject(), q = createDemoProject();
   Object.values(slotById(q, 'slot-05').patterns).forEach(pt => { pt.notes = [{ s: 0, p: 40, l: 8, v: 1 }]; });
   assert.deepEqual(Object.keys(rolePatterns(q, 1)).sort(), ['bass', 'drums', 'fuzz', 'synth']);
@@ -163,7 +169,7 @@ test('MUNCH placeholders do not reach musical generation', () => {
   assert.equal(strip(buildContext(q, 1, { rng: createRng(4) })), strip(buildContext(p, 1, { rng: createRng(4) })));
 });
 
-/* ---------- five playable instances: engine + scheduler ---------- */
+/* ---------- five playable instances (and extra slots): engine + scheduler ---------- */
 // A tiny fake Web Audio graph (Node has none): every node records what it connects to.
 function fakeAudio() {
   const param = () => { const p = { value: 0 }; ['setValueAtTime', 'setTargetAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime', 'cancelScheduledValues'].forEach(m => { p[m] = () => p; }); return p; };
@@ -184,23 +190,22 @@ function withFakeAudio(fn) {
   globalThis.window = { AudioContext: fakeAudio() };
   try { return fn(); } finally { if (had) globalThis.window = old; else delete globalThis.window; }
 }
-/** five playable instances: the four classics + a second BLIP in the place a ready MUNCH will take */
-function fivePlayable() {
+/** six playable instances: the five defaults + a second BLIP */
+function sixPlayable() {
   const p = createEmptyProject();
   p.slots.push(createSlot('blip', nextSlotId(p), p.scenes.map(s => s.id)));
   return p;
 }
 
-test('the engine builds one channel per playable slot, none for MUNCH, and wires five channels like four', () => {
+test('the engine builds one channel per playable slot (five by default) and wires extra channels identically', () => {
   withFakeAudio(() => {
-    const four = createEmptyProject(), e4 = createEngine(() => four);
-    e4.init();
-    assert.deepEqual([...e4.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04'], 'no channel for the MUNCH placeholder');
-    e4.trigger('slot-05', 0, { p: 60, v: 1, dur: .1 }); e4.audition('slot-05', 60); // silently ignored
-    const five = fivePlayable(), e5 = createEngine(() => five);
+    const five = createEmptyProject(), e5 = createEngine(() => five);
     e5.init();
-    assert.deepEqual([...e5.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-06']);
-    const { E } = e5;
+    assert.deepEqual([...e5.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'all five default slots get a channel');
+    const six = sixPlayable(), e6 = createEngine(() => six);
+    e6.init();
+    assert.deepEqual([...e6.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
+    const { E } = e6;
     for (const [id, { channel: ch, voice }] of E.ch) {
       assert.ok(ch.pan.out.includes(E.master), `${id}: own pan → master`);
       assert.ok(ch.out.out.includes(ch.sd) && ch.sd.out.includes(E.dIn), `${id}: delay send`);
@@ -208,19 +213,19 @@ test('the engine builds one channel per playable slot, none for MUNCH, and wires
       assert.ok(voice.input, `${id}: voice input`);
     }
     const chans = [...E.ch.values()].map(x => x.channel);
-    assert.equal(new Set(chans.map(c => c.bus)).size, 5, 'independent mixer channels');
-    // volume and pan of the fifth instance are its own
-    slotById(five, 'slot-06').params.pan = -.5; e5.applyParams('slot-06'); e5.applyParams('slot-03');
-    e5.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-06'], 'transport gates per slot');
-    e5.closeGates();
-    // the fifth slot goes away (e.g. undo to a four-slot state) → its channel is released
-    five.slots.pop(); e5.syncSlots();
-    assert.deepEqual([...E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04']);
+    assert.equal(new Set(chans.map(c => c.bus)).size, 6, 'independent mixer channels');
+    // volume and pan of the extra instance are its own
+    slotById(six, 'slot-06').params.pan = -.5; e6.applyParams('slot-06'); e6.applyParams('slot-03');
+    e6.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06'], 'transport gates per slot');
+    e6.closeGates();
+    // removing the extra slot releases its channel
+    six.slots.pop(); e6.syncSlots();
+    assert.deepEqual([...E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
   });
 });
 
-test('the scheduler dispatches all five playable instances and keys UI hits by slot id', () => {
-  const p = fivePlayable();
+test('the scheduler dispatches all playable instances and keys UI hits by slot id', () => {
+  const p = sixPlayable();
   const ids = playableSlots(p).map(s => s.id);
   ids.forEach((id, k) => {
     if (getInstrumentType(slotById(p, id).type).pattern === 'drum') patternAt(p, id, 0).steps.kick[k] = { v: 1, p: 1 };

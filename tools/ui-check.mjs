@@ -17,7 +17,7 @@ const SIZES = [[1024, 768], [1180, 820], [1366, 1024], [1440, 900], [1180, 740],
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); if (!cond) failures++; };
 
-// five-card layout targets (dev preview ?preview=five): 11" iPad Pro/Air landscape, 13" iPad Pro/Air landscape,
+// five-card layout targets (default ordinary URL): 11" iPad Pro/Air landscape, 13" iPad Pro/Air landscape,
 // short landscape (Safari toolbars), the older 10–12.9" sizes above, portrait fallback and desktop
 const FIVE_SIZES = [[1194, 834], [1210, 834], [1376, 1032], [1366, 1024], [1180, 820], [1024, 768], [1180, 740], [1024, 700], [820, 1180], [768, 1024], [1440, 900], [1920, 1080]];
 
@@ -111,7 +111,7 @@ async function rollPoint(page, step, rowOrPitch) {
       const { ctx, page, errors } = await open(browser, w, h);
       if (mode === 'expanded') await page.evaluate(() => window.__harbu.A.setExpanded(true));
       else if (mode !== 'jam') await page.evaluate(m => window.__harbu.A.setMode(m), mode);
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(mode === 'expanded' ? 400 : 250);
       const a = await layoutAudit(page);
       ok(!a.offscreen.length, `${w}×${h} ${mode}: nothing clipped off-screen${a.offscreen.length ? ' — ' + a.offscreen.slice(0, 6).join(', ') : ''}`);
       ok(!a.overlaps.length, `${w}×${h} ${mode}: no overlapping controls${a.overlaps.length ? ' — ' + a.overlaps.slice(0, 4).join('; ') : ''}`);
@@ -136,15 +136,15 @@ async function rollPoint(page, step, rowOrPitch) {
     await ctx.close();
   }
 
-  console.log('\n— Five instrument cards (dev preview ?preview=five, simulated) —');
+  console.log('\n— Five instrument cards (default ordinary URL, simulated) —');
   for (const [w, h] of FIVE_SIZES) {
     const geo = {};
     for (const mode of ['jam', 'expanded', 'sound', 'arrange']) {
-      const { ctx, page, errors } = await open(browser, w, h, '?preview=five');
+      const { ctx, page, errors } = await open(browser, w, h);
       await page.evaluate(() => window.__harbu.A.stop());
       if (mode === 'expanded') await page.evaluate(() => window.__harbu.A.setExpanded(true));
       else if (mode !== 'jam') await page.evaluate(m => window.__harbu.A.setMode(m), mode);
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(mode === 'expanded' ? 400 : 250);
       const a = await layoutAudit(page);
       const c = await page.evaluate(() => {
         const cards = [...document.querySelectorAll('#cards .card')];
@@ -164,22 +164,19 @@ async function rollPoint(page, step, rowOrPitch) {
       ok(!c.clipped.length && c.cats.every(x => x >= 26), `${w}×${h} ${mode}: names readable, every card keeps its character${c.clipped.length ? ' — clipped: ' + c.clipped.join() : ''}`);
       ok(!errors.length, `${w}×${h} ${mode}: no console errors${errors.length ? ' — ' + errors[0] : ''}`);
       if (mode !== 'expanded') geo[mode] = await shell(page);
-      if (mode === 'jam') { // the placeholder card is inert: no selection, no audition, no keyboard shortcut
-        await page.click('#cards .card[data-slot="slot-05"]', { force: true }).catch(() => {});
-        await page.keyboard.press('5'); await page.waitForTimeout(40);
-        const st = await page.evaluate(() => ({ sel: window.__harbu.store.ui.sel, ctx: !!window.__harbu.A.engine.ctx && window.__harbu.A.engine.E.ch.has('slot-05') }));
-        ok(st.sel === 'slot-01' && !st.ctx, `${w}×${h}: the MUNCH preview card cannot be selected or played`);
+      if (mode === 'jam') { // MUNCH card is active by default: selectable, playable, Mute/Solo work
+        await page.click('#cards .card[data-slot="slot-05"] .pill.mute');
+        await page.click('#cards .card[data-slot="slot-05"] .pill.solo');
+        await page.keyboard.press('5'); await page.waitForTimeout(60);
+        const st = await page.evaluate(() => {
+          const m = window.__harbu.store.project.slots[4];
+          return { sel: window.__harbu.store.ui.sel, mode: window.__harbu.store.ui.mode, mute: m.mute, solo: m.solo, ch: !!window.__harbu.A.engine.ctx && window.__harbu.A.engine.E.ch.has('slot-05') };
+        });
+        ok(st.sel === 'slot-05' && st.mode === 'sound' && st.mute && st.solo && st.ch, `${w}×${h}: MUNCH card is active by default (sel/sound/mute/solo/channel)`);
       }
       await ctx.close();
     }
     ok(geo.jam === geo.sound && geo.jam === geo.arrange, `${w}×${h} five cards: header + strip identical in JAM, SOUND and ARRANGE${geo.jam === geo.arrange ? '' : ' — ' + geo.arrange}`);
-  }
-  { // the five-card strip is no taller than the four-card one at the same size (the sequencer keeps its room)
-    for (const [w, h] of [[1024, 768], [1180, 820], [1194, 834], [1376, 1032], [1180, 740], [820, 1180]]) {
-      const hs = [];
-      for (const q of ['', '?preview=five']) { const { ctx, page } = await open(browser, w, h, q); hs.push(await page.evaluate(() => Math.round(document.querySelector('.strip').getBoundingClientRect().height))); await ctx.close(); }
-      ok(hs[1] <= hs[0] + 2, `${w}×${h}: strip height with five cards ${hs[1]} px vs four ${hs[0]} px`);
-    }
   }
 
   console.log('\n— Interaction flows (1180×820, touch emulation) —');
@@ -248,7 +245,7 @@ async function rollPoint(page, step, rowOrPitch) {
         sizeOk: v.width >= 40 && v.height >= 40,
       };
     }));
-    ok(align.length === 4 && align.every(a => a.rightOfMS && a.dCy <= 2 && a.sizeOk), `every card has a 40×40+ VOL knob right of M/S on the same vertical axis (${JSON.stringify(align[0])})`);
+    ok(align.length === 5 && align.every(a => a.rightOfMS && a.dCy <= 2 && a.sizeOk), `every card has a 40×40+ VOL knob right of M/S on the same vertical axis (${JSON.stringify(align[0])})`);
 
     // adjust a non-selected card's VOL while playing: no selection change, no audition, audio gain updates, undo/redo + double-tap reset work
     await page.evaluate(() => { window.__harbu.A.selectSlot('slot-01'); window.__harbu.A.togglePlay(); });
@@ -455,7 +452,7 @@ async function rollPoint(page, step, rowOrPitch) {
     const { parsePackage } = await import('../src/core/package.js');
     const hbnBytes = await (await import('node:fs/promises')).readFile(await dl.path());
     const { project: exported, manifest } = await parsePackage(hbnBytes);
-    ok(manifest.format === 'harbumatic-package' && manifest.v === 1 && exported.v === 6 && exported.slots.map(x => `${x.id}:${x.type}`).join() === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && !exported.tracks, 'Export writes a v1 .hbn package with schema v6 and five slot ids (MUNCH placeholder included)');
+    ok(manifest.format === 'harbumatic-package' && manifest.v === 1 && exported.v === 6 && exported.slots.map(x => `${x.id}:${x.type}`).join() === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && !exported.tracks, 'Export writes a v1 .hbn package with schema v6 and five slot ids');
     const before = await state(page);
     await page.setInputFiles('#fileIn', { name: 'again.hbn', mimeType: 'application/octet-stream', buffer: hbnBytes });
     await page.waitForTimeout(250);
@@ -463,25 +460,23 @@ async function rollPoint(page, step, rowOrPitch) {
     ok(again.songs === before.songs + 1 && JSON.stringify(again.arrangement) === JSON.stringify(before.arrangement) && again.kicks === before.kicks, 'importing the exported .hbn file restores the song as a new entry');
   }
 
-  // instrument slots: four playable cards with stable slot ids, keyboard 1–4 selects them, no MUNCH card outside the preview
+  // instrument slots: five playable cards with stable slot ids, keyboard 1–5 selects them
   {
     const cards = await page.evaluate(() => [...document.querySelectorAll('#cards .card')].map(c => `${c.dataset.slot}:${c.dataset.t}:${c.querySelector('.card-name').textContent}`));
-    ok(cards.join() === 'slot-01:drums:BOP,slot-02:bass:GOO,slot-03:synth:BLIP,slot-04:fuzz:FUZZ', `cards show BOP, GOO, BLIP, FUZZ in slots 01–04 (${cards.join(' ')})`);
-    for (const [k, id] of [['2', 'slot-02'], ['4', 'slot-04'], ['1', 'slot-01']]) { await page.keyboard.press(k); await page.waitForTimeout(40); ok((await state(page)).sel === id, `key ${k} selects ${id}`); }
-    await page.keyboard.press('5'); await page.waitForTimeout(40);
-    ok((await state(page)).sel === 'slot-01', 'key 5 does nothing while there are four instruments');
-    // a song whose MUNCH slot holds data keeps it as it is, but shows only the four playable cards
+    ok(cards.join() === 'slot-01:drums:BOP,slot-02:bass:GOO,slot-03:synth:BLIP,slot-04:fuzz:FUZZ,slot-05:munch:MUNCH', `cards show BOP, GOO, BLIP, FUZZ, MUNCH in slots 01–05 (${cards.join(' ')})`);
+    for (const [k, id] of [['2', 'slot-02'], ['4', 'slot-04'], ['5', 'slot-05'], ['1', 'slot-01']]) { await page.keyboard.press(k); await page.waitForTimeout(40); ok((await state(page)).sel === id, `key ${k} selects ${id}`); }
+    // a song whose MUNCH slot holds settings keeps them and shows all five playable cards
     const withMunch = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); const m = p.slots.find(x => x.type === 'munch'); m.params.vol = .3; return p; });
     await page.setInputFiles('#fileIn', { name: 'munch.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(withMunch)) });
     await page.waitForTimeout(250);
-    const after = await page.evaluate(() => ({ cards: document.querySelectorAll('#cards .card').length, slots: window.__harbu.store.project.slots.map(x => x.type).join(), vol: window.__harbu.store.project.slots[4].params.vol }));
-    ok(after.cards === 4 && after.slots === 'bop,goo,blip,fuzz,munch' && after.vol === .3, 'a stored MUNCH slot is kept as it is but not shown as an instrument');
-    // a four-slot v6 file (as Phase 1 wrote it) opens with exactly one MUNCH slot added
+    const after = await page.evaluate(() => ({ cards: document.querySelectorAll('#cards .card').length, slots: window.__harbu.store.project.slots.map(x => x.type).join(), vol: window.__harbu.store.project.slots[4].params.vol, cardVol: Number(document.querySelector('#cards .card[data-slot="slot-05"] .knob.card-vol').getAttribute('aria-valuenow')) }));
+    ok(after.cards === 5 && after.slots === 'bop,goo,blip,fuzz,munch' && after.vol === .3 && Math.abs(after.cardVol - .3) < .02, 'a stored MUNCH slot is kept and shown as an active fifth card');
+    // a four-slot v6 file (as Phase 1 wrote it) opens with exactly one MUNCH slot added and five cards shown
     const four = await page.evaluate(() => { const p = JSON.parse(JSON.stringify(window.__harbu.store.project)); p.slots = p.slots.filter(x => x.type !== 'munch'); p.name = 'Four slots'; return p; });
     await page.setInputFiles('#fileIn', { name: 'four.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(four)) });
     await page.waitForTimeout(250);
     const f4 = await page.evaluate(() => ({ name: window.__harbu.store.project.name, slots: window.__harbu.store.project.slots.map(x => `${x.id}:${x.type}`).join(), cards: document.querySelectorAll('#cards .card').length }));
-    ok(f4.name === 'Four slots' && f4.slots === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && f4.cards === 4, `a four-slot v6 song gains one MUNCH slot on import (${f4.slots})`);
+    ok(f4.name === 'Four slots' && f4.slots === 'slot-01:bop,slot-02:goo,slot-03:blip,slot-04:fuzz,slot-05:munch' && f4.cards === 5, `a four-slot v6 song gains one active MUNCH slot on import (${f4.slots})`);
     await page.click('#play'); await page.waitForTimeout(300); await page.click('#stop');
   }
 
@@ -497,16 +492,16 @@ async function rollPoint(page, step, rowOrPitch) {
   ok(!errors.length, `no console errors during flows${errors.length ? ' — ' + errors.join(' | ') : ''}`);
   await ctx.close();
 
-  console.log('\n— MUNCH sample engine (dev preview ?munch=dev, fake microphone) —');
+  console.log('\n— MUNCH sample engine (ordinary URL, fake microphone) —');
   {
     const fs = await import('node:fs/promises');
     const { makeWav } = await import('../tests/helpers/audio.mjs');
     const fixture = f => fs.readFile(new globalThis.URL(`../tests/fixtures/audio/${f}`, import.meta.url));
-    // a normal session never shows MUNCH and never opens the sample database
+    // a normal session shows five cards by default and leaves sample storage unopened until a sample is used
     {
       const { ctx: c0, page: p0 } = await open(browser, 1180, 820);
       const r = await p0.evaluate(async () => ({ cards: document.querySelectorAll('#cards .card').length, dbs: indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : [] }));
-      ok(r.cards === 4 && !r.dbs.includes('harbumatic-samples'), `without ?munch=dev: four cards, no sample storage opened (${r.cards} cards)`);
+      ok(r.cards === 5 && !r.dbs.includes('harbumatic-samples'), `ordinary URL: five cards by default, sample storage idle until used (${r.cards} cards)`);
       await c0.close();
     }
     const mb = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
@@ -514,7 +509,7 @@ async function rollPoint(page, step, rowOrPitch) {
       const c = await mb.newContext({ viewport: { width: w, height: h }, hasTouch: true, ...extra });
       const pg = await c.newPage(); const errs = [];
       pg.on('pageerror', e => errs.push(e.message)); pg.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-      await pg.goto(URL + '?munch=dev'); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(250);
+      await pg.goto(URL); await pg.evaluate(() => localStorage.clear()); await pg.reload(); await pg.click('#startBtn'); await pg.waitForTimeout(250);
       await pg.evaluate(() => window.__harbu.A.stop());
       return { c, pg, errs, H: fn => pg.evaluate(fn) };
     };
@@ -760,14 +755,14 @@ async function rollPoint(page, step, rowOrPitch) {
     // importing the portable .hbn restores the deleted sample to ready state
     await pg.setInputFiles('#fileIn', { name: dl.suggestedFilename(), mimeType: 'application/octet-stream', buffer: hbnBuf });
     await pg.waitForTimeout(600);
-    ok((await H(() => window.__harbu.A.samples.state(ref.id).status)) === 'ready', 'importing the .hbn package restores the embedded sample to ready state');
+    ok((await pg.evaluate(id => window.__harbu.A.samples.state(id).status, ref.id)) === 'ready', 'importing the .hbn package restores the embedded sample to ready state');
     await pg.click('#play'); await pg.waitForTimeout(600); await pg.click('#stop');
     ok(!errs.length, `no errors in the MUNCH flows${errs.length ? ' — ' + errs[0] : ''}`);
     await mctx.close();
     // microphone permission denied
     const dctx = await mb.newContext({ viewport: { width: 1180, height: 820 } });
     const dp = await dctx.newPage();
-    await dp.goto(URL + '?munch=dev'); await dp.click('#startBtn'); await dp.waitForTimeout(200);
+    await dp.goto(URL); await dp.click('#startBtn'); await dp.waitForTimeout(200);
     await dp.evaluate(() => { navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('denied'), { name: 'NotAllowedError' })); window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); });
     await dp.waitForTimeout(150);
     await dp.click('[data-testid=munch-rec]'); await dp.waitForTimeout(300);
@@ -784,7 +779,7 @@ async function rollPoint(page, step, rowOrPitch) {
         md.getUserMedia = c => { window.__sessionLog.push(ses.type); return ses.type === 'playback' ? Promise.reject(new DOMException('Capture is not allowed in this audio session', 'InvalidStateError')) : gum(c); };
       });
       const ip = await ictx.newPage(); const ierrs = []; ip.on('pageerror', e => ierrs.push(e.message));
-      await ip.goto(URL + '?munch=dev'); await ip.evaluate(() => localStorage.clear()); await ip.reload(); await ip.click('#startBtn'); await ip.waitForTimeout(250);
+      await ip.goto(URL); await ip.evaluate(() => localStorage.clear()); await ip.reload(); await ip.click('#startBtn'); await ip.waitForTimeout(250);
       await ip.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await ip.waitForTimeout(150);
       ok((await ip.evaluate(() => navigator.audioSession.type)) === 'playback', 'iPad emulation: the engine uses the "playback" audio session (plays through the silent switch)');
       await ip.click('[data-testid=munch-rec]'); await ip.waitForTimeout(700);
@@ -803,7 +798,7 @@ async function rollPoint(page, step, rowOrPitch) {
     {
       const sctx = await mb.newContext({ viewport: { width: 1194, height: 834 }, hasTouch: true });
       const sp = await sctx.newPage(); const serrs = []; sp.on('pageerror', e => serrs.push(e.message));
-      await sp.goto(URL + '?munch=dev'); await sp.evaluate(() => localStorage.clear());
+      await sp.goto(URL); await sp.evaluate(() => localStorage.clear());
       await sp.evaluate(() => new Promise(r => { const d = indexedDB.deleteDatabase('harbumatic-samples'); d.onsuccess = d.onerror = () => { const q = indexedDB.open('harbumatic-samples', 1); q.onupgradeneeded = () => q.result.createObjectStore('meta', { keyPath: 'id' }); q.onsuccess = () => { q.result.close(); r(); }; }; }));
       await sp.reload(); await sp.click('#startBtn'); await sp.waitForTimeout(250);
       await sp.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); }); await sp.waitForTimeout(150);

@@ -38,11 +38,11 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **The Catpound** is a dedicated, playful instrument-selection screen accessible from the top navigation near SOUND. It is not merely a dropdown or generic instrument list: it is where the player assembles their band of kawaii instrument cats.
 
-- **Your Band (top):** exactly four simultaneous active instrument slots, visually showing the selected cats.
+- **Your Band (top):** five simultaneous active instrument slots (matching the five-instrument baseline: BOP, GOO, BLIP, FUZZ, MUNCH), visually showing the selected cats.
 - **The Catpound (below):** a collection of available instrument cats side by side, each with its own identity and sound.
 - **Interaction:** drag cats into an active slot to join or replace the band; drag a cat out to free its slot; allow rearrangement. Provide a clear tap-to-select alternative for touch accessibility and precision.
 - **Creative safety:** replacing or removing a cat must not silently destroy patterns, instrument settings, scenes or saved work. Design reversible replacement and clear restoration semantics.
-- **Architecture:** distinguish instrument type, slot identity and saved musical data; migrate existing five-instrument projects safely toward the long-term four-active-slot model.
+- **Architecture:** distinguish instrument type, slot identity and saved musical data; keep the five-active-slot model as the baseline for existing and future projects.
 - **Placement:** provisionally v0.9 alongside instrument replacement; revisit scope and release placement before implementation. No UI or code changes requested now.
 - **Open design questions:** exact handling of existing patterns on replacement, whether multiple instances of one instrument are allowed, and how inactive instrument state is stored.
 
@@ -86,7 +86,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
 
-**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration — **implemented behind `?munch=dev`** (`docs/MUNCH-PHASE4.md`); (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented, awaiting physical iPad verification** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable .hbn project format (Phase 5A merged), iPad QA; Song WAV Export deferred to v0.9. Each phase must preserve existing musical behavior.
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration; (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented, awaiting physical iPad verification** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable .hbn project format (Phase 5A merged), five instruments active by default (no URL flags), iPad QA; Song WAV Export deferred to v0.9. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
@@ -178,7 +178,7 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 - Stronger arrangement transitions, automation, export, and light finishing/mastering tools.
 - Review instrument names **BOP / GOO / BLIP / FUZZ**; current names are not permanently locked.
 
-**Exit criterion:** More sound choices and a path to finished tracks, without sacrificing the four-slot simplicity.
+**Exit criterion:** More sound choices and a path to finished tracks, without sacrificing the five-slot simplicity.
 
 ## v1.0 — The Little Music Machine
 

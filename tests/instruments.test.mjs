@@ -65,29 +65,29 @@ test('the four classic instruments keep their v0.5.1 names, colours and default 
   assert.ok(!getInstrumentType('blip').capabilities.slide && !getInstrumentType('fuzz').capabilities.slide);
 });
 
-test('MUNCH is a preview instrument: playable only while previews are enabled', () => {
+test('MUNCH is a ready instrument by default; preview toggle stays available for future types', () => {
   const m = getInstrumentType('munch');
-  assert.equal(m.status, 'preview'); assert.equal(m.engine, 'munch'); assert.equal(m.capabilities.generate, false);
-  assert.equal(previewInstrumentsEnabled(), false, 'off by default');
-  assert.equal(isPlayableType('munch'), false);
-  assert.deepEqual(listInstrumentTypes().map(t => t.type), ['bop', 'goo', 'blip', 'fuzz']);
+  assert.equal(m.status, 'ready'); assert.equal(m.engine, 'munch'); assert.equal(m.capabilities.generate, false);
+  assert.equal(previewInstrumentsEnabled(), false, 'preview toggle off by default');
+  assert.equal(isPlayableType('munch'), true);
+  assert.deepEqual(listInstrumentTypes().map(t => t.type), ['bop', 'goo', 'blip', 'fuzz', 'munch']);
   assert.ok(listInstrumentTypes({ includePlanned: true }).some(t => t.type === 'munch'));
-  ['bop', 'goo', 'blip', 'fuzz'].forEach(id => assert.ok(isPlayableType(id)));
+  ['bop', 'goo', 'blip', 'fuzz', 'munch'].forEach(id => assert.ok(isPlayableType(id)));
   try {
     setPreviewInstruments(true);
-    assert.equal(isPlayableType('munch'), true);
-    assert.deepEqual(listInstrumentTypes().map(t => t.type), ['bop', 'goo', 'blip', 'fuzz', 'munch']);
+    assert.equal(previewInstrumentsEnabled(), true);
   } finally { setPreviewInstruments(false); }
-  assert.equal(isPlayableType('munch'), false);
+  assert.equal(previewInstrumentsEnabled(), false);
+  assert.equal(isPlayableType('munch'), true);
 });
 
 /* ---------- slots ---------- */
-test('a new song has exactly five slots with stable ids slot-01…slot-05 (MUNCH planned)', () => {
+test('a new song has exactly five playable slots with stable ids slot-01…slot-05', () => {
   const p = createEmptyProject();
   assert.deepEqual(p.slots.map(s => [s.id, s.type]), [['slot-01', 'bop'], ['slot-02', 'goo'], ['slot-03', 'blip'], ['slot-04', 'fuzz'], ['slot-05', 'munch']]);
   assert.equal(nextSlotId(p), 'slot-06');
   assert.deepEqual(createEmptyProject().slots.map(s => s.id), p.slots.map(s => s.id), 'deterministic');
-  assert.deepEqual(playableSlots(p).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04'], 'MUNCH is not playable yet');
+  assert.deepEqual(playableSlots(p).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'all five default slots are playable');
   assert.deepEqual(validateProject(structuredClone(p)), p, 'a new song is already valid: validation adds nothing');
   assert.deepEqual(createDemoProject().slots.map(s => s.type), DEFAULT_SLOT_TYPES, 'the demo song has the same five slots');
 });
@@ -116,7 +116,7 @@ test('several instances of one type are valid and independent', () => {
   assert.equal(slotById(v, 'slot-03').params.cutoff, .5);
 });
 
-test('a MUNCH slot survives validation untouched but is not playable', () => {
+test('a MUNCH slot survives validation untouched and is playable', () => {
   const p = createEmptyProject();
   const m = slotById(p, 'slot-05');
   m.patterns['scene-01'].notes.push({ s: 2, p: 60, l: 1, v: .9 });
@@ -126,7 +126,7 @@ test('a MUNCH slot survives validation untouched but is not playable', () => {
   assert.equal(v.slots.filter(s => s.type === 'munch').length, 1, 'no second MUNCH slot');
   assert.equal(slotById(v, 'slot-05').type, 'munch');
   assert.equal(patternAt(v, 'slot-05', 0).notes.length, 1, 'not silently discarded');
-  assert.deepEqual(playableSlots(v).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04']);
+  assert.deepEqual(playableSlots(v).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
 });
 
 test('slot validation repairs ids, refuses unknown types and too many slots', () => {

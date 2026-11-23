@@ -213,30 +213,27 @@ test('scene changes and song mode switch MUNCH patterns like any instrument; mut
   drive(p, engine, ctx, { seconds: .3, onTick: (t, tr) => { if (t > .2 && tr.state === 'playing') { tr.pause(); assert.equal(voice.activeCount(), 0); } } });
 }));
 
-test('with previews off (normal sessions) MUNCH notes are never dispatched, exactly as in Phase 2', async () => {
+test('MUNCH notes are dispatched by default without preview flags', async () => {
   const p = createEmptyProject();
   setPatternAt(p, M, 0, { len: 16, notes: [{ s: 0, p: 60, l: 1, v: .9, slice: 0 }] });
   const calls = [];
   const engine = { ctx: { currentTime: 0 }, init() { return this.ctx; }, openGates() {}, closeGates() {}, stepDur: () => .125, audible: () => true, trigger: id => calls.push(id) };
   drive(p, engine, engine.ctx, { seconds: .5 });
-  assert.ok(!calls.includes(M));
+  assert.ok(calls.includes(M));
 });
 
-test('existing instruments dispatch exactly the same with MUNCH enabled and playing', async () => {
+test('existing instruments dispatch exactly the same with MUNCH playing', async () => {
   const fx = JSON.parse(readFileSync(new URL('./fixtures/v5-edge.json', import.meta.url), 'utf8'));
-  const run = (enable, munchNotes) => {
-    setPreviewInstruments(enable);
-    try {
-      const p = importProject(structuredClone(fx)); p.songMode = false; p.scene = 1;
-      if (munchNotes) setPatternAt(p, M, 1, { len: 16, notes: [0, 2, 4, 6].map(s => ({ s, p: 60, l: 1, v: .8, slice: s / 2 })) });
-      const calls = []; let a = 7;
-      const mr = Math.random; Math.random = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
-      const engine = { ctx: { currentTime: 0 }, init() { return this.ctx; }, openGates() {}, closeGates() {}, stepDur: () => 60 / p.bpm / 4, audible: id => slotAudible(p, slotById(p, id)), trigger: (id, t, hit) => calls.push([id, Math.round(t * 1e6), JSON.stringify(hit)]) };
-      try { drive(p, engine, engine.ctx, { seconds: 3 }); } finally { Math.random = mr; }
-      return calls;
-    } finally { setPreviewInstruments(false); }
+  const run = munchNotes => {
+    const p = importProject(structuredClone(fx)); p.songMode = false; p.scene = 1;
+    if (munchNotes) setPatternAt(p, M, 1, { len: 16, notes: [0, 2, 4, 6].map(s => ({ s, p: 60, l: 1, v: .8, slice: s / 2 })) });
+    const calls = []; let a = 7;
+    const mr = Math.random; Math.random = () => { a = (a * 16807) % 2147483647; return a / 2147483647; };
+    const engine = { ctx: { currentTime: 0 }, init() { return this.ctx; }, openGates() {}, closeGates() {}, stepDur: () => 60 / p.bpm / 4, audible: id => slotAudible(p, slotById(p, id)), trigger: (id, t, hit) => calls.push([id, Math.round(t * 1e6), JSON.stringify(hit)]) };
+    try { drive(p, engine, engine.ctx, { seconds: 3 }); } finally { Math.random = mr; }
+    return calls;
   };
-  const base = run(false, false), withMunch = run(true, true);
+  const base = run(false), withMunch = run(true);
   assert.ok(withMunch.some(c => c[0] === M), 'MUNCH played');
   assert.deepEqual(withMunch.filter(c => c[0] !== M), base, 'BOP, GOO, BLIP and FUZZ: same hits, times and parameters');
 });
