@@ -123,7 +123,10 @@ test('scene references stay valid: arrangement uses scene ids, positions resolve
 test('a song with more scenes than this version supports is refused, not truncated', () => {
   const p = createDemoProject();
   p.scenes.push({ id: 'scene-07', name: 'Extra', harmony: null });
-  assert.throws(() => importProject(p), e => e instanceof ProjectError && /up to 6/.test(e.message));
+  const ok7 = importProject(structuredClone(p));
+  assert.equal(ok7.scenes.length, 7, 'dynamic scenes beyond six are accepted');
+  while (p.scenes.length <= 64) p.scenes.push({ id: `scene-${String(p.scenes.length + 1).padStart(2, '0')}`, name: `Scene ${p.scenes.length + 1}`, harmony: null });
+  assert.throws(() => importProject(p), e => e instanceof ProjectError && /up to 64/.test(e.message));
 });
 
 test('snapshots recall only into the same kind of instrument (type is remembered)', () => {

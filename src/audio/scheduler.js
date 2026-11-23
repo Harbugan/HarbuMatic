@@ -15,6 +15,7 @@
 
 import { DRUMS } from '../core/constants.js';
 import { playableSlots, typeOfSlot, sceneIdAt } from '../core/project.js';
+import { clamp } from '../core/util.js';
 import { startPosition, advance, isLoopBoundary } from './position.js';
 
 const LOOKAHEAD = .12, INTERVAL = 25;
@@ -29,43 +30,49 @@ export function createTransport(engine, getProject, hooks = {}) {
   const emit = () => hooks.onState && hooks.onState(T.state);
 
   function scheduleStep(t) {
-    const project = getProject(), pos = T.pos, sc = pos.scene, sd = engine.stepDur();
-    if (hooks.beforeStep) hooks.beforeStep(pos, isLoopBoundary); // e.g. auto-evolve on a loop boundary
-    const ev = { time: t, step: pos.step, scene: sc, block: pos.block, song: pos.song, hits: {} };
+    const project = getProject(), pos = T.pos, sd = engine.stepDur();
+    const sc = clamp(pos.scene, 0, Math.max(0, project.scenes.length - 1));
+    if (sc !== pos.scene) T.pos = { ...pos, scene: sc };
+    if (hooks.beforeStep) hooks.beforeStep(T.pos, isLoopBoundary); // e.g. auto-evolve on a loop boundary
+    const ev = { time: t, step: T.pos.step, scene: sc, block: T.pos.block, song: T.pos.song, hits: {} };
     const sceneId = sceneIdAt(project, sc);
-    for (const slot of playableSlots(project)) {
-      const def = typeOfSlot(slot), caps = def.capabilities;
-      const p = slot.patterns[sceneId], ls = pos.step % p.len;
-      const sw = ls % 2 ? project.swing * sd * .5 : 0, hits = [];
-      const on = engine.audible(slot.id);
-      if (def.pattern === 'drum') {
-        for (const d of DRUMS) {
-          const c = p.steps[d.id][ls];
-          if (c && Math.random() <= c.p) { hits.push({ d: d.id, v: c.v }); if (on) engine.trigger(slot.id, t + sw, { d: d.id, v: c.v }); }
-        }
-      } else {
-        let starts = null;
-        for (const n of p.notes) {
-          if (n.s !== ls) continue;
-          if (n.pr != null && n.pr < 1 && Math.random() > n.pr) continue;
-          let slideIn = false, slideOut = false;
-          if (caps.slide) {
-            starts = starts || new Set(p.notes.map(m => m.s));
-            slideIn = p.notes.some(m => m.slide && (m.s + m.l) % p.len === ls);
-            slideOut = !!n.slide && starts.has((n.s + n.l) % p.len);
+    if (sceneId) {
+      for (const slot of playableSlots(project)) {
+        const def = typeOfSlot(slot), caps = def.capabilities;
+        const p = slot.patterns[sceneId];
+        if (!p) continue;
+        const ls = T.pos.step % p.len;
+        const sw = ls % 2 ? project.swing * sd * .5 : 0, hits = [];
+        const on = engine.audible(slot.id);
+        if (def.pattern === 'drum') {
+          for (const d of DRUMS) {
+            const c = p.steps[d.id][ls];
+            if (c && Math.random() <= c.p) { hits.push({ d: d.id, v: c.v }); if (on) engine.trigger(slot.id, t + sw, { d: d.id, v: c.v }); }
           }
-          // a mono acid voice gates shorter unless it slides on; everything else holds ~the full length
-          const dur = caps.mono && !slideOut ? Math.max(sd * .45, n.l * sd - sd * .45) : n.l * sd * .98;
-          const hit = { p: n.p, v: n.v, dur, slideIn, slideOut };
-          if (n.slice != null) hit.slice = n.slice; // sampler slice trigger (only MUNCH notes carry it)
-          hits.push(n.slice != null ? { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9, slice: n.slice } : { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9 });
-          if (on) engine.trigger(slot.id, t + sw + (n.o || 0) * sd, hit);
+        } else {
+          let starts = null;
+          for (const n of p.notes) {
+            if (n.s !== ls) continue;
+            if (n.pr != null && n.pr < 1 && Math.random() > n.pr) continue;
+            let slideIn = false, slideOut = false;
+            if (caps.slide) {
+              starts = starts || new Set(p.notes.map(m => m.s));
+              slideIn = p.notes.some(m => m.slide && (m.s + m.l) % p.len === ls);
+              slideOut = !!n.slide && starts.has((n.s + n.l) % p.len);
+            }
+            // a mono acid voice gates shorter unless it slides on; everything else holds ~the full length
+            const dur = caps.mono && !slideOut ? Math.max(sd * .45, n.l * sd - sd * .45) : n.l * sd * .98;
+            const hit = { p: n.p, v: n.v, dur, slideIn, slideOut };
+            if (n.slice != null) hit.slice = n.slice; // sampler slice trigger (only MUNCH notes carry it)
+            hits.push(n.slice != null ? { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9, slice: n.slice } : { p: n.p, v: n.v, slide: slideIn, acc: n.v > .9 });
+            if (on) engine.trigger(slot.id, t + sw + (n.o || 0) * sd, hit);
+          }
         }
+        if (hits.length && on) ev.hits[slot.id] = hits;
       }
-      if (hits.length && on) ev.hits[slot.id] = hits;
     }
     T.queue.push(ev);
-    const r = advance(pos, project, T.pending);
+    const r = advance(T.pos, project, T.pending);
     if (r.pendingUsed) T.pending = null;
     T.pos = r.pos;
   }
@@ -102,10 +109,24 @@ export function createTransport(engine, getProject, hooks = {}) {
     toggle() { T.state === 'playing' ? T.pause() : T.play(); },
     /** jam mode: switch scene on the next bar line (or immediately when not playing) */
     queueScene(i) {
-      const song = getProject().songMode && getProject().arrangement.length > 0;
+      const project = getProject();
+      if (!Number.isInteger(i) || i < 0 || i >= project.scenes.length) return;
+      const song = project.songMode && project.arrangement.length > 0;
       if (song) return; // the arrangement decides what plays
       if (T.state === 'playing') T.pending = i === T.pos.scene && !T.pos.song ? null : i;
       else if (T.state === 'paused' && T.pos) T.pos = { ...T.pos, song: false, scene: i, step: 0, fresh: true };
+    },
+    /** reconcile live/paused position and queued scene after dynamic scene deletion, reordering or undo/redo */
+    reconcile(nextPos, nextPending = null) {
+      const maxSc = Math.max(0, getProject().scenes.length - 1);
+      T.pos = nextPos ? { ...nextPos, scene: clamp(nextPos.scene, 0, maxSc) } : null;
+      T.pending = nextPending != null && Number.isInteger(nextPending) && nextPending >= 0 && nextPending <= maxSc ? nextPending : null;
+      if (T.queue.length) {
+        for (let k = T.queue.length - 1; k >= 0; k--) {
+          if (T.queue[k].scene > maxSc) T.queue.splice(k, 1);
+        }
+      }
+      emit();
     },
     /** start (or restart) the song at a given arrangement block */
     playFromBlock(k) {

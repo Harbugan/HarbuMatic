@@ -18,6 +18,8 @@ const M = 'slot-05';
 /** a song with a 2 s sample on MUNCH and slice notes in two scenes and a snapshot */
 function song() {
   const p = createEmptyProject();
+  p.scenes.push({ id: 'scene-02', name: 'Scene 2', harmony: null });
+  p.slots.forEach(s => { s.patterns['scene-02'] = structuredClone(s.patterns['scene-01']); });
   const m = slotById(p, M);
   m.sample = { id: ID, name: 'break.wav', duration: 2, sampleRate: 44100, channels: 2, slices: defaultSlices(8) };
   m.patterns[sceneIdAt(p, 0)].notes = [0, 1, 2, 3, 4, 5, 6, 7].map(k => ({ s: k * 2, p: 60, l: 1, v: .8, slice: k }));

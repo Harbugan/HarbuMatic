@@ -28,7 +28,20 @@ export const NOTE = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A
 export const MOODS = ['dreamy', 'bouncy', 'dark', 'weird'];
 export const SCENE_NAMES = ['Intro', 'Groove', 'Variation', 'Break', 'Buildup', 'Drop'];
 export const SCENE_LETTERS = 'ABCDEF';
+/** Fixed scene count of the legacy v5 schema and the built-in demo jam. */
 export const NSCENES = 6;
+/** Technical limit for dynamic scenes per song: keeps localStorage, undo history, .hbn exports and tablet UI fast and bounded. */
+export const MAX_SCENES = 64;
+/** Short badge label for any zero-based scene index: 0→A … 25→Z, 26→AA … 63→BL. */
+export function sceneLabel(index) {
+  let n = Math.max(0, Math.floor(Number(index) || 0));
+  let out = '';
+  do {
+    out = String.fromCharCode(65 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return out;
+}
 export const LENGTHS = [16, 32, 64];
 export const MAX_REPS = 8;
 

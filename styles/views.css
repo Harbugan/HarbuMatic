@@ -81,7 +81,7 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .snap-x .ico { width: 14px; height: 14px; }
 .scene-list { display: flex; flex-direction: column; gap: 7px; }
 .scene { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 14px; cursor: pointer; background: linear-gradient(180deg, #f3ecff, #e2d7fa); box-shadow: 0 2px 0 #cdbdf0; border: 0; font-weight: 800; font-size: 14px; text-align: left; width: 100%; }
-.scene .L { width: 22px; font-weight: 900; font-size: 16px; color: var(--lav-dd); }
+.scene .L { min-width: 24px; flex: none; white-space: nowrap; font-weight: 900; font-size: 16px; color: var(--lav-dd); }
 .scene .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scene .dots { display: flex; gap: 3px; }
 .scene .dots i { width: 8px; height: 8px; border-radius: 50%; opacity: .22; }
@@ -90,7 +90,12 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .scene.playing .L::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 4px; border-radius: 50%; background: var(--mint-d); vertical-align: middle; }
 .scene.queued { animation: qblink .5s steps(2) infinite; }
 .scene-actions { display: flex; flex-direction: column; gap: 8px; }
+.scene-actions-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .scene-actions .lbtn, .lsect-body > .btn.lbtn { justify-content: center; min-height: var(--tap); }
+.scene-actions-row .lbtn { padding: 4px 6px; font-size: 12.5px; gap: 5px; }
+.scene-actions .lbtn.danger { color: #b8475e; }
+.scene-pick { display: flex; flex-direction: column; gap: 8px; max-height: 45dvh; overflow: auto; padding: 2px; }
+.scene-state { font-size: 11.5px; font-weight: 800; color: var(--muted); flex: none; }
 
 /* ---------- bottom bar ---------- */
 .shapers { display: flex; align-items: center; justify-content: space-around; gap: 6px; padding: 6px 14px; }
@@ -167,7 +172,7 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .cblock.add { background: transparent; border: 2px dashed #6d6898; color: #c9c2ea; box-shadow: none; cursor: pointer; }
 .cblock.add .L .ico { width: 24px; height: 24px; }
 .cblock.ghost { position: fixed; left: 0; top: 0; z-index: 90; pointer-events: none; opacity: .92; box-shadow: 0 16px 30px -8px #0008; }
-.ctxbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; flex: none; }
+.ctxbar, .scene-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; flex: none; }
 .ctx-title { font-weight: 900; color: var(--navy); padding: 0 6px; }
 .reps-ctl { display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; border-radius: 14px; }
 .reps-v { min-width: 30px; text-align: center; font-variant-numeric: tabular-nums; }
@@ -374,8 +379,8 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-style.on { background: #fff; color: var(--navy); box-shadow: 0 2px 0 var(--mw-yel-d); }
 .mw-seq { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; }
 .mw-seqhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.mw-scenes { display: flex; gap: 3px; }
-.mw-scene { border: 0; min-width: 36px; min-height: 38px; border-radius: 10px; background: #efe2d2; font-weight: 900; color: #6d6378; cursor: pointer; }
+.mw-scenes { display: flex; flex-wrap: wrap; gap: 3px; }
+.mw-scene { border: 0; min-width: 36px; min-height: 38px; padding: 0 6px; border-radius: 10px; background: #efe2d2; font-weight: 900; color: #6d6378; cursor: pointer; }
 .mw-scene.on { background: linear-gradient(180deg, #fff, var(--mw-mint)); color: var(--navy); box-shadow: 0 2px 0 var(--mw-mint-d); }
 .mw-pages { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .mw-page-t { font-size: 12px; min-width: 34px; text-align: center; color: #6d6378; font-variant-numeric: tabular-nums; }

@@ -23,7 +23,7 @@
 // - Snapshots key their content by slot id and remember the type, so a recall never pours one
 //   instrument's pattern into a different kind of instrument.
 
-import { DRUM_IDS, NSCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
+import { DRUM_IDS, NSCENES, MAX_SCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
 import {
   getInstrumentType, hasInstrumentType, isPlayableType, defaultParamsFor, createPatternFor, emptyPatternOfKind,
   patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
@@ -33,8 +33,8 @@ import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
-/** scenes this version can show and play (the schema itself has no fixed count) */
-export const MAX_SCENES = NSCENES;
+/** Maximum dynamic scenes per song (documented technical limit from constants.js). */
+export { MAX_SCENES };
 
 /* ---------------------------------------------------------
    Ids
@@ -48,6 +48,24 @@ function nextId(make, used) { let n = 1; while (used.has(make(n))) n++; return m
 /** the next free slot id of a project (slot-06 for a new song; slot-05 is MUNCH) */
 export const nextSlotId = project => nextId(slotIdFor, new Set(project.slots.map(s => s.id)));
 export const nextSceneId = project => nextId(sceneIdFor, new Set(project.scenes.map(s => s.id)));
+/** default name for a newly created empty scene */
+export function nextSceneName(project) {
+  const used = new Set(project.scenes.map(s => s.name));
+  let n = project.scenes.length + 1;
+  while (used.has(`Scene ${n}`)) n++;
+  return `Scene ${n}`;
+}
+/** default name for a duplicated scene (fits within the 24-character scene name limit) */
+export function duplicateSceneName(project, sourceName) {
+  const used = new Set(project.scenes.map(s => s.name));
+  const raw = String(sourceName || 'Scene').trim() || 'Scene';
+  const base = raw.replace(/\s+copy(?:\s+\d+)?$/i, '').trim() || 'Scene';
+  const fit = suffix => `${base.slice(0, Math.max(1, 24 - suffix.length)).trimEnd()}${suffix}`;
+  let cand = fit(' copy');
+  let n = 2;
+  while (used.has(cand)) { cand = fit(` copy ${n}`); n++; }
+  return cand;
+}
 
 /* ---------------------------------------------------------
    Accessors (the only way the rest of the app should reach slot/scene data)
@@ -60,8 +78,14 @@ export const sceneIdAt = (project, idx) => (project.scenes[idx] ? project.scenes
 export const sceneIndexOf = (project, id) => project.scenes.findIndex(s => s.id === id);
 /** scene index an arrangement block plays (0 if its reference is broken; validation prevents that) */
 export const blockScene = (project, block) => Math.max(0, sceneIndexOf(project, block.sceneId));
-export const patternAt = (project, slotId, sceneIdx = project.scene) => slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)];
-export function setPatternAt(project, slotId, sceneIdx, pattern) { slotById(project, slotId).patterns[sceneIdAt(project, sceneIdx)] = pattern; }
+export const patternAt = (project, slotId, sceneIdx = project.scene) => {
+  const s = slotById(project, slotId), sid = sceneIdAt(project, sceneIdx);
+  return s && sid ? s.patterns[sid] : undefined;
+};
+export function setPatternAt(project, slotId, sceneIdx, pattern) {
+  const s = slotById(project, slotId), sid = sceneIdAt(project, sceneIdx);
+  if (s && sid) s.patterns[sid] = pattern;
+}
 /** solo only counts on playable slots: a planned instrument (e.g. MUNCH) has no engine and must not silence the others */
 export const anySolo = project => project.slots.some(s => s.solo && isPlayableType(s.type));
 export const slotAudible = (project, slot) => (anySolo(project) ? slot.solo : !slot.mute);
@@ -94,10 +118,9 @@ export function createSlot(type, id, sceneIds) {
   return slot;
 }
 
-/** A genuinely empty song: five instrument slots (MUNCH planned), default sounds, no notes, no arrangement. */
-export function createEmptyProject({ name = 'Untitled song', bpm = 120, key = 9, scale = 'minor', mood } = {}) {
+function buildProject({ name = 'Untitled song', bpm = 120, key = 9, scale = 'minor', mood, sceneNames = ['Scene 1'] } = {}) {
   const now = new Date().toISOString();
-  const scenes = SCENE_NAMES.map((n, i) => ({ id: sceneIdFor(i + 1), name: n, harmony: null }));
+  const scenes = sceneNames.map((n, i) => ({ id: sceneIdFor(i + 1), name: n, harmony: null }));
   const p = {
     format: FORMAT, v: SCHEMA_VERSION, id: uid('song'), name, created: now, modified: now,
     bpm, swing: .08, key, scale, scene: 0, songMode: false,
@@ -112,11 +135,16 @@ export function createEmptyProject({ name = 'Untitled song', bpm = 120, key = 9,
   return p;
 }
 
+/** A genuinely empty song: five instrument slots, one empty scene, default sounds, no notes, no arrangement. */
+export function createEmptyProject({ name = 'Untitled song', bpm = 120, key = 9, scale = 'minor', mood } = {}) {
+  return buildProject({ name, bpm, key, scale, mood, sceneNames: ['Scene 1'] });
+}
+
 const chordNotes = (list, len, v) => list.flatMap(([s, ps]) => ps.map(p => ({ s, p, l: len, v })));
 
 /** The v0.4 demo song (A minor, i–VI–III–VII); same content as in v0.5. */
 export function createDemoProject() {
-  const s = createEmptyProject({ name: 'Demo jam', bpm: 118, key: 9, scale: 'minor', mood: 'dreamy' });
+  const s = buildProject({ name: 'Demo jam', bpm: 118, key: 9, scale: 'minor', mood: 'dreamy', sceneNames: SCENE_NAMES });
   s.swing = .12; s.scene = 1; s.lab.chaos = .4;
   s.arrangement = [newBlock(sceneIdAt(s, 0)), newBlock(sceneIdAt(s, 1), 2), newBlock(sceneIdAt(s, 2))];
   const harmony = { degrees: [0, 5, 2, 6], span: 32 };
@@ -300,10 +328,10 @@ function assignIds(items, make) {
 function cleanScenes(input) {
   const raw = Array.isArray(input.scenes) ? input.scenes : [];
   if (raw.length > MAX_SCENES) throw new ProjectError(`This song has ${raw.length} scenes; this version of HarbuMatic can open up to ${MAX_SCENES}. Please update the app.`);
-  const list = Array.from({ length: Math.max(NSCENES, raw.length) }, (_, i) => raw[i]);
+  const list = raw.length ? raw : [null];
   const ids = assignIds(list, sceneIdFor);
   return list.map((sc, i) => {
-    const fallback = SCENE_NAMES[i] || `Scene ${i + 1}`;
+    const fallback = `Scene ${i + 1}`;
     return { id: ids[i], name: isObj(sc) && typeof sc.name === 'string' && sc.name.trim() ? sc.name.trim().slice(0, 24) : fallback, harmony: isObj(sc) ? cleanHarmony(sc.harmony) : null };
   });
 }

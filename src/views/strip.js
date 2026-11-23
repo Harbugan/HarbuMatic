@@ -2,7 +2,7 @@
 
 import { store, P, typeOf, visibleSlots, slot } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { DRUM_IDS, SCENE_LETTERS } from '../core/constants.js';
+import { DRUM_IDS, sceneLabel } from '../core/constants.js';
 import { getInstrumentType } from '../core/instruments.js';
 import { patternAt, anySolo } from '../core/project.js';
 import { $, h } from '../ui/dom.js';
@@ -70,8 +70,9 @@ export function drawScreen() {
     }
   }
   const pos = A.transport.position, st = A.transport.state;
-  const sc = st !== 'stopped' && pos ? pos.scene : store.project.scene;
-  $('#scrScene').textContent = `${SCENE_LETTERS[sc]}${pos && pos.song && st !== 'stopped' ? ' ♪' : ''}`;
+  const rawSc = st !== 'stopped' && pos ? pos.scene : store.project.scene;
+  const sc = Math.max(0, Math.min(store.project.scenes.length - 1, rawSc));
+  $('#scrScene').textContent = `${sceneLabel(sc)}${pos && pos.song && st !== 'stopped' ? ' ♪' : ''}`;
   const step = st === 'playing' ? playhead.step : pos && st === 'paused' ? pos.step : -1;
   $('#scrStep').textContent = step >= 0 ? `${Math.floor(step / 16) + 1}.${Math.floor((step % 16) / 4) + 1}` : st === 'paused' ? 'II' : '—';
   $('#scrStep').classList.toggle('blink', st === 'paused');

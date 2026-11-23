@@ -21,12 +21,15 @@ export function startPosition(project, { fromBlock = 0, scene } = {}) {
     const block = clamp(fromBlock, 0, project.arrangement.length - 1);
     return { song: true, block, rep: 0, scene: blockScene(project, project.arrangement[block]), step: 0, fresh: true };
   }
-  return { song: false, block: 0, rep: 0, scene: scene ?? project.scene, step: 0, fresh: true };
+  const maxSc = Math.max(0, project.scenes.length - 1);
+  return { song: false, block: 0, rep: 0, scene: clamp(scene ?? project.scene, 0, maxSc), step: 0, fresh: true };
 }
 
 /** advance one step. Returns { pos, pendingUsed, sceneChanged } without mutating input. */
 export function advance(pos, project, pending = null) {
+  const maxSc = Math.max(0, project.scenes.length - 1);
   let { song, block, rep, scene, step } = pos;
+  scene = clamp(scene, 0, maxSc);
   step++;
   let pendingUsed = false, sceneChanged = false;
   const arr = project.arrangement, sceneOf = k => blockScene(project, arr[k]);
@@ -48,7 +51,9 @@ export function advance(pos, project, pending = null) {
     }
   } else {
     song = false;
-    if (pending != null && step % BAR === 0) { sceneChanged = pending !== scene; scene = pending; step = 0; pendingUsed = true; }
+    const validPending = pending != null && Number.isInteger(pending) && pending >= 0 && pending <= maxSc;
+    if (pending != null && !validPending) pendingUsed = true;
+    if (validPending && step % BAR === 0) { sceneChanged = pending !== scene; scene = pending; step = 0; pendingUsed = true; }
     else if (step >= LOOP_WRAP) step = 0;
   }
   return { pos: { song, block, rep, scene, step, fresh: sceneChanged }, pendingUsed, sceneChanged };

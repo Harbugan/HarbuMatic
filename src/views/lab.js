@@ -2,7 +2,7 @@
 
 import { store, typeOf, visibleSlots } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { NOTE, SCALES, SCENE_LETTERS, MOODS } from '../core/constants.js';
+import { NOTE, SCALES, MAX_SCENES, sceneLabel, MOODS } from '../core/constants.js';
 import { getInstrumentType } from '../core/instruments.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
@@ -10,6 +10,7 @@ import { Knob, Seg, Switch } from '../ui/controls.js';
 import { uniSVG, uniReact } from '../ui/characters.js';
 import { harmonyLabel } from '../music/harmony.js';
 import { occupancy } from './strip.js';
+import { renameSceneDialog, copySceneDialog, deleteSceneDialog } from './scene-dialogs.js';
 
 const MOOD_LABEL = { dreamy: 'Dreamy', bouncy: 'Bouncy', dark: 'Dark', weird: 'Weird' };
 
@@ -27,7 +28,7 @@ export function renderLab() {
   const p = store.project, L = p.lab, m = typeOf();
   const uni = h('div', { class: 'uni', id: 'uni', 'data-face': 'idle', title: 'UNI — keeper of happy accidents', html: uniSVG() });
   uni.onclick = () => uniReact(.3);
-  host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${SCENE_LETTERS[p.scene]}`))));
+  host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${sceneLabel(p.scene)}`))));
 
   if (m.capabilities.samples) { renderSamplerLab(host, p); host.scrollTop = scroll; return; }
   const gen = m.capabilities.generate;
@@ -89,7 +90,7 @@ function keyAndSnaps(host, p) {
     scSel.onchange = () => A.setKeyScale(p.key, scSel.value);
     body.append(h('div', { class: 'lab-row' }, keySel, scSel));
     const hm = p.scenes[p.scene].harmony;
-    body.append(h('div', { class: 'chords' }, h('span', { class: 'chords-l' }, `Scene ${SCENE_LETTERS[p.scene]} chords`), h('b', {}, hm ? harmonyLabel(p.key, p.scale, hm) : 'chosen on first Generate')));
+    body.append(h('div', { class: 'chords' }, h('span', { class: 'chords-l' }, `Scene ${sceneLabel(p.scene)} chords`), h('b', {}, hm ? harmonyLabel(p.key, p.scale, hm) : 'chosen on first Generate')));
     body.append(btn({ icon: ico('chords'), label: 'New chords', cls: 'lbtn', onClick: A.newChords }));
   }));
   host.append(...section('snaps', 'Snapshots', body => {
@@ -107,7 +108,7 @@ function keyAndSnaps(host, p) {
 }
 
 export function renderScenes() {
-  const host = $('#rScenes'); host.innerHTML = '';
+  const host = $('#rScenes'); const scroll = host.scrollTop; host.innerHTML = '';
   const p = store.project, tr = A.transport, pos = tr.position;
   const song = p.songMode && p.arrangement.length;
   host.append(h('p', { class: 'mini-hint' }, tr.playing ? (song ? 'Song mode is playing the arrangement — tap to edit a scene' : 'Tap a scene: it starts on the next bar') : 'Tap a scene to edit it'));
@@ -115,16 +116,31 @@ export function renderScenes() {
   p.scenes.forEach((sc, i) => {
     const dots = h('span', { class: 'dots' }, visibleSlots().map(s => { const d = h('i', { class: occupancy(s.id, i, 16).some(Boolean) ? 'on' : '' }); d.style.background = getInstrumentType(s.type).visual.dark; return d; }));
     const playing = tr.state !== 'stopped' && pos && pos.scene === i;
-    const b = h('button', { type: 'button', class: 'scene' + (p.scene === i ? ' cur' : '') + (playing ? ' playing' : '') + (tr.pending === i ? ' queued' : ''), 'aria-pressed': String(p.scene === i) },
-      h('span', { class: 'L' }, SCENE_LETTERS[i]), h('span', { class: 'nm' }, sc.name), dots);
+    const b = h('button', { type: 'button', class: 'scene' + (p.scene === i ? ' cur' : '') + (playing ? ' playing' : '') + (tr.pending === i ? ' queued' : ''), 'aria-pressed': String(p.scene === i), 'data-scene': i },
+      h('span', { class: 'L' }, sceneLabel(i)), h('span', { class: 'nm' }, sc.name), dots);
     b.onclick = () => A.selectScene(i);
     list.append(b);
   });
   host.append(list);
-  const next = (p.scene + 1) % p.scenes.length;
+  const atLimit = p.scenes.length >= MAX_SCENES, canMulti = p.scenes.length > 1;
+  const badge = sceneLabel(p.scene);
+  const newBtn = btn({ icon: ico('plus'), label: 'New scene', cls: 'lbtn', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : 'Create an empty scene', onClick: () => A.createScene() });
+  newBtn.dataset.testid = 'scene-new';
+  const dupBtn = btn({ icon: ico('dup'), label: `Duplicate ${badge}`, cls: 'lbtn', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : `Create an independent copy of scene ${badge}`, onClick: () => A.duplicateScene(p.scene) });
+  dupBtn.dataset.testid = 'scene-dup';
+  const renBtn = btn({ icon: ico('edit'), label: 'Rename', cls: 'lbtn', title: `Rename scene ${badge}`, onClick: () => renameSceneDialog(p.scene) });
+  renBtn.dataset.testid = 'scene-rename';
+  const copyBtn = btn({ icon: ico('remix'), label: 'Copy to…', cls: 'lbtn', disabled: !canMulti, title: canMulti ? `Copy scene ${badge} into another scene` : 'Create another scene first', onClick: () => copySceneDialog(p.scene) });
+  copyBtn.dataset.testid = 'scene-copy';
+  const delBtn = btn({ icon: ico('trash'), label: `Delete ${badge}`, cls: 'lbtn danger', disabled: !canMulti, title: canMulti ? `Delete scene ${badge}` : 'A song needs at least one scene', onClick: () => deleteSceneDialog(p.scene) });
+  delBtn.dataset.testid = 'scene-delete';
   host.append(h('div', { class: 'scene-actions' },
-    btn({ icon: ico('dup'), label: `Copy ${SCENE_LETTERS[p.scene]} → ${SCENE_LETTERS[next]}`, cls: 'lbtn', onClick: () => A.copyScene(p.scene, next) }),
+    newBtn,
+    dupBtn,
+    h('div', { class: 'scene-actions-row' }, renBtn, copyBtn),
+    delBtn,
     btn({ icon: ico('song'), label: 'Arrange song', cls: 'lbtn', onClick: () => A.setMode('arrange') })));
+  host.scrollTop = scroll;
 }
 
 export function renderRightTabs() {

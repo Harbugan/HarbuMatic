@@ -1,17 +1,18 @@
-// ARRANGE: Scene Library (reusable scenes A–F) → Song Arrangement (ordered scene instances).
+// ARRANGE: Dynamic Scene Library → Song Arrangement (ordered scene instances).
 // Direct manipulation: drag blocks to reorder; tap a block for its contextual actions
 // (move, repeat, duplicate, remove, edit, play from here) — the button fallback for drag.
 
 import { store, visibleSlots } from '../app/store.js';
 import * as A from '../app/actions.js';
-import { SCENE_LETTERS, MAX_REPS } from '../core/constants.js';
+import { MAX_REPS, MAX_SCENES, sceneLabel } from '../core/constants.js';
 import { getInstrumentType } from '../core/instruments.js';
 import { maxLen, sceneHasContent, blockScene } from '../core/project.js';
 import { $, $$, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
-import { Seg, promptDialog, confirmDialog } from '../ui/controls.js';
+import { Seg, confirmDialog } from '../ui/controls.js';
 import { harmonyLabel } from '../music/harmony.js';
 import { occupancy } from './strip.js';
+import { renameSceneDialog, copySceneDialog, deleteSceneDialog } from './scene-dialogs.js';
 
 function miniMap(sc, cells = 16) {
   return h('div', { class: 'map', 'aria-hidden': 'true' }, visibleSlots().map(s => h('div', {}, occupancy(s.id, sc, cells).map(o => { const c = h('i'); if (o) c.style.background = getInstrumentType(s.type).visual.dark; return c; }))));
@@ -21,7 +22,7 @@ const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStar
 export function renderArrange() {
   const host = $('#viewArr'); const scroll = host.scrollTop; host.innerHTML = '';
   const p = store.project, u = store.ui, arr = p.arrangement;
-  if (u.libSel == null) u.libSel = p.scene;
+  if (u.libSel == null || u.libSel < 0 || u.libSel >= p.scenes.length) u.libSel = p.scene;
   const totalSteps = arr.reduce((a, b) => a + maxLen(p, blockScene(p, b)) * b.reps, 0);
   host.append(h('div', { class: 'view-head' },
     h('div', { class: 'chip lav' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, 'ARRANGE'), h('span', { class: 'chip-scene' }, 'scenes → song')),
@@ -35,17 +36,17 @@ export function renderArrange() {
     h('span', { class: 'spacer' }),
     arr.length ? btn({ icon: ico('trash'), label: 'Clear song', cls: 'mini ghost', onClick: () => confirmDialog('Clear the song?', 'All blocks are removed from the arrangement. Your scenes stay untouched. (Undo can bring it back.)', 'Clear song', A.clearSong, { danger: true }) }) : null));
   const lane = h('div', { class: 'chain', id: 'chain' });
-  if (!arr.length) lane.append(h('div', { class: 'chain-empty' }, h('b', {}, 'Your song is empty'), h('span', {}, 'Pick a scene above and press “+ Add” — scenes can appear as many times as you like.')));
+  if (!arr.length) lane.append(h('div', { class: 'chain-empty' }, h('b', {}, 'Your song is empty'), h('span', {}, 'Pick a scene below and press “+ Add” — scenes can appear as many times as you like.')));
   const pos = A.transport.position;
   arr.forEach((b, k) => {
-    const bs = blockScene(p, b), sc = p.scenes[bs];
+    const bs = blockScene(p, b), sc = p.scenes[bs], badge = sceneLabel(bs);
     const now = A.transport.state !== 'stopped' && pos && pos.song && pos.block === k;
-    const el = h('div', { class: 'cblock' + (u.arrSel === b.id ? ' sel' : '') + (now ? ' now' : ''), 'data-id': b.id, 'data-k': k, role: 'button', tabindex: 0, 'aria-label': `Block ${k + 1}: scene ${SCENE_LETTERS[blockScene(p, b)]} ${sc.name}, ${b.reps} time${b.reps > 1 ? 's' : ''}` },
+    const el = h('div', { class: 'cblock' + (u.arrSel === b.id ? ' sel' : '') + (now ? ' now' : ''), 'data-id': b.id, 'data-k': k, role: 'button', tabindex: 0, 'aria-label': `Block ${k + 1}: scene ${badge} ${sc.name}, ${b.reps} time${b.reps > 1 ? 's' : ''}` },
       h('span', { class: 'grip', html: ico('grab') }),
-      h('span', { class: 'L' }, SCENE_LETTERS[blockScene(p, b)]),
+      h('span', { class: 'L' }, badge),
       h('small', {}, sc.name),
       b.reps > 1 ? h('span', { class: 'reps' }, `×${b.reps}`) : null,
-      miniMap(blockScene(p, b), 8));
+      miniMap(bs, 8));
     attachDrag(el, b.id);
     el.onkeydown = e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); u.arrSel = u.arrSel === b.id ? null : b.id; renderArrange(); }
@@ -54,8 +55,8 @@ export function renderArrange() {
     };
     lane.append(el);
   });
-  if (u.libSel != null) {
-    const add = h('button', { type: 'button', class: 'cblock add' }, h('span', { class: 'L', html: ico('plus') }), h('small', {}, `Add ${SCENE_LETTERS[u.libSel]}`));
+  if (u.libSel != null && p.scenes[u.libSel]) {
+    const add = h('button', { type: 'button', class: 'cblock add' }, h('span', { class: 'L', html: ico('plus') }), h('small', {}, `Add ${sceneLabel(u.libSel)}`));
     add.onclick = () => A.addToSong(u.libSel);
     lane.append(add);
   }
@@ -64,9 +65,9 @@ export function renderArrange() {
   // --- contextual actions for the selected block
   const k = arr.findIndex(b => b.id === u.arrSel);
   if (k >= 0) {
-    const b = arr[k];
+    const b = arr[k], bs = blockScene(p, b);
     host.append(h('div', { class: 'ctxbar', role: 'toolbar', 'aria-label': 'Block actions' },
-      h('span', { class: 'ctx-title' }, `Block ${k + 1} · ${SCENE_LETTERS[blockScene(p, b)]}`),
+      h('span', { class: 'ctx-title' }, `Block ${k + 1} · ${sceneLabel(bs)}`),
       btn({ icon: ico('left'), label: 'Move', cls: 'mini', disabled: k === 0, onClick: () => A.moveBlock(b.id, k - 1) }),
       btn({ icon: ico('right'), label: 'Move', cls: 'mini', disabled: k === arr.length - 1, onClick: () => A.moveBlock(b.id, k + 1) }),
       h('span', { class: 'reps-ctl' },
@@ -75,18 +76,48 @@ export function renderArrange() {
         btn({ icon: ico('plus'), label: '', cls: 'mini icon', title: 'More repeats', disabled: b.reps >= MAX_REPS, onClick: () => A.setReps(b.id, b.reps + 1) })),
       btn({ icon: ico('dup'), label: 'Duplicate', cls: 'mini', onClick: () => A.duplicateBlock(b.id) }),
       btn({ icon: ico('play'), label: 'Play from here', cls: 'mini', onClick: () => A.playFromBlock(b.id) }),
-      btn({ icon: ico('edit'), label: 'Edit scene', cls: 'mini', onClick: () => { A.selectScene(blockScene(p, b)); A.setMode('jam'); } }),
+      btn({ icon: ico('edit'), label: 'Edit scene', cls: 'mini', onClick: () => { A.selectScene(bs); A.setMode('jam'); } }),
       btn({ icon: ico('trash'), label: 'Remove', cls: 'mini danger', onClick: () => A.removeBlock(b.id) })));
   }
+
   // --- library
-  host.append(h('div', { class: 'arr-title' }, h('b', {}, 'Scene library'), h('span', { class: 'hint' }, 'Tap a scene to pick it · ▶ to hear it · + to add it to the song')));
+  const atLimit = p.scenes.length >= MAX_SCENES, canMulti = p.scenes.length > 1;
+  const newSceneBtn = btn({ icon: ico('plus'), label: 'New scene', cls: 'mini', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : 'Create an empty scene', onClick: () => A.createScene() });
+  newSceneBtn.dataset.testid = 'arr-scene-new';
+  host.append(h('div', { class: 'arr-title' },
+    h('b', {}, 'Scene library'),
+    h('span', { class: 'hint' }, `${p.scenes.length} scene${p.scenes.length === 1 ? '' : 's'} · tap to pick · ▶ to hear · + to add to song`),
+    h('span', { class: 'spacer' }),
+    newSceneBtn));
+
+  // --- contextual actions for the selected library scene
+  const selIdx = u.libSel, selScene = p.scenes[selIdx];
+  if (selScene) {
+    const selBadge = sceneLabel(selIdx);
+    const dupBtn = btn({ icon: ico('dup'), label: 'Duplicate', cls: 'mini', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : `Create an independent copy of scene ${selBadge}`, onClick: () => A.duplicateScene(selIdx) });
+    dupBtn.dataset.testid = 'arr-scene-dup';
+    const copyBtn = btn({ icon: ico('remix'), label: 'Copy to…', cls: 'mini', disabled: !canMulti, title: canMulti ? `Copy scene ${selBadge} into another scene` : 'Create another scene first', onClick: () => copySceneDialog(selIdx) });
+    copyBtn.dataset.testid = 'arr-scene-copy';
+    const renBtn = btn({ icon: ico('edit'), label: 'Rename', cls: 'mini', title: `Rename scene ${selBadge}`, onClick: () => renameSceneDialog(selIdx) });
+    renBtn.dataset.testid = 'arr-scene-rename';
+    const delBtn = btn({ icon: ico('trash'), label: 'Delete', cls: 'mini danger', disabled: !canMulti, title: canMulti ? `Delete scene ${selBadge}` : 'A song needs at least one scene', onClick: () => deleteSceneDialog(selIdx) });
+    delBtn.dataset.testid = 'arr-scene-delete';
+    host.append(h('div', { class: 'scene-bar', role: 'toolbar', 'aria-label': 'Scene actions' },
+      h('span', { class: 'ctx-title' }, `Scene ${selBadge} · ${selScene.name}`),
+      btn({ icon: ico('edit'), label: 'Edit', cls: 'mini', title: 'Open in JAM', onClick: () => { A.selectScene(selIdx); A.setMode('jam'); } }),
+      dupBtn,
+      copyBtn,
+      renBtn,
+      delBtn));
+  }
+
   const grid = h('div', { class: 'arr-scenes' });
   p.scenes.forEach((sc, i) => {
-    const has = sceneHasContent(p, i);
-    const tile = h('div', { class: 'atile' + (u.libSel === i ? ' sel' : '') + (p.scene === i ? ' cur' : '') + (has ? '' : ' empty'), role: 'button', tabindex: 0, 'aria-label': `Scene ${SCENE_LETTERS[i]} ${sc.name}` });
-    const rename = h('button', { type: 'button', class: 'ren', 'aria-label': `Rename scene ${SCENE_LETTERS[i]}`, html: ico('edit') });
-    rename.onclick = e => { e.stopPropagation(); promptDialog(`Rename scene ${SCENE_LETTERS[i]}`, sc.name, 'Rename', v => A.renameScene(i, v), { maxlength: 24 }); };
-    tile.append(h('div', { class: 'top' }, h('span', { class: 'L' }, SCENE_LETTERS[i]), h('span', { class: 'nm' }, sc.name), rename));
+    const has = sceneHasContent(p, i), badge = sceneLabel(i);
+    const tile = h('div', { class: 'atile' + (u.libSel === i ? ' sel' : '') + (p.scene === i ? ' cur' : '') + (has ? '' : ' empty'), role: 'button', tabindex: 0, 'data-scene': i, 'aria-label': `Scene ${badge} ${sc.name}` });
+    const rename = h('button', { type: 'button', class: 'ren', 'aria-label': `Rename scene ${badge}`, html: ico('edit') });
+    rename.onclick = e => { e.stopPropagation(); renameSceneDialog(i); };
+    tile.append(h('div', { class: 'top' }, h('span', { class: 'L' }, badge), h('span', { class: 'nm' }, sc.name), rename));
     tile.append(miniMap(i));
     tile.append(h('div', { class: 'meta' }, has ? `${maxLen(p, i) / 16} bar${maxLen(p, i) > 16 ? 's' : ''}${sc.harmony ? ' · ' + harmonyLabel(p.key, p.scale, sc.harmony) : ''}` : 'empty — tap Edit to start'));
     const playingHere = A.transport.playing && A.transport.position && !A.transport.position.song && A.transport.position.scene === i;

@@ -106,12 +106,12 @@ test('slot identity is independent of the instrument type', () => {
 test('several instances of one type are valid and independent', () => {
   const p = createEmptyProject();
   p.slots.push(createSlot('blip', nextSlotId(p), p.scenes.map(x => x.id)));
-  setPatternAt(p, 'slot-06', 2, { len: 16, notes: [{ s: 3, p: 72, l: 2, v: .5 }] });
+  setPatternAt(p, 'slot-06', 0, { len: 16, notes: [{ s: 3, p: 72, l: 2, v: .5 }] });
   slotById(p, 'slot-06').params.cutoff = .9;
   const v = importProject(JSON.parse(JSON.stringify(p)));
   assert.deepEqual(v.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch', 'blip']);
-  assert.equal(patternAt(v, 'slot-06', 2).notes[0].p, 72);
-  assert.equal(patternAt(v, 'slot-03', 2).notes.length, 0);
+  assert.equal(patternAt(v, 'slot-06', 0).notes[0].p, 72);
+  assert.equal(patternAt(v, 'slot-03', 0).notes.length, 0);
   assert.equal(slotById(v, 'slot-06').params.cutoff, .9);
   assert.equal(slotById(v, 'slot-03').params.cutoff, .5);
 });
@@ -165,6 +165,8 @@ test('Generate and friends produce exactly the v0.5.1 results through the slot/r
     const { mood, seed } = g;
     const rng = createRng(seed * 31 + mood.length);
     const pr = createEmptyProject({ key: seed + 2, scale: ['minor', 'dorian', 'major'][seed - 1], mood });
+    pr.scenes.push({ id: 'scene-02', name: 'Scene 2', harmony: null });
+    pr.slots.forEach(s => { s.patterns['scene-02'] = createPatternFor(s.type); });
     Object.assign(pr.lab, { mood, chaos: seed / 4, density: .3 + seed / 6 });
     for (const t of LEGACY_TRACKS) {
       const id = roleSlot(pr, t);
