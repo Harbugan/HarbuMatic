@@ -22,7 +22,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### BUG-001 — BOP sequencer becomes unusable after tapping a drum label
 - **Type:** Bug
 - **Priority:** P1 — High
-- **Status:** Ready for Test (fixed in v0.5.1)
+- **Status:** Resolved — user-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** Clicking/tapping the drum names or rows on the left side of BOP's sequencer makes the sequencer stop responding to subsequent editing.
 - **Reproduction (reported):** Open JAM → select BOP → tap a drum label on the left side of the sequencer → attempt to edit steps.
@@ -36,7 +36,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### BUG-002 — Inconsistent button/text alignment
 - **Type:** UI polish
 - **Priority:** P3 — Low
-- **Status:** Ready for Test (fixed in v0.5.1)
+- **Status:** Resolved — user-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** Some buttons and text labels appear misaligned in different areas of the interface.
 - **Reproduction:** Visually inspect JAM, SOUND, and ARRANGE at tablet landscape and desktop viewport sizes; capture exact instances.
@@ -52,7 +52,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### BUG-003 — Knob shadow rotates with the dial
 - **Type:** Visual component bug
 - **Priority:** P2 — Medium
-- **Status:** Ready for Test (fixed in v0.5.1)
+- **Status:** Resolved — user-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** The knob's shadow/highlight rotates together with the knob when its value changes, making the physical lighting look incorrect.
 - **Reproduction:** Adjust any affected rotary knob and watch its shading.
@@ -66,7 +66,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### BUG-004 — ARRANGE navigation header differs from JAM and SOUND
 - **Type:** UX consistency bug
 - **Priority:** P2 — Medium
-- **Status:** Ready for Test (fixed in v0.5.1)
+- **Status:** Resolved — user-verified on physical iPad (2026-11-23)
 - **Reported in:** v0.5
 - **Observed:** Switching to ARRANGE changes the top navigation/header composition instead of keeping the same persistent app shell as JAM and SOUND.
 - **Reproduction:** Switch between JAM, SOUND, and ARRANGE and compare the top region.
@@ -125,17 +125,17 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - **Remaining limitations:** Typical WSOLA phasiness near ×0.5 or ×2 on sustained rich material. On pure sustained tones, the 5 ms join before a slice marker can dip about 3 dB. Until a re-render after a BPM change finishes, a small residual pitch is audible. Not yet listened to on an iPad.
 - **Physical-device verification:** **not tested**.
 
-### ENH-001 — Expand Scene Library beyond six scenes
+### ENH-001 — Dynamic Scene Library: start with one, grow as needed
 - **Type:** Enhancement (not a bug)
 - **Priority:** P3 — Low / product review
-- **Status:** Planned for v0.9 (not part of v0.5.1)
+- **Status:** Planned for v0.6.1 (not part of v0.5.1)
 - **Reported in:** v0.5
 - **Observed:** The Scene Library is limited to six scenes.
-- **Desired:** Let users add more scenes when needed, without overwhelming the tablet UI.
+- **Desired:** New projects start with one scene. Add empty scenes as needed; duplicate a scene including its patterns and scene-local content; copy content into another scene with overwrite confirmation; rename, reorder and delete scenes (never the last). Preserve existing projects and arrangement references.
 - **Design questions:** Dynamic scene creation/removal? Practical upper limit? Scene duplication? How to display and navigate larger libraries?
 - **Technical considerations:** Review fixed-size assumptions across scene IDs, pattern storage, song chains, rendering, serialization, migrations, and scene switching.
 - **Acceptance (provisional):** Users can create, select, rename, duplicate, arrange, and persist additional scenes beyond the original six; existing projects remain compatible.
-- **Decision:** Scheduled for v0.9 Expand & Finish. v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
+- **Decision:** Scheduled for v0.6.1 Expand & Finish. v0.6 .hbn project schema must support variable scene counts and migration, without requiring the expanded UI in v0.6. Excluded from v0.5.1.
 
 ## v0.5.1 proposed scope
 
@@ -148,18 +148,18 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 
 | ID | Tested version | Device / browser | Result | Notes |
 | --- | --- | --- | --- | --- |
-| BUG-001 | 0.5.1 | Headless Chromium (Playwright), touch emulation + mouse, 1180×820 | Pass (automated) | Reproduced on 0.5.0 first. iPad Safari: **not tested** |
-| BUG-002 | 0.5.1 | Headless Chromium, 7 viewports (1024×768 … 768×1024) | Pass (automated + screenshots) | iPad Safari: **not tested** |
-| BUG-003 | 0.5.1 | Headless Chromium, mouse drag | Pass (automated + screenshots) | Touch feel on iPad: **not tested** |
-| BUG-004 | 0.5.1 | Headless Chromium, 7 viewports | Pass (automated) | iPad Safari: **not tested** |
-| ENH-001 | — | — | Not implemented | Planned for v0.9 |
+| BUG-001 | 0.5.1 | Headless Chromium (Playwright), touch emulation + mouse, 1180×820 | Pass (automated) | Reproduced on 0.5.0 first. Owner confirms physical iPad acceptance (2026-11-23) |
+| BUG-002 | 0.5.1 | Headless Chromium, 7 viewports (1024×768 … 768×1024) | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
+| BUG-003 | 0.5.1 | Headless Chromium, mouse drag | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
+| BUG-004 | 0.5.1 | Headless Chromium, 7 viewports | Pass (automated) | Owner confirms physical iPad acceptance (2026-11-23) |
+| ENH-001 | — | — | Not implemented | Planned for v0.6.1 |
 | MUNCH-1 | 0.5.1 + stabilization | Node (fake WebKit env) + headless Chromium with emulated iPad Audio Session | Pass (automated) | Reproduced first (InvalidStateError under `playback`). iPad: **not tested** |
 | MUNCH-2 | 0.5.1 + stabilization | Node (failure injection) + headless Chromium IndexedDB | Pass (automated) | Root cause unconfirmed. iPad: **not tested** |
 | MUNCH-3 | 0.5.1 + stabilization | Node (fake Web Audio) + headless Chromium | Pass (automated) | Stop-while-stopped reproduced in code. iPad: **not tested** |
 | MUNCH-4 | 0.5.1 + stabilization | Node (DSP + fake Web Audio) + headless Chromium (Worker) | Pass (automated) | Not listened to on an iPad: **not tested** |
 
 ### Known remaining issues (v0.5.1)
-- No fix has been verified on a physical iPad or in desktop Safari. Statuses stay *Ready for Test* until that is done.
+- BUG-001…004 accepted by the owner after physical iPad testing on 2026-11-23. Remaining minor visual/UX polish is deferred to v0.6.1; no claim of a separate desktop Safari verification.
 - More stylesheet-order dead rules exist in `styles/layout.css` and were left untouched, because enabling them changes the design and needs sign-off: bigger cats on large screens (`min-height: 900px`) and smaller cats and UNI on short landscape screens (`max-height: 760px`).
 - Deep edit still compacts the strip under the header. This is intentional; it is a JAM sub-mode, not a mode switch.
 - At short landscape heights (e.g. 1180×740) the ARRANGE scene library needs a little scrolling, because the strip no longer collapses there.
