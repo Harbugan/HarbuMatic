@@ -112,7 +112,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 ## v0.6.1 — Dynamic Scenes & Playability
 
-**Implementation progress (2026-11-23):** Quick Volume & card alignment (PR #15) merged and user-verified on iPad. Five instruments by default (PR #16) merged and user-tested. Dynamic Scene Library (PR #18) merged: one empty scene for new projects, create/duplicate/rename/edit/copy-to/delete/reorder, maximum 64 scenes, dynamic labels, scene-local pattern/harmony deep-copy, Undo/Redo and `.hbn` round-trip. PR #18 reports 266/266 unit tests passing and a separate headless Chrome UI flow passing; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in that PR environment. Physical iPad verification of Dynamic Scenes has not been separately reported. Remaining v0.6.1 work: iPad UX/preset review, compact top exploration and musical playability polish; scope each as separate tasks.
+**Implementation progress (2026-11-23):** Quick Volume & card alignment (PR #15) merged and user-verified on iPad. Five instruments by default (PR #16) merged and user-tested. Dynamic Scene Library (PR #18) merged: one empty scene for new projects, create/duplicate/rename/edit/copy-to/delete/reorder, maximum 64 scenes, dynamic labels, scene-local pattern/harmony deep-copy, Undo/Redo and `.hbn` round-trip. PR #18 reports 266/266 unit tests passing and a separate headless Chrome UI flow passing; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in that PR environment. Physical iPad verification of Dynamic Scenes confirmed by the owner on 2026-11-23. Remaining v0.6.1 work: iPad UX/preset review, compact top exploration and musical playability polish; scope each as separate tasks.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
@@ -136,7 +136,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 - Polish character, microinteractions and visual consistency only where they improve playability.
 - Run physical iPad Safari checks and regression tests for transport, timing, sequencer, scenes, projects, sampling and export.
 
-**Dynamic Scene Library (ENH-001) implemented and merged in PR #18:** new projects start with one empty scene; create, duplicate, copy to (overwrite confirmation), rename, edit, reorder and delete (last scene protected), up to 64 scenes. Duplicate deep-copies all five scene patterns and scene harmony; global instrument sound parameters and FX remain shared. Scene mutations reconcile transport and arrangement references, support Undo/Redo and current-version `.hbn` round-trip. Automated unit and separate headless Chrome UI checks passed; physical iPad acceptance remains to be recorded.
+**Dynamic Scene Library (ENH-001) implemented and merged in PR #18:** new projects start with one empty scene; create, duplicate, copy to (overwrite confirmation), rename, edit, reorder and delete (last scene protected), up to 64 scenes. Duplicate deep-copies all five scene patterns and scene harmony; global instrument sound parameters and FX remain shared. Scene mutations reconcile transport and arrangement references, support Undo/Redo and current-version `.hbn` round-trip. Automated unit and separate headless Chrome UI checks passed; physical iPad acceptance confirmed by the owner on 2026-11-23.
 
 **Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
 
@@ -229,7 +229,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
-| Dynamic Scene Library (ENH-001) in v0.6.1 | **Implemented and merged PR #18; physical iPad acceptance not yet documented** |
+| Dynamic Scene Library (ENH-001) in v0.6.1 | **Implemented, merged PR #18 and owner-verified on physical iPad (2026-11-23)** |
 | v0.6 .hbn schema supports variable scene counts ahead of the v0.6.1 UI | **Decided architectural requirement** |
 | Song WAV Export deferred to v0.9; not a v0.6 blocker | **Decided 2026-11-23** |
 | BUG-001…004 verified and accepted on physical iPad; minor remaining polish deferred to v0.6.1 | **User-confirmed 2026-11-23** |
