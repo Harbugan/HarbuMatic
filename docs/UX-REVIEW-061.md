@@ -1,5 +1,5 @@
 # v0.6.1 — iPad UX Review & Polish Plan
-Captured 2026-11-23; updated 2026-11-24. This document tracks decisions and scope. HBM-061-04 is owner-authorized for implementation via its task contract; other proposed items remain planning only.
+Captured 2026-11-23; updated 2026-11-24. This document tracks decisions and scope. HBM-061-04 is merged and owner-accepted. HBM-061-05 (UX-14/15) is the next owner-authorized task; other proposed items remain planning only.
 
 ## Status legend
 DECIDED = owner-approved direction; OBSERVED = owner screenshot/feedback; PROPOSED = design hypothesis; OPEN = needs technical/product decision; DONE = merged and owner-verified.
@@ -34,16 +34,26 @@ DECIDED: Play first, tweak forever. Retain existing kawaii hardware visual ident
 ## Mode-specific workspace decision
 JAM keeps sequencer + Lab + bottom Sound Shapers/FX. SOUND and ARRANGE reclaim the bottom strip's vertical space for their own workspaces. MUNCH is a SOUND workspace: retain empty/PLAY/TWIST patterns; focus on CHOP layout and local preview. No-scroll-by-default applies to typical content, not arbitrarily large projects.
 
-## Implementation sequence and authorization
-1. **HBM-061-03 / PR #21 — UX-01..04:** merged status to be checked against GitHub; owner reported all 16/16 physical iPad checks PASS on 2026-11-24. UX-02 release-version bump remains separate.
-2. **HBM-061-04 — AUTHORIZED, next implementation PR:** SOUND workspace UX-07, ARRANGE workspace UX-08, responsive verification UX-16 and Deep Edit toolbar stability UX-17. Improve use of width/height, keep SOUND presets and relevant knobs visible on typical 11/13-inch landscape iPads without routine scrolling; make ARRANGE scenes/song/actions more visible; keep Lab/Clear/Done stable across BOP, GOO, BLIP, FUZZ and MUNCH. Preserve MUNCH empty/PLAY/TWIST and existing audio, transport, scene actions, project save/reopen and touch sizes. One focused PR; no automatic merge; physical iPad acceptance required. **No collapsible header/top redesign, no CHOP local preview, no musical behavior changes, no version bump.**
-3. **Later, separate decision/task:** UX-05 collapsible/compact top, UX-06 broader JAM chrome and UX-09 preset discoverability/feedback. These are not authorized by HBM-061-04.
-4. **Later:** MUNCH CHOP UX-14..15, first inspect scheduler and transport; then musical playability UX-10 and final polish.
+## Agreed implementation sequence — 2026-11-24
+One task → one PR → physical iPad test → owner approval → merge. Do not bundle stages.
 
-### HBM-061-04 implementation pointers (verified against main, 2026-11-24)
-- `src/views/jam.js` `renderJamBar()` builds variable tool groups; `styles/views.css` `.toolbar` currently uses wrapping flex layout. This is a likely cause of UX-17, not a confirmed diagnosis; verify before changing.
-- `src/views/sound.js` `renderSound()`, `src/views/arrange.js` `renderArrange()`, `styles/views.css` and `styles/layout.css` contain relevant workspaces and responsive rules. Check live checkout and existing tests.
-- Use the agreed HBM-061-04 Task Contract as implementation scope; `AGENTS.md` and `docs/agent/WORKFLOW.md` govern execution. Test `npm test`, `npm run test:ui`, `npm run test:baseline` where available; report NOT RUN honestly. Include before/after screenshots and iPad Safari/PWA checks.
+1. **DONE:** HBM-061-03 / PR #21 (UX-01..04) and HBM-061-04 / PR #23 (UX-07,08,16,17) merged; owner accepted physical iPad testing on 2026-11-24. UX-02 release-version bump remains separate.
+2. **NEXT / AUTHORIZED: HBM-061-05 — MUNCH CHOP UX-14/15.** Preserve waveform editing, all eight pads, slice sequencer and MAGIC CHOP simultaneously on typical 11/13-inch landscape iPads without routine scrolling. Add dedicated local Play/Stop that loops only the current MUNCH slice pattern from step 1 at project BPM, with playhead and live step-edit response. Must not start global transport/song. Investigate existing engine/scheduler and determine safe behavior if global playback is already active; stop and escalate if a product choice is required. Preserve all other MUNCH modes and existing note/voice/Stop semantics. One PR, no automatic merge; physical iPad verification required.
+3. **AFTER HBM-061-05: Live Pattern Recording.** Play live pads/keyboard and record editable sequencer events, not sample audio. Design quantization, overdub, undo and transport semantics in its own task before implementation.
+4. **THEN: Preset UX + Musical Playability (UX-09/10).** Review preset discoverability/audition and musical usefulness of creative actions; split into focused PRs if necessary.
+5. **LAST: Compact Top (UX-05) + final v0.6.1 QA.** Explore compact/collapsible header as a separate design decision, run regression and physical iPad release checks, and handle release-version bump separately.
+
+### HBM-061-05 verified entry points (main, 2026-11-24)
+- `src/views/munch.js`: `chop()` composes tools, pads, MAGIC CHOP and `sequencer()`; `bindPad()` handles live pad presses; `munchStep()` displays existing global playhead.
+- `src/views/munch-wave.js`: waveform, slice markers and touch editing.
+- `src/audio/scheduler.js`: `createTransport()` handles global song/scene transport and schedules instrument events. Reuse established scheduling/audio boundaries; do not assume a local preview transport already exists.
+- `styles/views.css`: MUNCH CHOP responsive layout rules. Inspect actual selectors and test coverage locally before changes.
+
+### Open technical decisions for HBM-061-05
+- Local preview behavior during global playback (prevent double MUNCH); preview stop and voice-release semantics.
+- Local preview step scheduling and live-edit consistency without a parallel audio engine.
+- Fallback layout on short landscape and portrait; no hidden essential actions or tiny touch targets.
+- Escalate unresolved musical behavior instead of silently choosing a new global-transport policy.
 
 ## Verification and open decisions
 - Separate decided, implemented, automated-tested and owner-verified status.
