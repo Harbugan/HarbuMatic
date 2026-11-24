@@ -270,6 +270,7 @@ body.coarse .preset { min-height: var(--tap); }
 .mw-char[data-face=listen] .eyes { display: none; } .mw-char[data-face=listen] .f-listen { display: inline; }
 
 /* the workspace takes the whole centre: the side panel becomes a drawer, the bottom bar steps aside */
+.device.munch { grid-template-rows: auto auto minmax(0, 1fr); }
 .device.munch .main { grid-template-columns: minmax(0, 1fr); }
 .device.munch .bottom { display: none; }
 .device.munch .right {
@@ -436,7 +437,7 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-styles { display: flex; gap: 4px; }
 .mw-style { border: 0; flex: 1 1 0; min-width: 0; min-height: 38px; padding: 0 4px; border-radius: 11px; background: #ffffffb0; font-weight: 900; font-size: 12px; color: #7a6a52; cursor: pointer; }
 .mw-style.on { background: #fff; color: var(--navy); box-shadow: 0 2px 0 var(--mw-yel-d); }
-.mw-seq { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; }
+.mw-seq { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; }
 .mw-seqhead { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; min-width: 0; }
 .mw-preview { --btn-edge: var(--mw-mint-d); flex: none; min-width: 88px; min-height: 40px; padding: 0 11px; gap: 5px; font-size: 13px; letter-spacing: .5px;
   background: linear-gradient(180deg, #effcf7, var(--mw-mint)); color: var(--navy); }
@@ -531,13 +532,21 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
   .mw-char.big { width: 150px; height: 136px; }
   .mw-big { min-height: 84px; }
 }
-/* lower landscape screens (1024×768, 1180×740 Safari with toolbars): slightly lower display & pads so all 8 sequencer rows fit with zero clipping */
-@media (max-height: 772px) and (orientation: landscape) {
-  .mw-wave { height: 86px; padding: 4px 6px; }
-  .mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 82px; }
+/* lower landscape screens (1024×768, 1180×740 Safari with toolbars, 11" Safari compact bar): compact header/wave so all 8 sequencer rows and row 8's bottom edge fit cleanly */
+@media (max-height: 800px) and (orientation: landscape) {
+  .mw-head { min-height: 44px; }
+  .mw-char.small { width: 48px; height: 42px; }
+  .mw-tabs { padding: 2px; }
+  .mw-tab { min-height: 40px; }
+  .mw-fit { padding: 2px 4px 2px 8px; }
+  .mw-fit button { min-height: 38px; }
+  .mw[data-tab=chop] { gap: 4px; }
+  .mw-wave { height: 80px; padding: 3px 6px; }
+  .mw-zooms { gap: 2px; }
+  .mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 82px; padding: 4px 6px; }
   .mw-pad { min-height: 48px; }
   .mw-magic-go { min-height: 42px; font-size: 15px; }
-  .mw-seq { padding: 4px 6px; gap: 4px; }
+  .mw-seq { padding: 4px 6px 5px; gap: 4px; }
 }
 /* very short landscape (≈700 px): the workspace scrolls rather than squeezing touch targets */
 @media (max-height: 715px) and (orientation: landscape) {
