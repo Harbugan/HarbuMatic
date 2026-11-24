@@ -24,17 +24,18 @@ export function renderArrange() {
   const p = store.project, u = store.ui, arr = p.arrangement;
   if (u.libSel == null || u.libSel < 0 || u.libSel >= p.scenes.length) u.libSel = p.scene;
   const totalSteps = arr.reduce((a, b) => a + maxLen(p, blockScene(p, b)) * b.reps, 0);
-  host.append(h('div', { class: 'view-head' },
+  host.append(h('div', { class: 'view-head arr-head' },
     h('div', { class: 'chip lav' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, 'ARRANGE'), h('span', { class: 'chip-scene' }, 'scenes → song')),
+    h('div', { class: 'arr-meta' },
+      h('b', {}, 'Song'),
+      h('span', { class: 'hint' }, arr.length ? `${arr.length} block${arr.length > 1 ? 's' : ''} · ${totalSteps / 16} bars · ${fmtTime(totalSteps * A.engine.stepDur())} · drag to reorder, tap for options` : 'empty')),
     h('span', { class: 'spacer' }),
-    h('span', { class: 'glbl' }, 'Play'),
-    Seg([[false, 'Loop scene'], [true, 'Whole song', !arr.length]], !!p.songMode && arr.length > 0, v => A.setSongMode(v), { label: 'Playback mode' })));
+    arr.length ? btn({ icon: ico('trash'), label: 'Clear song', cls: 'mini ghost', onClick: () => confirmDialog('Clear the song?', 'All blocks are removed from the arrangement. Your scenes stay untouched. (Undo can bring it back.)', 'Clear song', A.clearSong, { danger: true }) }) : null,
+    h('div', { class: 'arr-play' },
+      h('span', { class: 'glbl' }, 'Play'),
+      Seg([[false, 'Loop scene'], [true, 'Whole song', !arr.length]], !!p.songMode && arr.length > 0, v => A.setSongMode(v), { label: 'Playback mode' }))));
 
   // --- song lane
-  host.append(h('div', { class: 'arr-title' }, h('b', {}, 'Song'),
-    h('span', { class: 'hint' }, arr.length ? `${arr.length} block${arr.length > 1 ? 's' : ''} · ${totalSteps / 16} bars · ${fmtTime(totalSteps * A.engine.stepDur())} · drag to reorder, tap for options` : ''),
-    h('span', { class: 'spacer' }),
-    arr.length ? btn({ icon: ico('trash'), label: 'Clear song', cls: 'mini ghost', onClick: () => confirmDialog('Clear the song?', 'All blocks are removed from the arrangement. Your scenes stay untouched. (Undo can bring it back.)', 'Clear song', A.clearSong, { danger: true }) }) : null));
   const lane = h('div', { class: 'chain', id: 'chain' });
   if (!arr.length) lane.append(h('div', { class: 'chain-empty' }, h('b', {}, 'Your song is empty'), h('span', {}, 'Pick a scene below and press “+ Add” — scenes can appear as many times as you like.')));
   const pos = A.transport.position;
@@ -80,18 +81,16 @@ export function renderArrange() {
       btn({ icon: ico('trash'), label: 'Remove', cls: 'mini danger', onClick: () => A.removeBlock(b.id) })));
   }
 
-  // --- library
+  // --- scene library header + contextual actions for the selected scene
   const atLimit = p.scenes.length >= MAX_SCENES, canMulti = p.scenes.length > 1;
   const newSceneBtn = btn({ icon: ico('plus'), label: 'New scene', cls: 'mini', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : 'Create an empty scene', onClick: () => A.createScene() });
   newSceneBtn.dataset.testid = 'arr-scene-new';
-  host.append(h('div', { class: 'arr-title' },
-    h('b', {}, 'Scene library'),
-    h('span', { class: 'hint' }, `${p.scenes.length} scene${p.scenes.length === 1 ? '' : 's'} · tap to pick · ▶ to hear · + to add to song`),
-    h('span', { class: 'spacer' }),
-    newSceneBtn));
-
-  // --- contextual actions for the selected library scene
   const selIdx = u.libSel, selScene = p.scenes[selIdx];
+  const libBar = h('div', { class: 'scene-bar arr-lib-bar', role: 'toolbar', 'aria-label': 'Scene actions' },
+    h('div', { class: 'arr-lib-id' },
+      h('b', {}, 'Scenes'),
+      h('span', { class: 'arr-count' }, String(p.scenes.length)),
+      selScene ? h('span', { class: 'ctx-title' }, `${sceneLabel(selIdx)} · ${selScene.name}`) : null));
   if (selScene) {
     const selBadge = sceneLabel(selIdx);
     const dupBtn = btn({ icon: ico('dup'), label: 'Duplicate', cls: 'mini', disabled: atLimit, title: atLimit ? `Up to ${MAX_SCENES} scenes per song` : `Create an independent copy of scene ${selBadge}`, onClick: () => A.duplicateScene(selIdx) });
@@ -102,14 +101,15 @@ export function renderArrange() {
     renBtn.dataset.testid = 'arr-scene-rename';
     const delBtn = btn({ icon: ico('trash'), label: 'Delete', cls: 'mini danger', disabled: !canMulti, title: canMulti ? `Delete scene ${selBadge}` : 'A song needs at least one scene', onClick: () => deleteSceneDialog(selIdx) });
     delBtn.dataset.testid = 'arr-scene-delete';
-    host.append(h('div', { class: 'scene-bar', role: 'toolbar', 'aria-label': 'Scene actions' },
-      h('span', { class: 'ctx-title' }, `Scene ${selBadge} · ${selScene.name}`),
+    libBar.append(h('div', { class: 'arr-lib-acts' },
       btn({ icon: ico('edit'), label: 'Edit', cls: 'mini', title: 'Open in JAM', onClick: () => { A.selectScene(selIdx); A.setMode('jam'); } }),
       dupBtn,
       copyBtn,
       renBtn,
       delBtn));
   }
+  libBar.append(h('span', { class: 'spacer' }), newSceneBtn);
+  host.append(libBar);
 
   const grid = h('div', { class: 'arr-scenes' });
   p.scenes.forEach((sc, i) => {

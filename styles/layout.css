@@ -50,6 +50,7 @@
 .bottom { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--gap); }
 
 /* ---------- mode specific ---------- */
+.device[data-mode="sound"] .bottom { display: none; }
 .device[data-mode="arrange"] .main { grid-template-columns: minmax(0, 1fr); }
 .device[data-mode="arrange"] .right,
 .device[data-mode="arrange"] .bottom { display: none; }
@@ -138,7 +139,7 @@
   body { overflow: auto; }
   .device { height: auto; min-height: 100dvh; }
   .center { min-height: 420px; }
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cards, .cards[data-count="5"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bottom { grid-template-columns: minmax(0, 1fr); }
   .mode span { display: none; }
   .transport { grid-template-columns: 1fr 1fr; grid-template-rows: 50px 44px; }

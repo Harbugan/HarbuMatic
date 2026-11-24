@@ -58,34 +58,51 @@ export const PRESETS = {
   fuzz: { 'Cloud': { tone: .45, noise: .35, crush: .1, shimmer: .35, attack: .6, release: 1.4 }, 'Static Rain': { tone: .75, noise: .85, crush: .3, shimmer: .6, attack: .1, release: .8 }, 'Bitmoth': { tone: .6, noise: .3, crush: .75, shimmer: .8, attack: .05, release: .5 } },
 };
 
+const FX_TOGGLE_KEYS = new Set(['drive', 'delay', 'reverb']);
+
 let soundKnobs = [];
+let soundSwitches = [];
 export function renderSound() {
-  const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = [];
+  const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = []; soundSwitches = [];
   if (isSamplerSlot()) { renderMunch(host); host.scrollTop = scroll; return; } // MUNCH has its own workspace
   const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type;
   const hear = () => A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch'));
-  host.append(h('div', { class: 'view-head' }, h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, 'Sound design')), h('span', { class: 'spacer' }), h('span', { class: 'hint' }, 'Sound shapers below steer these same knobs')));
   const pr = h('div', { class: 'presets' }, h('span', { class: 'sect' }, 'Presets'));
   Object.entries(PRESETS[type] || {}).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
-  host.append(pr);
-  const groups = h('div', { class: 'sgroups' });
+  host.append(h('div', { class: 'view-head sound-head' },
+    h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, 'Sound design')),
+    pr));
+  const groups = h('div', { class: 'sgroups sound-grid', 'data-inst': type });
   [...(SOUNDDEF[type] || []), ...COMMON].forEach(([title, defs]) => {
     const row = h('div', { class: 'row' });
     defs.forEach(d => {
       if (d.seg) { row.append(h('div', { class: 'wave-pick' }, Seg(d.seg, p[d.k], v => { A.checkpoint(); p[d.k] = v; A.engine.applyParams(sel); A.save(); hear(); }), h('div', { class: 'klbl' }, (d.label || d.k.replace('wave', 'osc ')).toUpperCase()))); return; }
       const kn = Knob({ label: d.l, min: d.min ?? 0, max: d.max ?? 1, step: d.step || 0, value: p[d.k], def: m.defaultParams[d.k], fmt: d.fmt || pct, onChange: v => A.setParam(sel, d.k, v), onEnd: A.sealHistory });
-      kn.k = d.k; soundKnobs.push(kn); row.append(kn.el);
+      kn.k = d.k; soundKnobs.push(kn);
+      if (title === 'Channel' && FX_TOGGLE_KEYS.has(d.k)) {
+        const onKey = d.k + 'On', on = !!p[onKey];
+        const sw = h('button', { type: 'button', class: 'fx-sw' + (on ? ' on' : ''), 'data-fx': d.k, 'aria-pressed': String(on), 'aria-label': `${d.l} on or off` }, h('i'), 'On');
+        sw.onclick = () => A.toggleParam(sel, onKey);
+        soundSwitches.push({ k: onKey, el: sw });
+        row.append(h('div', { class: 'fx-ctl' }, kn.el, sw));
+        return;
+      }
+      row.append(kn.el);
     });
-    groups.append(h('div', { class: 'sgroup' }, h('h4', {}, title), row));
+    groups.append(h('div', { class: 'sgroup', 'data-group': title.toLowerCase().replace(/[^a-z0-9]+/g, '-') }, h('h4', {}, title), row));
   });
   const fx = store.project.fx, frow = h('div', { class: 'row' });
   const gk = (l, k, min, max) => Knob({ label: l, min, max, value: fx[k], def: { fb: .4, dtone: .5, rev: .9, master: .85 }[k], fmt: pct, onChange: v => A.setFx(k, v), onEnd: A.sealHistory }).el;
   const swing = Knob({ label: 'Swing', max: .5, value: store.project.swing, def: .08, color: '#9A82DD', fmt: pct, onChange: v => A.setSwing(v), onEnd: A.sealHistory });
   soundKnobs.push(Object.assign(swing, { k: '__swing' }));
   frow.append(swing.el, gk('Echo fdbk', 'fb', 0, .85), gk('Echo tone', 'dtone', 0, 1), gk('Room level', 'rev', 0, 1.2), gk('Master', 'master', 0, 1));
-  groups.append(h('div', { class: 'sgroup wide' }, h('h4', {}, 'Groove + shared FX · all instruments'), frow));
+  groups.append(h('div', { class: 'sgroup wide', 'data-group': 'shared-fx' }, h('h4', {}, 'Groove + shared FX · all instruments'), frow));
   host.append(groups);
   host.scrollTop = scroll;
 }
-export function refreshSoundKnobs() { const p = P(store.ui.sel); soundKnobs.forEach(k => k.set(k.k === '__swing' ? store.project.swing : p[k.k])); }
+export function refreshSoundKnobs() {
+  const p = P(store.ui.sel);
+  soundKnobs.forEach(k => k.set(k.k === '__swing' ? store.project.swing : p[k.k]));
+  soundSwitches.forEach(s => { const on = !!p[s.k]; s.el.classList.toggle('on', on); s.el.setAttribute('aria-pressed', String(on)); });
+}
 setMunchRerender(() => renderSound());

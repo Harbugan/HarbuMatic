@@ -906,6 +906,134 @@ async function rollPoint(page, step, rowOrPitch) {
     ok(!errs.length, `no errors during the upgrade${errs.length ? ' — ' + errs[0] : ''}`);
     await ctx2.close();
   }
+  console.log('\n— HBM-061-04: Responsive SOUND, ARRANGE & Deep Edit toolbar stability —');
+  {
+    const HBM_SIZES = [[1180, 820], [1194, 834], [1366, 1024], [1180, 740], [1024, 768], [820, 1180], [768, 1024], [640, 900]];
+    const NO_SCROLL_LANDSCAPE = new Set(['1180×820', '1194×834', '1366×1024', '1180×740']);
+    const SLOTS = ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'];
+
+    for (const [w, h] of HBM_SIZES) {
+      const tag = `${w}×${h}`;
+      const { ctx: c, page: pg, errors: errs } = await open(browser, w, h);
+      await pg.evaluate(() => window.__harbu.A.stop());
+
+      // 1. Deep Edit toolbar stability across BOP, GOO, BLIP, FUZZ, MUNCH (including a long scene name)
+      await pg.evaluate(() => {
+        const { A, store } = window.__harbu;
+        store.project.scenes[store.project.scene].name = 'Super Long Breakdown Section';
+        A.selectSlot('slot-05'); A.setMode('jam'); A.selectSlot('slot-01'); A.setExpanded(true);
+      });
+      await pg.waitForTimeout(200);
+      const metrics = [];
+      for (const sid of SLOTS) {
+        await pg.evaluate(id => window.__harbu.A.selectSlot(id), sid);
+        await pg.waitForTimeout(80);
+        const m = await pg.evaluate(() => {
+          const bar = document.querySelector('#jamBar');
+          const br = bar.getBoundingClientRect();
+          const rect = sel => {
+            const el = bar.querySelector(sel);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+          };
+          const instBtns = [...bar.querySelectorAll('.tb-inst button')].map(b => b.dataset.tool || b.textContent.trim() || b.title);
+          const allBtns = [...bar.querySelectorAll('button')].filter(b => b.getBoundingClientRect().width > 0);
+          const minTouch = Math.min(...allBtns.map(b => Math.min(b.getBoundingClientRect().width, b.getBoundingClientRect().height)));
+          return {
+            h: Math.round(br.height),
+            overflowX: document.documentElement.scrollWidth > innerWidth || bar.scrollWidth > bar.clientWidth + 1,
+            minTouch: Math.round(minTouch),
+            draw: rect('[data-tool="draw"]'),
+            erase: rect('[data-tool="erase"]'),
+            vel: rect('[data-tool="vel"]'),
+            prob: rect('[data-tool="prob"]'),
+            lock: rect('[data-tool="lock"]'),
+            bars: rect('.tb-bars'),
+            zoom: rect('.tb-zoom'),
+            lab: rect('[data-action="lab"]'),
+            clear: rect('[data-action="clear"]'),
+            done: rect('[data-action="expand"]'),
+            instBtns,
+          };
+        });
+        metrics.push({ sid, ...m });
+      }
+      const ref = metrics[0];
+      const stableKeys = ['draw', 'erase', 'vel', 'prob', 'lock', 'bars', 'zoom', 'lab', 'clear', 'done'];
+      const drift = [];
+      for (const m of metrics.slice(1)) {
+        if (Math.abs(m.h - ref.h) > 1) drift.push(`${m.sid}:barH ${ref.h}→${m.h}`);
+        for (const k of stableKeys) {
+          if (!m[k] || !ref[k] || Math.abs(m[k].x - ref[k].x) > 1 || Math.abs(m[k].y - ref[k].y) > 1) {
+            drift.push(`${m.sid}:${k} (${ref[k]?.x},${ref[k]?.y})→(${m[k]?.x},${m[k]?.y})`);
+          }
+        }
+      }
+      ok(!drift.length, `${tag} Deep Edit: common controls & Lab/Clear/Done stay locked across all 5 instruments${drift.length ? ' — ' + drift.slice(0, 4).join('; ') : ''}`);
+      ok(metrics.every(m => !m.overflowX && m.minTouch >= 36), `${tag} Deep Edit: no horizontal overflow and comfortable touch targets (min ${Math.min(...metrics.map(m => m.minTouch))}px)`);
+      ok(metrics[0].instBtns.length === 0 && metrics[1].instBtns.includes('slide') && metrics[2].instBtns.length === 3 && metrics[4].instBtns.length === 3, `${tag} Deep Edit: dedicated instrument zone holds BOP(0), GOO(Slide+melodic), BLIP/MUNCH(melodic)`);
+
+      if (w === 1180 && h === 820) {
+        // verify GOO Slide tool and BLIP In key/All notes stability
+        await pg.evaluate(() => window.__harbu.A.selectSlot('slot-02')); await pg.waitForTimeout(60);
+        await pg.click('#jamBar [data-tool="slide"]'); await pg.waitForTimeout(60);
+        ok((await pg.evaluate(() => window.__harbu.store.ui.tool)) === 'slide', 'Deep Edit: GOO Slide tool works in dedicated instrument zone');
+        await pg.evaluate(() => window.__harbu.A.selectSlot('slot-03')); await pg.waitForTimeout(60);
+        const beforeFold = await pg.evaluate(() => ['[title="Octave up"]', '[data-action="expand"]'].map(s => document.querySelector('#jamBar ' + s)?.getBoundingClientRect().left));
+        await pg.click('#jamBar .btn.tool.fold'); await pg.waitForTimeout(60);
+        const afterFold = await pg.evaluate(() => ['[title="Octave up"]', '[data-action="expand"]'].map(s => document.querySelector('#jamBar ' + s)?.getBoundingClientRect().left));
+        ok(Math.abs(beforeFold[0] - afterFold[0]) <= 1 && Math.abs(beforeFold[1] - afterFold[1]) <= 1, 'Deep Edit: toggling In key ↔ All notes does not shift Oct or Done');
+      }
+
+      // 2. SOUND workspace (UX-07) across BOP, GOO, BLIP, FUZZ
+      await pg.evaluate(() => window.__harbu.A.setMode('sound'));
+      for (const [sid, name] of [['slot-01', 'BOP'], ['slot-02', 'GOO'], ['slot-03', 'BLIP'], ['slot-04', 'FUZZ']]) {
+        await pg.evaluate(id => window.__harbu.A.selectSlot(id), sid);
+        await pg.waitForTimeout(80);
+        const sm = await pg.evaluate(() => {
+          const vs = document.querySelector('#viewSound');
+          return {
+            bottomNone: getComputedStyle(document.querySelector('.bottom')).display === 'none',
+            scrollY: vs.scrollHeight > vs.clientHeight + 1,
+            overflowX: document.documentElement.scrollWidth > innerWidth || vs.scrollWidth > vs.clientWidth + 1,
+            presets: vs.querySelectorAll('.preset').length,
+            fxSw: vs.querySelectorAll('.fx-sw').length,
+          };
+        });
+        ok(sm.bottomNone && !sm.overflowX && sm.presets >= 3 && sm.fxSw === 3, `${tag} SOUND ${name}: bottom reclaimed, presets & FX switches visible, no X-overflow`);
+        if (NO_SCROLL_LANDSCAPE.has(tag)) ok(!sm.scrollY, `${tag} SOUND ${name}: fits without vertical scrolling`);
+      }
+      if (w === 1180 && h === 820) {
+        await pg.evaluate(() => window.__harbu.A.selectSlot('slot-01')); await pg.waitForTimeout(80);
+        await pg.click('#viewSound .fx-sw[data-fx="drive"]'); await pg.waitForTimeout(60);
+        ok(await pg.evaluate(() => window.__harbu.store.project.slots[0].params.driveOn === true && document.querySelector('#viewSound .fx-sw[data-fx="drive"]').classList.contains('on')), 'SOUND Channel FX switch toggles Drive and updates state');
+        await pg.click('#viewSound .preset >> text=Soft Boom'); await pg.waitForTimeout(60);
+        ok(await pg.evaluate(() => window.__harbu.store.project.slots[0].params.driveOn === false && !document.querySelector('#viewSound .fx-sw[data-fx="drive"]').classList.contains('on')), 'SOUND preset updates FX switch state in sync');
+      }
+
+      // 3. ARRANGE workspace (UX-08)
+      await pg.evaluate(() => window.__harbu.A.setMode('arrange'));
+      await pg.waitForTimeout(120);
+      const am = await pg.evaluate(() => {
+        const va = document.querySelector('#viewArr'), r = va.getBoundingClientRect();
+        const tiles = [...va.querySelectorAll('.atile')];
+        const allTilesIn = tiles.every(t => { const tr = t.getBoundingClientRect(); return tr.top >= r.top - 1 && tr.bottom <= r.bottom + 1; });
+        return {
+          bottomNone: getComputedStyle(document.querySelector('.bottom')).display === 'none',
+          scrollY: va.scrollHeight > va.clientHeight + 1,
+          overflowX: document.documentElement.scrollWidth > innerWidth || va.scrollWidth > va.clientWidth + 1,
+          allTilesIn,
+          hasActions: ['arr-scene-new', 'arr-scene-dup', 'arr-scene-copy', 'arr-scene-rename', 'arr-scene-delete'].every(id => !!va.querySelector(`[data-testid="${id}"]`)),
+        };
+      });
+      ok(am.bottomNone && !am.overflowX && am.hasActions, `${tag} ARRANGE: bottom reclaimed, all scene actions present, no X-overflow`);
+      if (NO_SCROLL_LANDSCAPE.has(tag)) ok(!am.scrollY && am.allTilesIn, `${tag} ARRANGE: Song lane and all 6 scene tiles fit without scrolling`);
+      ok(!errs.length, `${tag} HBM-061-04: no console errors${errs.length ? ' — ' + errs[0] : ''}`);
+      await c.close();
+    }
+  }
+
   await browser.close();
   console.log(failures ? `\n${failures} check(s) failed` : '\nAll UI checks passed');
   process.exit(failures ? 1 : 0);
