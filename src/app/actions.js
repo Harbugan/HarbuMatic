@@ -32,6 +32,7 @@ import { applyMacros as applyMacroParams } from '../music/macros.js';
 import { createEngine } from '../audio/engine.js';
 import { createTransport, createSlicePreview } from '../audio/scheduler.js';
 import { isLoopBoundary } from '../audio/position.js';
+import { computeStepPlacement, recordDrumEvent, recordNoteOnEvent, finalizeNoteLength } from '../audio/recording.js';
 
 export const history = createHistory();
 export const library = createLibrary(safeStorage());
@@ -39,7 +40,7 @@ export const library = createLibrary(safeStorage());
 export const samples = createSampleBank({ store: createSampleStore({ backend: indexedDbBackend() }) });
 export const engine = createEngine(() => store.project, { samples });
 export const transport = createTransport(engine, () => store.project, {
-  onState: () => emit('transport'),
+  onState: st => { handleTransportStateForRec(st); emit('transport'); },
   beforeStep: (pos, boundary) => autoEvolveHook(pos, boundary),
 });
 export const munchPreview = createSlicePreview(engine, () => store.project, {
@@ -138,6 +139,7 @@ function reconcileTransport(prev, next) {
 }
 
 function restoreSnapshot(json) {
+  finalizeRecording();
   const prev = store.project;
   const keepId = prev.id;
   store.project = JSON.parse(json);
@@ -153,14 +155,15 @@ function restoreSnapshot(json) {
   engine.applyAll(); syncSamples(); prepareStretch();
   save(); emit('project');
 }
-export function undo() { const s = history.undo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Undo'); } emit('history'); }
-export function redo() { const s = history.redo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Redo'); } emit('history'); }
+export function undo() { finalizeRecording(); const s = history.undo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Undo'); } emit('history'); }
+export function redo() { finalizeRecording(); const s = history.redo(JSON.stringify(store.project)); if (s) { restoreSnapshot(s); emit('toast', 'Redo'); } emit('history'); }
 
 /** something in the current pattern changed (editor gesture already checkpointed) */
 export function patternEdited() { save(); emit('pattern'); }
 
 /* ---------- project lifecycle ---------- */
 function adopt(project, msg, { saved = false } = {}) {
+  finalizeRecording();
   stopMunchPreview();
   transport.stop();
   if (!saved) flushSave();
@@ -322,6 +325,7 @@ export async function importFile(file, { sampleStore = samples.store, decode, li
 /* ---------- selection / modes ---------- */
 export function selectSlot(id) {
   if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments cannot be selected
+  finalizeHeldRecNotes();
   stopMunchPreview();
   const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
@@ -347,6 +351,7 @@ export function selectScene(i) {
   const p = store.project;
   if (!Number.isInteger(i) || i < 0 || i >= p.scenes.length) return;
   if (p.scene === i) { transport.queueScene(i); emit('scene'); return; }
+  if (recSession) finalizeRecording();
   stopMunchPreview();
   p.scene = i; save();
   transport.queueScene(i);
@@ -366,7 +371,7 @@ export function togglePlay() {
   if (transport.state !== 'playing' && ids.length && samples.isLoading(ids)) { samples.whenSettled(ids, 2000).then(() => { if (transport.state !== 'playing') transport.toggle(); }); return; }
   transport.toggle();
 }
-export function stop() { stopMunchPreview(); transport.stop(); }
+export function stop() { finalizeRecording(); stopMunchPreview(); transport.stop(); }
 const drumSlots = () => store.project.slots.filter(s => typeOfSlot(s).role === 'drums');
 export function setBpm(v) {
   const b = clamp(Math.round(v), 50, 200); if (b === store.project.bpm) return;
@@ -378,6 +383,241 @@ export function setBpm(v) {
 // the drum Movement shaper *is* the swing amount, so keep them in step
 export function setSwing(v) { checkpoint('swing'); store.project.swing = clamp(v, 0, .5); drumSlots().forEach(s => { s.macros.movement = clamp(v * 2, 0, 1); }); save(); emit('tempo'); }
 export function setSongMode(on) { store.project.songMode = on; save(); emit('arrangement'); emit('transport'); }
+
+/* ---------- live pattern recording ---------- */
+// One recording session targets one scene at a time (never song-wide) and produces at most one
+// Undo/Redo history entry (created lazily on the first actual pattern mutation; empty sessions
+// create no history entry). Pause suspends the session and Resume continues the same session.
+let recSession = null; // { sceneId, checkpointed, recordedCount, held: Map<token, { slotId, sceneId, note, downTime, stepDur }> }
+let nextRecToken = 1;
+
+export const recState = () => store.ui.rec.mode;
+export const isRecording = () => store.ui.rec.mode === 'recording';
+export const isRecArmed = () => store.ui.rec.mode === 'armed';
+export const isRecPaused = () => store.ui.rec.mode === 'paused';
+export const recQuantize = () => !!store.ui.rec.quantize;
+
+export function setRecQuantize(on) {
+  const v = !!on;
+  if (store.ui.rec.quantize === v) return;
+  store.ui.rec.quantize = v;
+  emit('rec');
+}
+export function toggleRecQuantize() {
+  setRecQuantize(!store.ui.rec.quantize);
+  return store.ui.rec.quantize;
+}
+
+function beginRecSession(sceneIdx) {
+  const p = store.project;
+  if (!p) return false;
+  const sc = clamp(Number.isInteger(sceneIdx) ? sceneIdx : p.scene, 0, Math.max(0, p.scenes.length - 1));
+  const sceneId = sceneIdAt(p, sc);
+  if (!sceneId) return false;
+  recSession = { sceneId, checkpointed: false, recordedCount: 0, held: new Map() };
+  store.ui.rec.mode = 'recording';
+  if (p.scene !== sc) { p.scene = sc; emit('scene'); }
+  emit('rec');
+  return true;
+}
+
+export function finalizeHeldRecNotes(audioTime = null) {
+  if (!recSession || !recSession.held.size) return;
+  const now = typeof audioTime === 'number' && Number.isFinite(audioTime)
+    ? audioTime
+    : (engine.ctx ? engine.ctx.currentTime : null);
+  let anyChanged = false;
+  const slotsTouched = new Set();
+  for (const [, entry] of recSession.held) {
+    const t = now != null ? now : entry.downTime;
+    const elapsedSteps = entry.stepDur > 0 ? Math.max(0, t - entry.downTime) / entry.stepDur : 1;
+    const s = slot(entry.slotId), p = s && s.patterns[entry.sceneId];
+    if (p && finalizeNoteLength(p, entry.note, elapsedSteps)) {
+      anyChanged = true;
+      slotsTouched.add(entry.slotId);
+    }
+  }
+  recSession.held.clear();
+  if (anyChanged) {
+    for (const sid of slotsTouched) emit('pattern', { slot: sid, liveRec: true });
+  }
+}
+
+export function finalizeRecording({ keepArmed = false } = {}) {
+  const hadSession = !!recSession;
+  let dirty = false, hadCp = false;
+  if (recSession) {
+    finalizeHeldRecNotes();
+    dirty = recSession.recordedCount > 0;
+    hadCp = recSession.checkpointed;
+    recSession = null;
+  }
+  const next = keepArmed ? 'armed' : 'off';
+  const changed = store.ui.rec.mode !== next;
+  store.ui.rec.mode = next;
+  if (hadCp) history.seal();
+  if (dirty) save();
+  if (changed || hadSession) emit('rec');
+}
+
+function suspendRecSession() {
+  if (!recSession) { store.ui.rec.mode = 'off'; emit('rec'); return; }
+  finalizeHeldRecNotes();
+  store.ui.rec.mode = 'paused';
+  emit('rec');
+}
+
+function resumeRecSession(sceneIdx) {
+  const p = store.project;
+  if (!recSession || !p) { store.ui.rec.mode = 'off'; emit('rec'); return; }
+  const sc = clamp(Number.isInteger(sceneIdx) ? sceneIdx : p.scene, 0, Math.max(0, p.scenes.length - 1));
+  if (sceneIdAt(p, sc) !== recSession.sceneId) {
+    finalizeRecording();
+    return;
+  }
+  store.ui.rec.mode = 'recording';
+  emit('rec');
+}
+
+function handleTransportStateForRec(st) {
+  if (!store.project) return;
+  const mode = store.ui.rec.mode;
+  if (st === 'playing') {
+    const mt = transport.musicalTimeAt();
+    const sc = mt ? mt.scene : (transport.position ? transport.position.scene : store.project.scene);
+    if (mode === 'armed') beginRecSession(sc);
+    else if (mode === 'paused') resumeRecSession(sc);
+  } else if (st === 'paused') {
+    if (mode === 'recording') suspendRecSession();
+  } else if (st === 'stopped') {
+    if (mode !== 'off' || recSession) finalizeRecording();
+  }
+}
+
+export function onAudibleSceneChange(sceneIdx) {
+  if (!recSession || !store.project) return;
+  const mode = store.ui.rec.mode;
+  if (mode !== 'recording' && mode !== 'paused') return;
+  if (sceneIdAt(store.project, sceneIdx) !== recSession.sceneId) finalizeRecording();
+}
+
+export function toggleRecord() {
+  const mode = store.ui.rec.mode;
+  if (mode === 'recording' || mode === 'paused') {
+    finalizeRecording();
+    return store.ui.rec.mode;
+  }
+  if (mode === 'armed') {
+    store.ui.rec.mode = 'off';
+    emit('rec');
+    return store.ui.rec.mode;
+  }
+  // mode === 'off'
+  if (transport.state === 'playing') {
+    stopMunchPreview();
+    const mt = transport.musicalTimeAt();
+    const sc = mt ? mt.scene : (transport.position ? transport.position.scene : store.project.scene);
+    beginRecSession(sc);
+  } else {
+    store.ui.rec.mode = 'armed';
+    emit('rec');
+  }
+  return store.ui.rec.mode;
+}
+
+function captureTarget(slotId, audioTime) {
+  if (store.ui.rec.mode !== 'recording' || !recSession || !transport.playing) return null;
+  const mt = transport.musicalTimeAt(audioTime);
+  if (!mt) return null;
+  const sceneId = sceneIdAt(store.project, mt.scene);
+  if (!sceneId || sceneId !== recSession.sceneId) {
+    finalizeRecording();
+    return null;
+  }
+  const s = slot(slotId), pattern = s && s.patterns[sceneId];
+  if (!s || !pattern) return null;
+  return { mt, sceneId, slot: s, pattern };
+}
+
+function checkpointBeforeFirstRecMutation() {
+  if (!recSession || recSession.checkpointed) return;
+  history.seal();
+  checkpoint();
+  recSession.checkpointed = true;
+}
+
+/** Play a live drum hit immediately and record it when live pattern recording is active. */
+export function liveDrumHit(slotId = store.ui.sel, drumId, velocity = .85, audioTime) {
+  const v = clamp(Number(velocity) || .85, .05, 1);
+  hear(() => engine.audition(slotId, drumId, v));
+  emit('livehit', { slotId, hits: [{ d: drumId, v }] });
+  const target = captureTarget(slotId, audioTime);
+  if (!target || typeOfSlot(target.slot).pattern !== 'drum') return { recorded: false };
+  const { mt, sceneId, pattern } = target;
+  if (pattern.locked && pattern.locked[drumId]) return { recorded: false, locked: true };
+  const pl = computeStepPlacement(mt, pattern.len, { quantize: store.ui.rec.quantize, swing: store.project.swing });
+  checkpointBeforeFirstRecMutation();
+  const res = recordDrumEvent(pattern, { drumId, step: pl.step, velocity: v, offset: pl.offset });
+  if (res.changed) {
+    recSession.recordedCount++;
+    if (pl.snappedForward) transport.suppressOnce(slotId, sceneId, pl.step, `d:${drumId}`, mt.time + mt.stepDur * .75);
+    emit('pattern', { slot: slotId, liveRec: true });
+    return { recorded: true, step: pl.step, offset: pl.offset, cell: res.cell };
+  }
+  return { recorded: false };
+}
+
+/** Play a live melodic or sampler-slice note immediately and record note-on when recording is active. */
+export function liveNoteOn(slotId = store.ui.sel, pitch, velocity = .8, { slice = null, audioTime } = {}) {
+  const v = clamp(Number(velocity) || .8, .05, 1);
+  const p = Math.round(clamp(Number(pitch) || 60, 0, 127));
+  const extra = slice != null ? { slice } : null;
+  const audioHandle = hear(() => engine.noteOn(slotId, p, v, extra));
+  emit('livehit', { slotId, hits: [slice != null ? { p, v, slice } : { p, v }] });
+  let recToken = null;
+  const target = captureTarget(slotId, audioTime);
+  if (target && typeOfSlot(target.slot).pattern !== 'drum') {
+    const { mt, sceneId, pattern } = target;
+    const pl = computeStepPlacement(mt, pattern.len, { quantize: store.ui.rec.quantize, swing: store.project.swing });
+    const locked = pattern.notes.some(n => n.locked && n.s === pl.step && (slice != null ? n.slice === slice : (n.slice == null && n.p === p)));
+    if (!locked) {
+      checkpointBeforeFirstRecMutation();
+      const res = recordNoteOnEvent(pattern, { pitch: p, step: pl.step, velocity: v, offset: pl.offset, slice });
+      if (res.changed && res.note) {
+        recSession.recordedCount++;
+        if (pl.snappedForward) {
+          const sk = slice != null ? `s:${slice}` : `n:${res.note.p}`;
+          transport.suppressOnce(slotId, sceneId, pl.step, sk, mt.time + mt.stepDur * .75);
+        }
+        recToken = nextRecToken++;
+        recSession.held.set(recToken, { slotId, sceneId, note: res.note, downTime: mt.time, stepDur: mt.stepDur });
+        if (isSamplerSlot(slotId) && store.ui.munch.magic) store.ui.munch.magic = null;
+        emit('pattern', { slot: slotId, liveRec: true });
+      }
+    }
+  }
+  if (!audioHandle && !recToken) return null;
+  return { audioHandle, recToken, slotId };
+}
+
+/** Release a live melodic/slice note immediately and finalize its recorded duration if active. */
+export function liveNoteOff(handle, audioTime) {
+  if (!handle) return false;
+  const released = handle.audioHandle ? !!hear(() => engine.noteOff(handle.audioHandle)) : false;
+  if (handle.recToken && recSession && recSession.held.has(handle.recToken)) {
+    const entry = recSession.held.get(handle.recToken);
+    recSession.held.delete(handle.recToken);
+    const now = typeof audioTime === 'number' && Number.isFinite(audioTime)
+      ? audioTime
+      : (engine.ctx ? engine.ctx.currentTime : entry.downTime);
+    const elapsedSteps = entry.stepDur > 0 ? Math.max(0, now - entry.downTime) / entry.stepDur : 1;
+    const s = slot(entry.slotId), p = s && s.patterns[entry.sceneId];
+    if (p && finalizeNoteLength(p, entry.note, elapsedSteps)) {
+      emit('pattern', { slot: entry.slotId, liveRec: true });
+    }
+  }
+  return released;
+}
 
 /* ---------- sound ---------- */
 export function setParam(t, k, v, coalesce = true) {
@@ -502,6 +742,7 @@ export function createScene({ name, select = true } = {}) {
   p.slots.forEach(s => { s.patterns[id] = createPatternFor(s.type); });
   const idx = p.scenes.length - 1;
   if (select) {
+    if (recSession) finalizeRecording();
     stopMunchPreview();
     p.scene = idx;
     store.ui.libSel = idx;
@@ -529,6 +770,7 @@ export function duplicateScene(i = store.project.scene, { name, select = true } 
   });
   const idx = p.scenes.length - 1;
   if (select) {
+    if (recSession) finalizeRecording();
     stopMunchPreview();
     p.scene = idx;
     store.ui.libSel = idx;
@@ -574,6 +816,7 @@ export function deleteScene(i) {
   const p = store.project;
   if (!validSceneIndex(p, i)) return false;
   if (p.scenes.length <= 1) { emit('toast', 'A song needs at least one scene'); return false; }
+  if (recSession) finalizeRecording();
   stopMunchPreview();
   const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
   const removed = p.scenes[i], removedId = removed.id;
@@ -601,6 +844,7 @@ export function moveScene(from, to) {
   if (!validSceneIndex(p, from)) return false;
   to = clamp(to, 0, p.scenes.length - 1);
   if (from === to) return false;
+  if (recSession) finalizeRecording();
   stopMunchPreview();
   const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
   const prevSelId = sceneIdAt(p, p.scene);
@@ -636,6 +880,7 @@ export function setBlockScene(id, sc) { const i = blockIndex(id), sid = sceneIdA
 export function clearSong() { checkpoint(); store.project.arrangement = []; store.ui.arrSel = null; if (transport.pos && transport.pos.song) transport.stop(); save(); emit('arrangement'); }
 export function playFromBlock(id) {
   const i = blockIndex(id); if (i < 0) return;
+  finalizeRecording();
   stopMunchPreview();
   engine.init(); engine.applyAll();
   store.project.songMode = true; save();
@@ -644,6 +889,7 @@ export function playFromBlock(id) {
 export function previewScene(i) {
   const p = store.project;
   if (!validSceneIndex(p, i)) return;
+  if (recSession) finalizeRecording();
   stopMunchPreview();
   engine.init(); engine.applyAll();
   if (p.songMode) { p.songMode = false; emit('arrangement'); }
@@ -779,6 +1025,7 @@ let recordSlot = null;
 export async function recordStart(slotId = store.ui.sel) {
   engine.init();
   recordSlot = slotId;
+  finalizeRecording();
   stopMunchPreview();
   transport.state === 'playing' && transport.pause(); // a quiet room: nothing from HarbuMatic leaks into the mic
   try { await recorder.start(); emit('munch', { kind: 'listen' }); return true; }
@@ -828,6 +1075,7 @@ export function toggleMunchPreview(slotId = store.ui.sel) {
   }
   const s = slot(slotId);
   if (!s || !isSamplerSlot(slotId) || !s.sample) return false;
+  finalizeRecording();
   if (transport.state === 'playing') transport.pause();
   engine.init(); engine.applyAll();
   const req = ++previewReq;
@@ -922,10 +1170,10 @@ export function auditionRegion(a, b, slotId = store.ui.sel) {
 /** hear the whole (trimmed) sample at its root */
 export function auditionSample(slotId = store.ui.sel) { react('chomp'); return hear(() => engine.audition(slotId, P(slotId).root, .9)); }
 /** keyboard: press and release (velocity 0–1). Returns a handle for munchNoteOff. */
-export function munchNoteOn(pitch, v = .8, slotId = store.ui.sel) { react('note'); return hear(() => engine.noteOn(slotId, pitch, v)); }
-export function munchNoteOff(handle) { return hear(() => engine.noteOff(handle)); }
+export function munchNoteOn(pitch, v = .8, slotId = store.ui.sel) { react('note'); return liveNoteOn(slotId, pitch, v); }
+export function munchNoteOff(handle) { return liveNoteOff(handle); }
 /** slice pad: press and release like a key (Gate stops on release, Loop loops while held, One-shot plays the slice) */
-export function munchPadOn(k, v = .9, slotId = store.ui.sel) { react('chomp'); return hear(() => engine.noteOn(slotId, SLICE_REF_PITCH, v, { slice: k })); }
+export function munchPadOn(k, v = .9, slotId = store.ui.sel) { react('chomp'); return liveNoteOn(slotId, SLICE_REF_PITCH, v, { slice: k }); }
 export const munchPadOff = munchNoteOff;
 
 /** add or remove a one-step slice trigger in the current scene's pattern (CHOP sequencer, Draw tool) */

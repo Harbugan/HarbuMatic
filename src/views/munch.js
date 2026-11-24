@@ -90,6 +90,28 @@ export function refreshMunchPreview() {
   const ic = b.querySelector('.mw-prev-i'); if (ic) ic.innerHTML = ico(on ? 'stop' : 'play');
   const lb = b.querySelector('.btn-l'); if (lb) lb.textContent = on ? 'Stop' : 'Preview';
 }
+/** whether any MUNCH keyboard key or slice pad is currently pressed */
+export const munchHasHeld = () => held.size > 0;
+/** release all held MUNCH keys/pads safely (e.g. on visibility hide or stop) */
+export function releaseMunchLive() {
+  for (const [id, x] of held) { A.munchNoteOff(x.handle); if (x.el) x.el.classList.remove('down'); held.delete(id); }
+}
+/** refresh CHOP sequencer cell states in-place without tearing down pads or interrupting multi-touch holds */
+export function refreshMunchGrid() {
+  if (!refs.grid) return;
+  const p = pat();
+  if (!p) return;
+  refs.grid.querySelectorAll('.mw-cell').forEach(b => {
+    const k = +b.dataset.k, step = +b.dataset.s;
+    const note = p.notes.find(x => x.s === step && x.slice === k);
+    b.classList.toggle('on', !!note);
+    b.classList.toggle('soft', !!(note && note.v < .5));
+    b.classList.toggle('acc', !!(note && note.v >= .95));
+    b.classList.toggle('locked', !!(note && note.locked));
+    b.setAttribute('aria-pressed', String(!!note));
+    b.setAttribute('aria-label', `Slice ${k + 1}, step ${step + 1}${note && note.locked ? ', locked' : ''}`);
+  });
+}
 /** scheduler hits for MUNCH (drained in rAF at their audio time): pads, keys and the character move */
 export function munchHits(hits) {
   for (const x of hits) {

@@ -15,7 +15,7 @@ import { renderJamBar, updateLeds } from '../views/jam.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs } from '../views/sound.js';
 import { renderArrange, markPlayingBlock } from '../views/arrange.js';
-import { refreshMunchSel, refreshMunchParams, refreshMunchPreview, munchHits, munchStep, munchReact } from '../views/munch.js';
+import { refreshMunchSel, refreshMunchParams, refreshMunchPreview, refreshMunchGrid, munchHasHeld, releaseMunchLive, munchHits, munchStep, munchReact } from '../views/munch.js';
 import { waveDragging } from '../views/munch-wave.js';
 import { renderSongButton, openMenu, closeMenu, bindFileInput, newSongDialog } from '../views/menu.js';
 
@@ -35,6 +35,7 @@ function applyLayout() {
   $('#viewJam').hidden = u.mode !== 'jam';
   $('#viewSound').hidden = u.mode !== 'sound';
   $('#viewArr').hidden = u.mode !== 'arrange';
+  if (u.mode !== 'jam') Seq.releaseLive();
   if (u.mode === 'sound') renderSound();
   if (u.mode === 'arrange') renderArrange();
   if (u.mode === 'jam') { renderJamBar(); requestAnimationFrame(() => { Seq.resize(); }); }
@@ -52,22 +53,28 @@ function renderAll() {
 
 /* ---------- event → render wiring ---------- */
 function wire() {
-  on('project', () => { Seq.fitView(); renderAll(); });
+  on('project', () => { Seq.releaseLive(); Seq.fitView(); renderAll(); });
   on('meta', renderSongButton);
   on('history', updateUndo);
   on('toast', msg => toast(msg));
   on('layout', applyLayout);
   on('drawer', applyLayout);
   on('tool', () => { renderJamBar(); Seq.render(); });
-  on('selection', () => { setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') applyLayout(); });
+  on('selection', () => { Seq.releaseLive(); setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') applyLayout(); });
   on('scene', () => { Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderScenes(); renderLab(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
   // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
-  // is being dragged only the display redraws, so the gesture is never interrupted by a rebuild.
+  // is being dragged or live keys/pads are recording, update in place so gestures and multi-touch holds never break.
   const munchUpdate = () => { if (!munchOpen()) return; if (waveDragging()) refreshMunchSel(); else renderSound(); };
-  ['samples', 'recorder', 'pattern', 'scene'].forEach(evt => on(evt, munchUpdate));
+  ['samples', 'recorder', 'scene'].forEach(evt => on(evt, munchUpdate));
+  on('pattern', info => {
+    if (!munchOpen()) return;
+    if (waveDragging()) { refreshMunchSel(); return; }
+    if ((info && info.liveRec) || munchHasHeld()) { refreshMunchGrid(); return; }
+    renderSound();
+  });
   on('munchsel', () => { if (munchOpen()) refreshMunchSel(); });
   on('munchtab', () => { if (munchOpen()) renderSound(); });
   on('munchpreview', () => {
@@ -75,12 +82,14 @@ function wire() {
     if (!A.munchPreview.playing && !A.transport.playing && munchOpen()) munchStep(-1);
   });
   on('munch', ({ kind }) => { if (munchOpen()) munchReact(kind); });
+  on('rec', () => { renderTransport(); Seq.render(); });
+  on('livehit', ({ slotId, hits }) => { if (slotId && hits) catReact(slotId, hits); });
   on('tempo', () => { renderTransport(); if (munchOpen()) munchUpdate(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
   on('lab', renderLab);
   on('arrangement', () => { if (store.ui.mode === 'arrange') renderArrange(); renderScenes(); });
   on('transport', () => {
     renderTransport(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange();
-    if (!A.transport.playing) { setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen() && !A.munchPreview.playing) munchStep(-1); }
+    if (!A.transport.playing) { Seq.releaseLive(); setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen() && !A.munchPreview.playing) munchStep(-1); }
   });
   on('transformed', ({ intensity, info }) => { uniReact(intensity); if (info) toast(info); if (!A.transport.playing) auditionPattern(); });
   on('evolved', () => { /* UI catches up in the next frame via 'pattern' */ });
@@ -110,7 +119,7 @@ function frame() {
       Seq.playhead.step = ev.step; Seq.playhead.time = ev.time; Seq.playhead.scene = ev.scene;
       for (const t in ev.hits) { catReact(t, ev.hits[t]); if (t === store.ui.sel && munchOpen()) munchHits(ev.hits[t]); }
       if (munchOpen() && ev.scene === store.project.scene) munchStep(ev.step);
-      if (ev.scene !== lastScene) { lastScene = ev.scene; changedScene = true; }
+      if (ev.scene !== lastScene) { lastScene = ev.scene; changedScene = true; A.onAudibleSceneChange(ev.scene); }
       const bar = Math.floor(ev.step / 16);
       if (ev.step % 16 === 0 && bar !== lastBar) { lastBar = bar; const c = drumCat(); if (c && store.ui.motion) c.el.classList.toggle('joy', bar % 4 === 3); }
     }
@@ -144,6 +153,8 @@ function keys(e) {
   if (mod) return;
   if (e.target.closest('.knob') && e.key.startsWith('Arrow')) return;
   if (k === ' ') { e.preventDefault(); A.togglePlay(); }
+  else if (k === 'r') A.toggleRecord();
+  else if (k === 'q') A.toggleRecQuantize();
   else if (/^[1-9]$/.test(k) && visibleSlots()[+k - 1]) A.selectSlot(visibleSlots()[+k - 1].id);
   else if (k === 'f') A.setExpanded(!store.ui.expanded);
   else if (k === 'b') A.setTool('draw');
@@ -175,12 +186,15 @@ function init() {
   document.body.classList.toggle('no-motion', !store.ui.motion);
   document.body.classList.toggle('coarse', store.ui.coarse);
   A.engine.onInterrupt = state => {
+    Seq.releaseLive();
+    releaseMunchLive();
+    A.finalizeHeldRecNotes();
     if (A.munchPreview.playing) A.stopMunchPreview();
     if (A.transport.playing) { A.transport.pause(); toast(state === 'interrupted' ? 'Audio was interrupted — tap Resume' : 'Audio paused by the system — tap Resume'); }
   };
   // save immediately when the tab is hidden (iPad may discard background tabs)
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { A.flushSave(); A.recordCancel(); } }); // backgrounded: never keep the mic open
-  window.addEventListener('pagehide', () => A.flushSave());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { Seq.releaseLive(); releaseMunchLive(); A.finalizeRecording(); A.flushSave(); A.recordCancel(); } }); // backgrounded: never keep the mic or live recording open
+  window.addEventListener('pagehide', () => { Seq.releaseLive(); releaseMunchLive(); A.finalizeRecording(); A.flushSave(); });
   startIdleLife();
   renderAll(); Seq.fitView();
   // start overlay: one tap unlocks audio (required by iOS) and starts the groove

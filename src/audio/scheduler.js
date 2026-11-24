@@ -21,6 +21,8 @@ import { startPosition, advance, isLoopBoundary } from './position.js';
 const LOOKAHEAD = .12, INTERVAL = 25;
 
 export function createTransport(engine, getProject, hooks = {}) {
+  const timeline = [];
+  const suppressed = [];
   const T = {
     state: 'stopped', pos: null, pending: null, next: 0, timer: 0, queue: [],
     get playing() { return T.state === 'playing'; },
@@ -29,12 +31,28 @@ export function createTransport(engine, getProject, hooks = {}) {
   };
   const emit = () => hooks.onState && hooks.onState(T.state);
 
+  function consumeSuppressed(slotId, sceneId, step, key, t) {
+    if (!suppressed.length) return false;
+    let matched = false;
+    for (let i = suppressed.length - 1; i >= 0; i--) {
+      const e = suppressed[i];
+      if (t > e.until) { suppressed.splice(i, 1); continue; }
+      if (!matched && e.slotId === slotId && e.sceneId === sceneId && e.step === step && e.key === key) {
+        suppressed.splice(i, 1);
+        matched = true;
+      }
+    }
+    return matched;
+  }
+
   function scheduleStep(t) {
     const project = getProject(), pos = T.pos, sd = engine.stepDur();
     const sc = clamp(pos.scene, 0, Math.max(0, project.scenes.length - 1));
     if (sc !== pos.scene) T.pos = { ...pos, scene: sc };
     if (hooks.beforeStep) hooks.beforeStep(T.pos, isLoopBoundary); // e.g. auto-evolve on a loop boundary
     const ev = { time: t, step: T.pos.step, scene: sc, block: T.pos.block, song: T.pos.song, hits: {} };
+    timeline.push({ time: t, step: T.pos.step, scene: sc, song: T.pos.song, dur: sd });
+    if (timeline.length > 32) timeline.shift();
     const sceneId = sceneIdAt(project, sc);
     if (sceneId) {
       for (const slot of playableSlots(project)) {
@@ -47,13 +65,19 @@ export function createTransport(engine, getProject, hooks = {}) {
         if (def.pattern === 'drum') {
           for (const d of DRUMS) {
             const c = p.steps[d.id][ls];
-            if (c && Math.random() <= c.p) { hits.push({ d: d.id, v: c.v }); if (on) engine.trigger(slot.id, t + sw, { d: d.id, v: c.v }); }
+            if (c && Math.random() <= c.p) {
+              if (suppressed.length && consumeSuppressed(slot.id, sceneId, ls, `d:${d.id}`, t)) continue;
+              hits.push({ d: d.id, v: c.v });
+              if (on) engine.trigger(slot.id, t + sw + (c.o || 0) * sd, { d: d.id, v: c.v });
+            }
           }
         } else {
           let starts = null;
           for (const n of p.notes) {
             if (n.s !== ls) continue;
             if (n.pr != null && n.pr < 1 && Math.random() > n.pr) continue;
+            const sk = n.slice != null ? `s:${n.slice}` : `n:${n.p}`;
+            if (suppressed.length && consumeSuppressed(slot.id, sceneId, ls, sk, t)) continue;
             let slideIn = false, slideOut = false;
             if (caps.slide) {
               starts = starts || new Set(p.notes.map(m => m.s));
@@ -95,6 +119,8 @@ export function createTransport(engine, getProject, hooks = {}) {
     clearInterval(T.timer); T.timer = 0;
     engine.closeGates();
     T.queue.length = 0;
+    timeline.length = 0;
+    suppressed.length = 0;
   }
 
   Object.assign(T, {
@@ -107,6 +133,27 @@ export function createTransport(engine, getProject, hooks = {}) {
     pause() { if (T.state !== 'playing') return; halt(); T.state = 'paused'; emit(); },
     stop() { halt(); T.pos = null; T.pending = null; T.state = 'stopped'; emit(); },
     toggle() { T.state === 'playing' ? T.pause() : T.play(); },
+    /** audible musical time at `audioTime` (default ctx.currentTime), compensated for scheduler lookahead */
+    musicalTimeAt(audioTime) {
+      if (T.state !== 'playing' || !timeline.length) return null;
+      const now = typeof audioTime === 'number' && Number.isFinite(audioTime) ? audioTime : (engine.ctx ? engine.ctx.currentTime : null);
+      if (now == null) return null;
+      let idx = -1;
+      for (let i = timeline.length - 1; i >= 0; i--) {
+        if (timeline[i].time <= now) { idx = i; break; }
+      }
+      if (idx < 0) idx = 0;
+      const e = timeline[idx], nextE = timeline[idx + 1];
+      const dur = nextE && nextE.scene === e.scene && nextE.time > e.time ? (nextE.time - e.time) : e.dur;
+      const frac = dur > 0 ? (now - e.time) / dur : 0;
+      return { scene: e.scene, step: e.step, frac, absStep: e.step + frac, stepDur: dur, song: e.song, time: now };
+    },
+    /** suppress one immediate upcoming trigger for a freshly recorded event that snapped forward */
+    suppressOnce(slotId, sceneId, step, key, untilTime) {
+      if (!slotId || !sceneId || !Number.isFinite(untilTime)) return;
+      suppressed.push({ slotId, sceneId, step, key, until: untilTime });
+      if (suppressed.length > 64) suppressed.shift();
+    },
     /** jam mode: switch scene on the next bar line (or immediately when not playing) */
     queueScene(i) {
       const project = getProject();

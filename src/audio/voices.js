@@ -92,6 +92,7 @@ function createBopVoice({ ctx, shared, channel, params }) {
 function createGooVoice({ ctx, channel, params }) {
   const G = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
   const b = { osc: ctx.createOscillator(), f1: ctx.createBiquadFilter(), f2: ctx.createBiquadFilter(), amp: G(0) };
+  let activeToken = null;
   b.f1.type = b.f2.type = 'lowpass'; b.f2.Q.value = .5;
   // the mono voice runs continuously and feeds the channel directly; the engine silences it on stop
   b.osc.connect(b.f1); b.f1.connect(b.f2); b.f2.connect(b.amp); b.amp.connect(channel.bus); b.osc.start();
@@ -109,26 +110,52 @@ function createGooVoice({ ctx, channel, params }) {
       b.amp.gain.cancelScheduledValues(t); b.amp.gain.setTargetAtTime(level, t, .0025); b.amp.gain.setTargetAtTime(level * .55, t + .03, .5);
     }
     if (!slideOut) b.amp.gain.setTargetAtTime(0, t + dur, .012);
+    const token = { t };
+    activeToken = token;
+    return token;
+  }
+  function release(token, at = ctx.currentTime) {
+    if (!token || token !== activeToken) return false;
+    activeToken = null;
+    const from = Math.max(at, ctx.currentTime, token.t);
+    b.amp.gain.cancelScheduledValues(from);
+    b.amp.gain.setTargetAtTime(0, from, .012);
+    return true;
   }
   return {
     input: channel.bus,
     apply(p, now) { b.osc.type = p.wave; b.f1.Q.setTargetAtTime(.7 + p.res * 21, now, .02); },
-    trigger,
+    trigger, release,
     silence(now) {
+      activeToken = null;
       [b.amp.gain, b.osc.frequency, b.f1.frequency, b.f2.frequency].forEach(prm => prm.cancelScheduledValues(now));
       b.amp.gain.setTargetAtTime(0, now, .01);
     },
-    dispose() { try { b.osc.stop(); b.amp.disconnect(); } catch (e) { /* gone */ } },
+    dispose() { activeToken = null; try { b.osc.stop(); b.amp.disconnect(); } catch (e) { /* gone */ } },
   };
 }
 
 /* ---------- BLIP: poly subtractive synth ---------- */
 function createBlipVoice({ ctx, shared, channel, params }) {
   const lfo = ctx.createOscillator(), lfoG = ctx.createGain(); lfoG.gain.value = 0;
+  const held = new Set();
   lfo.connect(lfoG); lfo.start();
+  function release(h, at = ctx.currentTime) {
+    if (!h || h.released) return false;
+    h.released = true;
+    held.delete(h);
+    const from = Math.max(at, ctx.currentTime, h.t);
+    const stopAt = from + h.R * 1.6 + .05;
+    try {
+      h.amp.gain.cancelScheduledValues(from);
+      h.amp.gain.setTargetAtTime(0, from, h.R / 3.5);
+      h.o1.stop(stopAt); h.o2.stop(stopAt);
+    } catch (e) { /* already stopped */ }
+    return true;
+  }
   function trigger(t, hit, dest) {
     const midi = hit.p, dur = hit.dur, vel = hit.v;
-    if (shared.voices.count > MAX_POLY) return;
+    if (shared.voices.count > MAX_POLY) return null;
     const p = params(), f = mtof(midi);
     const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g1 = ctx.createGain(), g2 = ctx.createGain();
     const fl = ctx.createBiquadFilter(), amp = ctx.createGain();
@@ -144,22 +171,41 @@ function createBlipVoice({ ctx, shared, channel, params }) {
     const end = Math.max(t + dur, t + A); amp.gain.cancelScheduledValues(end); amp.gain.setTargetAtTime(0, end, R / 3.5);
     o1.connect(g1); o2.connect(g2); g1.connect(fl); g2.connect(fl); fl.connect(amp); amp.connect(dest);
     const stopAt = end + R * 1.6 + .05; o1.start(t); o2.start(t); o1.stop(stopAt); o2.stop(stopAt);
-    shared.voices.count++; o1.onended = () => { shared.voices.count--; try { lfoG.disconnect(fl.detune); } catch (e) { /* gone */ } amp.disconnect(); };
+    const h = { amp, o1, o2, R, t, released: false };
+    if (dur >= 10) held.add(h);
+    shared.voices.count++;
+    o1.onended = () => { held.delete(h); shared.voices.count--; try { lfoG.disconnect(fl.detune); } catch (e) { /* gone */ } amp.disconnect(); };
+    return h;
   }
   return {
     input: channel.bus,
     apply(p, now) { lfo.frequency.setTargetAtTime(p.lfoRate, now, .05); lfoG.gain.setTargetAtTime(p.lfoDepth * 2400, now, .05); },
-    trigger, silence() {},
-    dispose() { try { lfo.stop(); lfoG.disconnect(); } catch (e) { /* gone */ } },
+    trigger, release,
+    silence(now) { for (const h of [...held]) release(h, now); },
+    dispose() { for (const h of [...held]) release(h, ctx.currentTime); try { lfo.stop(); lfoG.disconnect(); } catch (e) { /* gone */ } },
   };
 }
 
 /* ---------- FUZZ: airy texture voice ---------- */
 function createFuzzVoice({ ctx, shared, channel, params }) {
   const crush = ctx.createWaveShaper(); crush.connect(channel.bus);
+  const held = new Set();
+  function release(h, at = ctx.currentTime) {
+    if (!h || h.released) return false;
+    h.released = true;
+    held.delete(h);
+    const from = Math.max(at, ctx.currentTime, h.t);
+    const stopAt = from + h.R * 1.6 + .05;
+    try {
+      h.amp.gain.cancelScheduledValues(from);
+      h.amp.gain.setTargetAtTime(0, from, h.R / 3.5);
+      h.nodes.forEach(x => { try { x.stop(stopAt); } catch (e) { /* gone */ } });
+    } catch (e) { /* already stopped */ }
+    return true;
+  }
   function trigger(t, hit, dest) {
     const midi = hit.p, dur = hit.dur, vel = hit.v;
-    if (shared.voices.count > MAX_POLY) return;
+    if (shared.voices.count > MAX_POLY) return null;
     const p = params(), f = mtof(midi);
     const o = ctx.createOscillator(), o2 = ctx.createOscillator(), n = ctx.createBufferSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain(), g2 = ctx.createGain();
     const lp = ctx.createBiquadFilter(), amp = ctx.createGain(), trem = ctx.createOscillator(), tremG = ctx.createGain();
@@ -174,13 +220,18 @@ function createFuzzVoice({ ctx, shared, channel, params }) {
     o.connect(lp); o2.connect(g2); g2.connect(lp); n.connect(nf); nf.connect(ng); ng.connect(lp); lp.connect(vca); vca.connect(amp); amp.connect(dest);
     const stopAt = end + R * 1.6 + .05;
     [o, o2, trem].forEach(x => { x.start(t); x.stop(stopAt); }); n.start(t, Math.random()); n.stop(stopAt);
-    shared.voices.count++; o.onended = () => { shared.voices.count--; amp.disconnect(); };
+    const h = { amp, nodes: [o, o2, trem, n], R, t, released: false };
+    if (dur >= 10) held.add(h);
+    shared.voices.count++;
+    o.onended = () => { held.delete(h); shared.voices.count--; amp.disconnect(); };
+    return h;
   }
   return {
     input: crush,
     apply(p) { crush.curve = p.crush > .02 ? crushCurve(p.crush) : null; },
-    trigger, silence() {},
-    dispose() { try { crush.disconnect(); } catch (e) { /* gone */ } },
+    trigger, release,
+    silence(now) { for (const h of [...held]) release(h, now); },
+    dispose() { for (const h of [...held]) release(h, ctx.currentTime); try { crush.disconnect(); } catch (e) { /* gone */ } },
   };
 }
 

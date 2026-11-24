@@ -53,6 +53,8 @@
     <div class="panel transport" aria-label="Transport">
       <button class="tbtn play" id="play" type="button" aria-label="Play"></button>
       <button class="tbtn stop" id="stop" type="button" title="Stop — back to the start (Esc)" aria-label="Stop"><svg class="ico" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="3" fill="currentColor" stroke="none"/></svg><span class="btn-l">Stop</span></button>
+      <button class="tbtn rec" id="rec" type="button" data-testid="rec-btn" data-rec="off" aria-pressed="false" title="Record live pattern (R)" aria-label="Record"></button>
+      <button class="tbtn quant on" id="quant" type="button" data-testid="rec-quantize" aria-pressed="true" title="Quantize live recording (Q)" aria-label="Quantize On"><span class="q-mark">Q</span><span class="btn-l">On</span></button>
       <div class="lcd" aria-hidden="true"><canvas id="screen" width="64" height="36"></canvas><div class="lcd-info"><span id="scrScene">A</span><span id="scrStep">—</span></div></div>
       <div class="bpm" role="group" aria-label="Tempo">
         <button class="bpm-b" id="bpmDn" type="button" aria-label="Slower">−</button>

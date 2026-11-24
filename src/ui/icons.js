@@ -4,6 +4,7 @@ const P = {
   play: '<path d="M7 4l13 8-13 8z" fill="currentColor" stroke="none"/>',
   pause: '<rect x="6" y="5" width="4.5" height="14" rx="1.5" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.5" fill="currentColor" stroke="none"/>',
   stop: '<rect x="5.5" y="5.5" width="13" height="13" rx="3" fill="currentColor" stroke="none"/>',
+  rec: '<circle cx="12" cy="12" r="6.5" fill="currentColor" stroke="none"/>',
   draw: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>',
   erase: '<path d="M8 20h12"/><path d="M5 15l9-9 5 5-8 8H8z"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="3"/><path d="M8 11V8a4 4 0 018 0v3"/>',

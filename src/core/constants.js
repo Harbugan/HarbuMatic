@@ -2,7 +2,7 @@
 
 // Release identity. APP_VERSION is the single source of the app version: the UI, the service-worker cache
 // name and package.json (checked by tests/identity.test.mjs) all follow it. Bump it here for a release.
-export const APP_VERSION = '0.5.1';
+export const APP_VERSION = '0.6.1';
 export const VERSION_LABEL = `v${APP_VERSION}`;
 // Exact creator credit "Created by .::H∆RBUGΛП::." (U+2206 INCREMENT, U+039B GREEK CAPITAL LAMDA,
 // U+041F CYRILLIC CAPITAL PE). Escaped so no editor or encoding step can swap the look-alike characters.

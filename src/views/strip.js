@@ -15,6 +15,8 @@ import { playhead } from '../ui/sequencer.js';
 export function buildTransport() {
   $('#play').onclick = () => A.togglePlay();
   $('#stop').onclick = () => A.stop();
+  const rec = $('#rec'); if (rec) rec.onclick = () => A.toggleRecord();
+  const quant = $('#quant'); if (quant) quant.onclick = () => A.toggleRecQuantize();
   const step = d => () => A.setBpm(store.project.bpm + d);
   repeatPress($('#bpmUp'), step(1)); repeatPress($('#bpmDn'), step(-1));
   const box = $('#bpmBox'); let sy = null, sb = 0;
@@ -40,6 +42,32 @@ export function renderTransport() {
   play.innerHTML = ico(st === 'playing' ? 'pause' : 'play') + `<span class="btn-l">${st === 'playing' ? 'Pause' : st === 'paused' ? 'Resume' : 'Play'}</span>`;
   play.setAttribute('aria-label', st === 'playing' ? 'Pause' : st === 'paused' ? 'Resume' : 'Play');
   $('#stop').classList.toggle('armed', st !== 'stopped');
+
+  const rec = $('#rec');
+  if (rec) {
+    const rm = A.recState();
+    rec.dataset.rec = rm;
+    rec.classList.toggle('armed', rm === 'armed');
+    rec.classList.toggle('on', rm === 'recording');
+    rec.classList.toggle('paused', rm === 'paused');
+    rec.setAttribute('aria-pressed', String(rm !== 'off'));
+    const lbl = rm === 'armed' ? 'Arm' : rm === 'paused' ? 'Hold' : 'Rec';
+    rec.innerHTML = ico('rec') + `<span class="btn-l">${lbl}</span>`;
+    rec.setAttribute('aria-label', rm === 'recording' ? 'Stop recording' : rm === 'armed' ? 'Disarm recording' : rm === 'paused' ? 'End paused recording' : 'Record');
+    rec.title = rm === 'recording' ? 'Recording live — tap REC to finish (playback continues) (R)'
+      : rm === 'armed' ? 'Recording armed — press Play to start, or tap REC to cancel (R)'
+        : rm === 'paused' ? 'Recording paused — press Resume to continue, or tap REC to finish (R)'
+          : st === 'playing' ? 'Start live pattern recording (R)' : 'Arm live pattern recording — press Play to start (R)';
+  }
+  const quant = $('#quant');
+  if (quant) {
+    const q = A.recQuantize();
+    quant.classList.toggle('on', q);
+    quant.setAttribute('aria-pressed', String(q));
+    quant.setAttribute('aria-label', q ? 'Quantize On' : 'Quantize Off');
+    quant.title = q ? 'Quantize On — snap recorded notes to nearest step (Q)' : 'Quantize Off — preserve performed timing (Q)';
+    quant.innerHTML = `<span class="q-mark">Q</span><span class="btn-l">${q ? 'On' : 'Free'}</span>`;
+  }
   $('#bpmVal').textContent = store.project.bpm;
 }
 
@@ -61,6 +89,14 @@ export function drawScreen() {
   }));
   g.fillStyle = m.headphones; for (let x = 2; x < 22; x += 2) g.fillRect(ox + x, oy - 2 - (x > 6 && x < 16 ? 2 : 0), 2, 2);
   if (playing && playhead.step % 16 < 2) { g.fillStyle = '#F2AFC0'; ['.1.1.', '11111', '11111', '.111.', '..1..'].forEach((r, y) => [...r].forEach((c, x) => c === '1' && g.fillRect(31 + x, 4 + y, 1, 1))); }
+  const rm = A.recState();
+  if (rm !== 'off') {
+    const show = rm === 'recording' ? (!store.ui.motion || ph < .65) : (!store.ui.motion || ((Date.now() >> 9) & 1) === 0);
+    if (show) {
+      g.fillStyle = rm === 'recording' ? '#FF5A72' : '#F6B889';
+      g.fillRect(3, 3, 4, 4);
+    }
+  }
   if (E.analyser) {
     E.analyser.getByteFrequencyData(fbuf);
     const cols = visibleSlots().map(s => getInstrumentType(s.type).visual.color);
