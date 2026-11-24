@@ -1,5 +1,5 @@
 # v0.6.1 — iPad UX Review & Polish Plan
-Captured 2026-11-23. Planning reference only; no implementation authorized.
+Captured 2026-11-23; updated 2026-11-24. This document tracks decisions and scope. HBM-061-04 is owner-authorized for implementation via its task contract; other proposed items remain planning only.
 
 ## Status legend
 DECIDED = owner-approved direction; OBSERVED = owner screenshot/feedback; PROPOSED = design hypothesis; OPEN = needs technical/product decision; DONE = merged and owner-verified.
@@ -29,15 +29,21 @@ DECIDED: Play first, tweak forever. Retain existing kawaii hardware visual ident
 | UX-14 | MUNCH CHOP | DECIDED / OBSERVED | Waveform, all 8 pads, slice sequencer and MAGIC CHOP visible simultaneously in iPad landscape, no routine scrolling. No pads/sequencer mode switch. Keep manual slice marker editing, Split/Chop, and existing style. Screenshot clips lower content. |
 | UX-15 | CHOP local preview | DECIDED goal / OPEN technical behavior | Dedicated Play/Stop previews only current MUNCH slice pattern, loops from step 1 at BPM, shows playhead and reflects live step edits; must not start global loop/song. Reuse scheduler/engine. Investigate behavior when global playback is active to avoid double MUNCH, and stop/voice semantics. |
 | UX-16 | Responsive | DECIDED | Physical iPad landscape checks, 11/13-inch plus smaller supported widths, Deep Edit, no clipping or tiny hit targets. |
+| UX-17 | Deep Edit toolbar stability | DECIDED / OBSERVED | Switching BOP → BLIP introduces melodic controls (In key, Oct) and wraps Lab/Clear/Done onto a second row. Common actions must remain in stable, predictable positions regardless of instrument name, scene label or tool count. Use a dedicated instrument-control zone and intentional narrow-screen fallback; preserve comfortable touch targets and all actions. |
 
 ## Mode-specific workspace decision
 JAM keeps sequencer + Lab + bottom Sound Shapers/FX. SOUND and ARRANGE reclaim the bottom strip's vertical space for their own workspaces. MUNCH is a SOUND workspace: retain empty/PLAY/TWIST patterns; focus on CHOP layout and local preview. No-scroll-by-default applies to typical content, not arbitrarily large projects.
 
-## Proposed implementation grouping — NOT authorized yet
-1. Small fixes UX-01..04.
-2. Responsive shell and SOUND/ARRANGE layouts UX-05..09,16, prototype and owner review.
-3. MUNCH CHOP UX-14..15, first inspect scheduler and transport.
-4. Musical playability UX-10 and final polish.
+## Implementation sequence and authorization
+1. **HBM-061-03 / PR #21 — UX-01..04:** merged status to be checked against GitHub; owner reported all 16/16 physical iPad checks PASS on 2026-11-24. UX-02 release-version bump remains separate.
+2. **HBM-061-04 — AUTHORIZED, next implementation PR:** SOUND workspace UX-07, ARRANGE workspace UX-08, responsive verification UX-16 and Deep Edit toolbar stability UX-17. Improve use of width/height, keep SOUND presets and relevant knobs visible on typical 11/13-inch landscape iPads without routine scrolling; make ARRANGE scenes/song/actions more visible; keep Lab/Clear/Done stable across BOP, GOO, BLIP, FUZZ and MUNCH. Preserve MUNCH empty/PLAY/TWIST and existing audio, transport, scene actions, project save/reopen and touch sizes. One focused PR; no automatic merge; physical iPad acceptance required. **No collapsible header/top redesign, no CHOP local preview, no musical behavior changes, no version bump.**
+3. **Later, separate decision/task:** UX-05 collapsible/compact top, UX-06 broader JAM chrome and UX-09 preset discoverability/feedback. These are not authorized by HBM-061-04.
+4. **Later:** MUNCH CHOP UX-14..15, first inspect scheduler and transport; then musical playability UX-10 and final polish.
+
+### HBM-061-04 implementation pointers (verified against main, 2026-11-24)
+- `src/views/jam.js` `renderJamBar()` builds variable tool groups; `styles/views.css` `.toolbar` currently uses wrapping flex layout. This is a likely cause of UX-17, not a confirmed diagnosis; verify before changing.
+- `src/views/sound.js` `renderSound()`, `src/views/arrange.js` `renderArrange()`, `styles/views.css` and `styles/layout.css` contain relevant workspaces and responsive rules. Check live checkout and existing tests.
+- Use the agreed HBM-061-04 Task Contract as implementation scope; `AGENTS.md` and `docs/agent/WORKFLOW.md` govern execution. Test `npm test`, `npm run test:ui`, `npm run test:baseline` where available; report NOT RUN honestly. Include before/after screenshots and iPad Safari/PWA checks.
 
 ## Verification and open decisions
 - Separate decided, implemented, automated-tested and owner-verified status.

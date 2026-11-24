@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (live keyboard MUTATOR concept added)  
+> Last updated: 2026-11-24 (MUTATOR concept and HBM-061-04 UX scope)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -30,7 +30,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — Quick Volume PR #15 and Dynamic Scene Library PR #18 merged; focused iPad polish remains |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18 merged; PR #21 iPad checks 16/16 PASS (verify merge status); HBM-061-04 SOUND/ARRANGE/Deep Edit layout authorized next |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -116,6 +116,18 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 
 **Implementation progress (2026-11-23):** Quick Volume & card alignment (PR #15) merged and user-verified on iPad. Five instruments by default (PR #16) merged and user-tested. Dynamic Scene Library (PR #18) merged: one empty scene for new projects, create/duplicate/rename/edit/copy-to/delete/reorder, maximum 64 scenes, dynamic labels, scene-local pattern/harmony deep-copy, Undo/Redo and `.hbn` round-trip. PR #18 reports 266/266 unit tests passing and a separate headless Chrome UI flow passing; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in that PR environment. Physical iPad verification of Dynamic Scenes confirmed by the owner on 2026-11-23. Remaining v0.6.1 work: iPad UX/preset review, compact top exploration and musical playability polish; scope each as separate tasks.
+
+### Next authorized UX task — HBM-061-04 (2026-11-24)
+
+**Owner-authorized for implementation; not yet implemented or tested.** One focused PR for responsive SOUND (UX-07), ARRANGE (UX-08), Deep Edit toolbar stability (UX-17) and iPad responsive verification (UX-16). See `docs/UX-REVIEW-061.md` and the HBM-061-04 Antigravity Task Contract for acceptance criteria.
+
+- SOUND: reclaim usable workspace height, use responsive width for presets and knobs, avoid routine scrolling on typical 11/13-inch landscape iPads. Preserve MUNCH empty/PLAY/TWIST.
+- ARRANGE: improve Scene Library and Song Arrangement visibility, preserving all scene actions and allowing large collections to scroll.
+- Deep Edit: BOP-to-BLIP instrument changes currently cause variable tool groups to wrap, moving Lab/Clear/Done. Stabilize shared control positions and provide dedicated space for instrument-specific tools without shrinking touch targets.
+- Verify all five instruments, Safari/PWA, landscape/portrait, smaller supported widths, relevant unit/UI/baseline tests, and no musical, transport or current-version `.hbn` regressions.
+- **Explicit exclusions:** collapsible top/header (UX-05), broader JAM redesign (UX-06), preset UX redesign (UX-09), MUNCH CHOP redesign/local preview (UX-14/15), audio engine changes, new dependencies and version bump. No automatic merge.
+
+**PR #21:** UX-01..04 quick fixes passed all 16 owner physical iPad checks on 2026-11-24; merge status must be confirmed on GitHub before marking DONE. The release-version bump remains a separate task.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
