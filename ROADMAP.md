@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (PR #29 accepted; v0.6.1 exit QA next; Preset UX deferred to pre-1.0)  
+> Last updated: 2026-11-24 (v0.6.1 physical iPad QA accepted 7/7; final automated regression checks outstanding; Ruff v0.7 next)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -29,8 +29,8 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | --- | --- | --- | --- |
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
-| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27/#29 merged; MUNCH CHOP and Live Pattern Recording owner-accepted on iPad; next essential release QA; Preset UX deferred to final pre-1.0 polish |
+| **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and owner-verified on physical iPad 2026-11-24; low mic recording level tracked as non-blocking MUNCH-5; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Physical iPad QA accepted (7/7 final checks)** — PR #15/#18/#21/#23/#25/#27/#29 merged; automated release regression checks still outstanding; next Ruff v0.7 after release gate; Preset UX deferred to final pre-1.0 polish |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -92,7 +92,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Experience:** CHOMPI-like immediacy on the surface, Flip-like depth when exploring. MUNCH is a playful, original sound-eating musical toy with a characterful, tactile iPad-landscape interface. PLAY (record/import and melodic keys), CHOP (eight slice pads, musical editable MAGIC CHOP variations), TWIST (non-destructive trim, pitch, reverse and looping). Both melodic keyboard and rhythmic pads are in v0.6 scope. The sample engine is shared/reusable, while MUNCH has its own instrument identity. MUNCH is a working name accepted for design; revisit branding if needed.
 
-**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration; (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented, awaiting physical iPad verification** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable .hbn project format (Phase 5A merged), five instruments active by default (no URL flags), iPad QA; Song WAV Export deferred to v0.9. Each phase must preserve existing musical behavior.
+**Phased delivery:** (1) instrument registry, slot/schema migration and regression protection; (2) five-slot audio/transport/UI integration; (3) sample engine; (4) MUNCH PLAY/CHOP/TWIST and sequencer integration; (4b) **MUNCH stabilization** — microphone on iPad (audio session), resilient sample storage, voice retrigger/choke/Stop, Stretch/Tape fit, clearer chopping — **implemented and owner-verified on physical iPad 2026-11-24** (`docs/MUNCH-STABILIZATION.md`, BUGS.md MUNCH-1…4); (5) portable .hbn project format (Phase 5A merged), five instruments active by default (no URL flags), iPad QA; Song WAV Export deferred to v0.9. Each phase must preserve existing musical behavior.
 
 - Import audio samples and record samples using the device microphone.
 - Display waveforms and provide touch-friendly trim, slice/chop, loop points, audition, and editing.
@@ -108,7 +108,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Scope guardrails:** No instrument swapping UI or unlimited slots in v0.6. Beyond the decided Stretch/Tape fit: no advanced time-stretch modes, transient detection, full parameter-lock system or full jungle break engine in v0.6. MAGIC CHOP must create musically useful, editable patterns with Undo; avoid arbitrary note soup. Verify iPad Safari recording, timing, touch and sample memory limits before release.
 
-**Release blocker (reported 2026-11-22):** During physical iPad testing of PR #10, MUNCH reported `The sample could not be stored.` on import and `The microphone could not be started.` on RECORD. **Stabilization status:** the microphone failure is explained by WebKit refusing capture under the `playback` audio session and is fixed; storage is hardened (reconnect, non-destructive schema repair, play-from-memory fallback, explicit repair) but its root cause is unconfirmed; retrigger/Stop and Stretch/Tape are implemented. The blocker stays until the owner's physical iPad test passes (checklist in `docs/MUNCH-STABILIZATION.md` §7). Do not defer it to v0.6.1.
+**Release blocker (reported 2026-11-22):** During physical iPad testing of PR #10, MUNCH reported `The sample could not be stored.` on import and `The microphone could not be started.` on RECORD. **Stabilization status:** the microphone failure is explained by WebKit refusing capture under the `playback` audio session and is fixed; storage is hardened (reconnect, non-destructive schema repair, play-from-memory fallback, explicit repair) but its root cause is unconfirmed; retrigger/Stop and Stretch/Tape are implemented. The original microphone/storage blocker is cleared by owner physical iPad QA on 2026-11-24. Low recording level remains a separate non-blocking P2 issue (MUNCH-5).
 
 **Exit criterion:** A user can record/import a sound, creatively manipulate it, use it in music, and save the work in a portable project.
 
@@ -137,7 +137,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
 2. **Live Pattern Recording — DONE / owner-accepted (PR #29):** REC and Quantize On/Off, live capture on all five instruments, overdub, Undo/Redo and current-version `.hbn` round-trip. Owner physical iPad test passed 29/30 checks (2026-11-24). Multi-touch on existing sequencer playing surfaces was not accepted; owner explicitly deferred dedicated multi-touch performance to future Universal Live Play instead of requiring a PR #29 fix. MUNCH PLAY keyboard multi-touch works. `npm test` reported 280/280 PASS; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR environment, although supplemental Chromium E2E/layout checks passed. PR #29 merged. No claim that the deferred multi-touch capability is implemented.
-3. **Final release QA (no Compact Top or Preset UX):** Run essential physical iPad and regression checks, confirm remaining MUNCH stabilization blockers, and reconcile canonical release identity. Defer all non-blocking polish. **Compact Top (UX-05) moved to post-v0.6.1 Nice to Have / UX Backlog**; not a release gate.
+3. **Final release QA (no Compact Top or Preset UX):** Owner physical iPad QA PASS 7/7 (2026-11-24): microphone, import/reopen, retrigger, Stop, Stretch, Tape and other-instrument regression. MUNCH-1…4 resolved; low microphone recording level logged as non-blocking P2 MUNCH-5. **Still outstanding:** run/document standard automated UI and baseline regression checks and confirm release identity; do not claim full automated release sign-off yet. Defer all non-blocking polish. **Compact Top (UX-05) moved to post-v0.6.1 Nice to Have / UX Backlog**; not a release gate.
 
 **Next-task guardrails:** Preset UX + Musical Playability (UX-09/10) is deferred to the final polish milestone immediately before v1.0, after v0.9. Do not implement it in v0.6.1. After essential QA, proceed to v0.7 Ruff in the Jungle. Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
 
@@ -168,6 +168,10 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 **Out of scope:** New instruments, Ruff in the Jungle implementation, major architecture rewrites and unrelated feature expansion. Critical v0.6 defects must be fixed before this phase, not carried into it.
 
 **Exit criterion:** A first-time user can create a beat quickly (target: 30 seconds), find and audition presets, operate core controls comfortably on iPad and produce musically useful variations without breaking existing projects or workflows.
+
+## v0.6.1 — Exit verification note (2026-11-24)
+
+Owner completed the focused physical iPad final QA: **7/7 PASS** (MUNCH microphone capture, sample import/reopen, retrigger, Stop, Stretch, Tape, and BOP/GOO/BLIP/FUZZ + scene/REC/.hbn regression). The original MUNCH-1…4 physical-device verification blockers are resolved. **Known non-blocking P2:** microphone capture level is very low (MUNCH-5; cause not established). Standard automated `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR #29 environment; a final automated release regression pass is still required or must be explicitly documented as unavailable. This is **physical QA acceptance**, not a claim of complete technical release sign-off. No additional preset UX or Compact Top work is required before starting v0.7 design.
 
 ## v0.7 — Ruff in the Jungle
 
