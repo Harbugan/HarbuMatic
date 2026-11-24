@@ -24,35 +24,61 @@ const HINTS = {
 };
 export const hintFor = () => { const t = store.ui.tool, x = HINTS[t] || ''; return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel']; };
 
+const COMMON_TOOLS = new Set(['draw', 'erase', 'vel', 'prob', 'lock']);
+
 export function renderJamBar() {
   const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', TOOLS = toolsFor(m);
   const bar = $('#jamBar'); bar.innerHTML = '';
+  bar.classList.toggle('deep', !!u.expanded);
   const sc = store.project.scene;
   if (!u.expanded && !['draw', 'erase'].includes(u.tool)) u.tool = 'draw'; // standard mode: simple tools only
   if (!TOOLS.some(([k]) => k === u.tool)) u.tool = 'draw';
-  bar.append(h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`)));
-  const tools = h('div', { class: 'tgroup' });
-  (u.expanded ? TOOLS : TOOLS.slice(0, 2)).forEach(([k, label]) => tools.append(btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) })));
-  bar.append(tools);
+  const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
+  const makeToolBtn = ([k, label]) => {
+    const b = btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) });
+    b.dataset.tool = k;
+    return b;
+  };
+  const actions = h('div', { class: 'tgroup tb-actions' },
+    btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }),
+    btn({ icon: ico('clear'), label: 'Clear', cls: 'tool', title: 'Clear this instrument in this scene (locked notes stay)', onClick: A.clearPattern }),
+    btn({ icon: ico(u.expanded ? 'collapse' : 'expand'), label: u.expanded ? 'Done' : 'Deep edit', cls: 'tool expand' + (u.expanded ? ' on' : ''), title: u.expanded ? 'Back to the simple view (F)' : 'Expand the sequencer with all editing tools (F)', onClick: () => A.setExpanded(!u.expanded) }));
+  actions.children[0].dataset.action = 'lab';
+  actions.children[1].dataset.action = 'clear';
+  actions.children[2].dataset.action = 'expand';
+
   if (u.expanded) {
-    bar.append(h('div', { class: 'tgroup' }, h('span', { class: 'glbl' }, 'Bars'),
+    // Deep edit: two structured rows so common tools, Bars/Zoom, and Lab/Clear/Done never shift across instruments
+    const commonTools = TOOLS.filter(([k]) => COMMON_TOOLS.has(k));
+    const extraTools = TOOLS.filter(([k]) => !COMMON_TOOLS.has(k));
+    const tools = h('div', { class: 'tgroup tb-tools' }, commonTools.map(makeToolBtn));
+    const mainRow = h('div', { class: 'tb-row tb-main' }, chip, tools, actions);
+
+    const bars = h('div', { class: 'tgroup tb-bars' }, h('span', { class: 'glbl' }, 'Bars'),
       Seg([[16, '1'], [32, '2'], [64, '4']], p.len, v => A.setLength(v), { label: 'Pattern length in bars' }),
-      btn({ icon: ico('dup'), label: '×2', cls: 'tool', title: 'Double the pattern (copies content)', disabled: p.len >= 64, onClick: A.doubleLength })));
-    bar.append(h('div', { class: 'tgroup' }, h('span', { class: 'glbl' }, 'Zoom'),
-      Seg([[1, '1×'], [2, '2×', p.len / 2 < 8], [4, '4×', p.len / 4 < 8]], u.zoom, v => { u.zoom = v; u.scrollX = 0; Seq.render(); }, { label: 'Zoom' })));
+      btn({ icon: ico('dup'), label: '×2', cls: 'tool', title: 'Double the pattern (copies content)', disabled: p.len >= 64, onClick: A.doubleLength }));
+    const zoom = h('div', { class: 'tgroup tb-zoom' }, h('span', { class: 'glbl' }, 'Zoom'),
+      Seg([[1, '1×'], [2, '2×', p.len / 2 < 8], [4, '4×', p.len / 4 < 8]], u.zoom, v => { u.zoom = v; u.scrollX = 0; Seq.render(); }, { label: 'Zoom' }));
+    // Dedicated instrument-specific zone (e.g. GOO Slide + melodic scale/octave controls)
+    const inst = h('div', { class: 'tgroup tb-inst' });
+    extraTools.forEach(t => inst.append(makeToolBtn(t)));
+    if (!drums) {
+      inst.append(btn({ icon: ico('scale'), label: u.fold ? 'In key' : 'All notes', cls: 'tool fold' + (u.fold ? ' on' : ''), pressed: u.fold, title: 'Show only notes in the key (fewer wrong notes, bigger rows)', onClick: () => { u.fold = !u.fold; Seq.fitView(); renderJamBar(); Seq.render(); } }));
+      inst.append(btn({ icon: ico('up'), label: 'Oct', cls: 'tool narrow', title: 'Octave up', onClick: () => Seq.octave(1) }), btn({ icon: ico('down'), label: 'Oct', cls: 'tool narrow', title: 'Octave down', onClick: () => Seq.octave(-1) }));
+    }
+    if (!inst.children.length) inst.classList.add('empty');
+    const subRow = h('div', { class: 'tb-row tb-sub' }, bars, zoom, inst);
+    bar.append(mainRow, subRow);
+  } else {
+    const tools = h('div', { class: 'tgroup tb-tools' }, TOOLS.slice(0, 2).map(makeToolBtn));
+    bar.append(chip, tools);
+    if (!drums) {
+      bar.append(h('div', { class: 'tgroup tb-inst' },
+        btn({ icon: ico('up'), label: 'Oct', cls: 'tool narrow', title: 'Octave up', onClick: () => Seq.octave(1) }),
+        btn({ icon: ico('down'), label: 'Oct', cls: 'tool narrow', title: 'Octave down', onClick: () => Seq.octave(-1) })));
+    }
+    bar.append(h('span', { class: 'spacer' }), actions);
   }
-  if (!drums) {
-    const g = h('div', { class: 'tgroup' });
-    if (u.expanded) g.append(btn({ icon: ico('scale'), label: u.fold ? 'In key' : 'All notes', cls: 'tool' + (u.fold ? ' on' : ''), pressed: u.fold, title: 'Show only notes in the key (fewer wrong notes, bigger rows)', onClick: () => { u.fold = !u.fold; Seq.fitView(); renderJamBar(); Seq.render(); } }));
-    g.append(btn({ icon: ico('up'), label: 'Oct', cls: 'tool narrow', title: 'Octave up', onClick: () => Seq.octave(1) }), btn({ icon: ico('down'), label: 'Oct', cls: 'tool narrow', title: 'Octave down', onClick: () => Seq.octave(-1) }));
-    bar.append(g);
-  }
-  bar.append(h('span', { class: 'spacer' }));
-  const right = h('div', { class: 'tgroup' });
-  right.append(btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }));
-  right.append(btn({ icon: ico('clear'), label: 'Clear', cls: 'tool', title: 'Clear this instrument in this scene (locked notes stay)', onClick: A.clearPattern }));
-  right.append(btn({ icon: ico(u.expanded ? 'collapse' : 'expand'), label: u.expanded ? 'Done' : 'Deep edit', cls: 'tool expand' + (u.expanded ? ' on' : ''), title: u.expanded ? 'Back to the simple view (F)' : 'Expand the sequencer with all editing tools (F)', onClick: () => A.setExpanded(!u.expanded) }));
-  bar.append(right);
   $('#edHint').textContent = hintFor();
 }
 
