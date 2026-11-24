@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (PR #29 Live Pattern Recording merged and owner-accepted; Preset UX next)  
+> Last updated: 2026-11-24 (PR #29 accepted; v0.6.1 exit QA next; Preset UX deferred to pre-1.0)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -30,10 +30,11 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27/#29 merged; MUNCH CHOP and Live Pattern Recording owner-accepted on iPad; next Preset UX + Musical Playability |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27/#29 merged; MUNCH CHOP and Live Pattern Recording owner-accepted on iPad; next essential release QA; Preset UX deferred to final pre-1.0 polish |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
+| **Pre-v1.0** | Preset UX + Musical Playability | Final preset/audition and creative-quality polish after v0.9 | Planned final polish milestone |
 | **v1.0** | The Little Music Machine | Stable, polished, installable tablet music app | Target |
 | **v1.1 (proposed)** | The Skin Playground | Optional visual themes and character universes, without changing musical behavior | Post-1.0 proposal |
 
@@ -136,10 +137,9 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
 2. **Live Pattern Recording — DONE / owner-accepted (PR #29):** REC and Quantize On/Off, live capture on all five instruments, overdub, Undo/Redo and current-version `.hbn` round-trip. Owner physical iPad test passed 29/30 checks (2026-11-24). Multi-touch on existing sequencer playing surfaces was not accepted; owner explicitly deferred dedicated multi-touch performance to future Universal Live Play instead of requiring a PR #29 fix. MUNCH PLAY keyboard multi-touch works. `npm test` reported 280/280 PASS; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR environment, although supplemental Chromium E2E/layout checks passed. PR #29 merged. No claim that the deferred multi-touch capability is implemented.
-3. **Preset UX + Musical Playability (UX-09/10) — FINAL FOCUSED POLISH:** Address only concrete, high-impact preset discoverability/audition and musical playability issues. No broad redesign or indefinite polish cycle; defer non-blocking improvements to the UX backlog.
-4. **Final release QA (no Compact Top):** Run essential physical iPad and regression checks, confirm remaining MUNCH stabilization blockers, and reconcile canonical release identity. Defer all non-blocking polish. **Compact Top (UX-05) moved to post-v0.6.1 Nice to Have / UX Backlog**; not a release gate.
+3. **Final release QA (no Compact Top or Preset UX):** Run essential physical iPad and regression checks, confirm remaining MUNCH stabilization blockers, and reconcile canonical release identity. Defer all non-blocking polish. **Compact Top (UX-05) moved to post-v0.6.1 Nice to Have / UX Backlog**; not a release gate.
 
-**Next-task guardrails:** Keep the final preset/playability pass small; defer additional improvements instead of expanding the release. After essential QA, proceed to v0.7 Ruff in the Jungle.  Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
+**Next-task guardrails:** Preset UX + Musical Playability (UX-09/10) is deferred to the final polish milestone immediately before v1.0, after v0.9. Do not implement it in v0.6.1. After essential QA, proceed to v0.7 Ruff in the Jungle. Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
@@ -220,6 +220,10 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 - Review instrument names **BOP / GOO / BLIP / FUZZ**; current names are not permanently locked.
 
 **Exit criterion:** More sound choices and a path to finished tracks, without sacrificing the five-slot simplicity.
+
+## Final pre-v1.0 polish — Preset UX + Musical Playability (UX-09/10)
+
+**Owner decision 2026-11-24:** schedule as the last focused product-quality milestone after v0.9 and before v1.0; not a v0.6.1 release gate. Improve preset discovery, selected-state feedback and fast audition across instruments. Review the musical usefulness of Generate, Mutate, Evolve, Remix, Surprise, Lab and MAGIC CHOP while protecting user intent, locked material and Undo. Keep scope evidence-based and split into focused tasks if necessary. Complete essential regression and physical iPad acceptance before v1.0. Compact Top remains optional Nice to Have, not a required part of this milestone.
 
 ## v1.0 — The Little Music Machine
 
