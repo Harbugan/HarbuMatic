@@ -1,8 +1,8 @@
 # HarbuMatic — Bug & Improvement Tracker
 
-> Last updated: 2026-11-23  
+> Last updated: 2026-11-24  
 > Current development baseline: **v0.6.1** (five instruments always available; Dynamic Scene Library merged in PR #18)  
-> Stabilization: **v0.6 MUNCH stabilization** — MUNCH-1 … MUNCH-4 implemented, awaiting physical iPad verification (see `docs/MUNCH-STABILIZATION.md`)
+> Stabilization: **v0.6 MUNCH stabilization** — MUNCH-1 … MUNCH-4 resolved after owner physical iPad acceptance (2026-11-24); see `docs/MUNCH-STABILIZATION.md`. Low microphone recording level tracked separately as P2.
 
 This file tracks reproducible bugs and smaller usability improvements. It complements [ROADMAP.md](ROADMAP.md), which covers larger product capabilities.
 
@@ -79,7 +79,7 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### MUNCH-1 — Microphone recording fails on iPad
 - **Type:** Bug
 - **Priority:** P1 — High
-- **Status:** Ready for Test
+- **Status:** Resolved — owner-verified on physical iPad (2026-11-24)
 - **Reported in:** v0.6 Phase 4 (PR #10 preview), physical iPad
 - **Device / browser:** iPad, Safari, Chrome and Firefox (all WebKit)
 - **Observed:** RECORD immediately shows *The microphone could not be started.* No permission prompt appears. The microphone works in other apps.
@@ -87,12 +87,12 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - **Fix:** The session switches to `play-and-record` inside the tap and is restored afterwards (`src/audio/session.js`). Constraints fall back from raw audio to `{ audio: true }`, and a refusal is never retried. Messages are mapped per error name and end with the browser error name. Diagnostics are kept in `recorder.diagnostics()`. MP4 is preferred on WebKit, there is no timeslice, and Safari's late last chunk is collected. The 30 s limit or a system interruption now keeps the recording (before, the limit discarded it). The AudioContext resumes after capture.
 - **Test evidence:** `tests/munch-recorder.test.mjs` (15 tests) first reproduces the failure: under `playback`, without the switch, it gets `InvalidStateError`. It then covers the switch and restore, the fallback, the no-retry rule on denial, the error mapping, the format choice, cancel during the prompt, the time limit, interruption, MediaRecorder errors, repeated recordings and browsers without the API. `npm run test:ui` emulates the iPad Audio Session in Chromium: recording works twice, `playback` is restored and the audio keeps running.
 - **Remaining limitations:** iPad Safari/WebKit itself has not been run. MP4/AAC decoding of iPad recordings has only been emulated.
-- **Physical-device verification:** **not tested**.
+- **Physical-device verification:** PASS — owner physical iPad QA on 2026-11-24. Microphone RECORD and sample capture worked; recording level reported low (tracked separately).
 
 ### MUNCH-2 — "The sample could not be stored." on import
 - **Type:** Bug
 - **Priority:** P1 — High
-- **Status:** Ready for Test (root cause not confirmed)
+- **Status:** Resolved — owner-verified on physical iPad (2026-11-24); original root cause remains unconfirmed
 - **Reported in:** v0.6 Phase 4 (PR #10 preview)
 - **Device / browser:** iPad Safari, normal sessions (private mode and desktop worked)
 - **Observed:** Import sometimes ends with *The sample could not be stored.*
@@ -100,30 +100,30 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - **Fix:** A failed transaction drops the connection and is retried once (connection-type errors only), and `onclose` drops dead connections. Database v2 adds missing stores without deleting data. Newer versions still open, and opening times out instead of hanging. Decode errors (*not an audio format…*) and storage errors (*could not be saved… [UnknownError while saving]*) are now distinct. A sample that decodes but cannot be written still plays from memory and is marked *Not saved on this device*. From there, *Try again* rewrites it, and *Repair storage…* (with confirmation) rescues readable samples, deletes only `harbumatic-samples` and writes them back. Persistent storage is requested after the first save.
 - **Test evidence:** `tests/samples-store.test.mjs` adds failure injection: a refused write keeps the sample playable, retry, unreadable lookups, read errors versus *missing*, repair, and no eviction of unsaved samples. `npm run test:ui` covers real Chromium IndexedDB: a stale v1 database without its audio store, a lost connection (reopened and stored), and a browser refusing every write (Not saved → dialog with the browser error → Try again → survives reload → Repair keeps everything).
 - **Remaining limitations:** The root cause is unconfirmed. If it recurs on the iPad, the toast and the dialog show the browser's error name and phase, and that text identifies the cause.
-- **Physical-device verification:** **not tested**.
+- **Physical-device verification:** PASS — owner physical iPad QA on 2026-11-24. Sample import and persistence after reopening passed.
 
 ### MUNCH-3 — Samples do not stop when triggered again; playback leftovers
 - **Type:** Bug
 - **Priority:** P1 — High
-- **Status:** Ready for Test
+- **Status:** Resolved — owner-verified on physical iPad (2026-11-24)
 - **Reported in:** v0.6 Phase 4
 - **Observed:** Retriggered samples overlap instead of stopping, which gives unwanted layering.
 - **Root causes (confirmed):** (1) One-shot voices never cut each other, and choke was off by default and only applied between different slices. (2) `engine.closeGates()` returned early without an open play session, so **Stop while stopped** left auditions, held keys and long one-shots playing. (3) Cuts used `cancelScheduledValues`, which jumps back when a ramp is in progress, so cuts during attack or release could click. (4) Pads played a fixed 0.4 s audition, so Gate and Loop ignored release.
 - **Fix:** Each voice has a key (slice, pitch or audition). A new hit with the same key cuts the previous one at the hit time, and different keys stay polyphonic. Choke is on by default for new sounds and cuts other slices. Cuts hold the current envelope value and ramp over 6 ms, and a later-scheduled voice is never cut by an earlier hit. Stop and Pause always silence. Pads use note on/off like keys.
 - **Test evidence:** `tests/munch-voices.test.mjs` covers retrigger of the same slice, key and audition, polyphony across keys, cuts during the release ramp and during attack, pad Gate/Loop/One-shot, Stop while stopped, 10 Play/Stop cycles without orphaned sources, and later voices never being cut. The existing pool, choke, transport and scene tests were updated. `npm run test:ui` checks Stop-while-stopped and a held pad in Gate mode in Chromium.
 - **Remaining limitations:** Choke applies between slices only; melodic keys stay polyphonic by design.
-- **Physical-device verification:** **not tested**.
+- **Physical-device verification:** PASS — owner physical iPad QA on 2026-11-24. Retrigger and Stop both passed.
 
 ### MUNCH-4 — Fit to Beat: pitch-preserving Stretch and Tape
 - **Type:** Feature gap (product decision) / Bug
 - **Priority:** P1 — High
-- **Status:** Ready for Test
+- **Status:** Resolved — owner-verified on physical iPad (2026-11-24)
 - **Reported in:** v0.6 Phase 4 (only tape fit existed: changing BPM transposed the sample)
 - **Decision:** Stretch (pitch kept) is the default, and Tape (pitch follows speed) is the alternative.
 - **Fix:** New param `fitMode` (`stretch` | `tape`, default `stretch`), validated. Stretch uses WSOLA time-stretching anchored at slice boundaries (`src/samples/stretch.js`, pure JS, no dependency): slice attacks are copied exactly, positions scale exactly, there is no pre-echo, and joins are blended. Renders run in a Worker with a time-sliced fallback and are cached in the bank (two per sample). The voice plays the closest copy at an exact-duration residual rate and falls back to tape timing until a copy exists. Tape behaves as before. The fit is applied once: buffer (Stretch) or rate (Tape). The UI has a STRETCH/TAPE toggle, and the head shows *pitch kept* or the semitone shift.
 - **Test evidence:** `tests/munch-stretch.test.mjs` covers pitch kept at ×0.5…×2 (440 Hz within 1 %), exact lengths, steady level, exact attacks at anchors, no pre-echo, stereo positions, the time-sliced runner matching the direct render, 30 s stereo performance, Stretch as default, BPM changes (exact timing, small residual before the re-render, musical pitch after), Tape pitch, transpose and tune independence, transport slices one per beat at the original pitch, and mode switching with no stuck voices. `npm run test:ui` checks that the render runs in a Worker in Chromium, the rate stays 1.0 in Stretch and becomes 0.833 in Tape.
 - **Remaining limitations:** Typical WSOLA phasiness near ×0.5 or ×2 on sustained rich material. On pure sustained tones, the 5 ms join before a slice marker can dip about 3 dB. Until a re-render after a BPM change finishes, a small residual pitch is audible. Not yet listened to on an iPad.
-- **Physical-device verification:** **not tested**.
+- **Physical-device verification:** PASS — owner physical iPad QA on 2026-11-24. Stretch pitch preservation and Tape pitch-following behavior passed.
 
 ### ENH-001 — Dynamic Scene Library: start with one, grow as needed
 - **Type:** Enhancement (not a bug)
@@ -156,10 +156,10 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 | BUG-003 | 0.5.1 | Headless Chromium, mouse drag | Pass (automated + screenshots) | Owner confirms physical iPad acceptance (2026-11-23) |
 | BUG-004 | 0.5.1 | Headless Chromium, 7 viewports | Pass (automated) | Owner confirms physical iPad acceptance (2026-11-23) |
 | ENH-001 | v0.6.1 PR #18 | Unit 266/266 + separate headless Chrome UI | Implemented, merged | Owner-verified on physical iPad (2026-11-23) |
-| MUNCH-1 | 0.5.1 + stabilization | Node (fake WebKit env) + headless Chromium with emulated iPad Audio Session | Pass (automated) | Reproduced first (InvalidStateError under `playback`). iPad: **not tested** |
-| MUNCH-2 | 0.5.1 + stabilization | Node (failure injection) + headless Chromium IndexedDB | Pass (automated) | Root cause unconfirmed. iPad: **not tested** |
-| MUNCH-3 | 0.5.1 + stabilization | Node (fake Web Audio) + headless Chromium | Pass (automated) | Stop-while-stopped reproduced in code. iPad: **not tested** |
-| MUNCH-4 | 0.5.1 + stabilization | Node (DSP + fake Web Audio) + headless Chromium (Worker) | Pass (automated) | Not listened to on an iPad: **not tested** |
+| MUNCH-1 | 0.5.1 + stabilization | Node (fake WebKit env) + headless Chromium with emulated iPad Audio Session | Pass (automated) | Owner iPad PASS 2026-11-24; low recording level tracked as MUNCH-5 |
+| MUNCH-2 | 0.5.1 + stabilization | Node (failure injection) + headless Chromium IndexedDB | Pass (automated) | Owner iPad PASS 2026-11-24 (import/reopen); original root cause unconfirmed |
+| MUNCH-3 | 0.5.1 + stabilization | Node (fake Web Audio) + headless Chromium | Pass (automated) | Owner iPad PASS 2026-11-24 (retrigger and Stop) |
+| MUNCH-4 | 0.5.1 + stabilization | Node (DSP + fake Web Audio) + headless Chromium (Worker) | Pass (automated) | Owner iPad PASS 2026-11-24 (Stretch and Tape) |
 
 ### Known remaining issues (v0.5.1)
 - BUG-001…004 accepted by the owner after physical iPad testing on 2026-11-23. Remaining minor visual/UX polish is deferred to v0.6.1; no claim of a separate desktop Safari verification.
@@ -168,6 +168,18 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - At short landscape heights (e.g. 1180×740) the ARRANGE scene library needs a little scrolling, because the strip no longer collapses there.
 - The footer credit uses the system fallback font for ∆ and Λ; Nunito has no glyphs for them. Glyph rendering on iPad still needs checking by eye.
 - The service-worker cache is now named per version. A PR preview on another version can still clear the production offline cache on the same origin, and the reverse; this was already true whenever the cache name changed.
+
+### MUNCH-5 — Low microphone recording level on iPad
+- **Type:** Audio quality / usability improvement
+- **Priority:** P2 — Medium (non-blocking)
+- **Status:** Open
+- **Reported in:** v0.6.1 final physical iPad QA (2026-11-24)
+- **Device / browser:** Physical iPad; browser/iPadOS version not recorded
+- **Observed:** Microphone recording works and the sample is usable, but the captured recording level is very low.
+- **Expected:** A usable, appropriately audible recording level without clipping or excessive noise.
+- **Investigation:** Determine whether the low level originates in capture, normalization/gain staging or playback; do not apply blind amplification.
+- **Acceptance:** Consistent usable microphone recordings on physical iPad, without distortion or regressions in sample playback.
+- **Release decision:** Not a v0.6.1 release blocker; defer to focused audio quality work.
 
 ## New issue template
 
