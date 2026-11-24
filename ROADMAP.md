@@ -35,6 +35,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
 | **v1.0** | The Little Music Machine | Stable, polished, installable tablet music app | Target |
+| **v1.1 (proposed)** | The Skin Playground | Optional visual themes and character universes, without changing musical behavior | Post-1.0 proposal |
 
 The roadmap is directional, **not** a promise of release dates or a locked implementation order.
 
@@ -134,7 +135,7 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 **One task / one PR / physical iPad acceptance / merge, sequentially.** Do not combine stages into a single implementation PR.
 
 1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
-2. **Live Pattern Recording — NEXT, scope not yet specified:** Play pads/keyboard live and record editable events to the current scene/instrument pattern. Determine quantization, overdub, Undo and transport behavior before implementation. Distinct from MUNCH microphone sample recording.
+2. **Live Pattern Recording — NEXT, scope not yet specified:** Play pads/keyboard live and record editable events to the current scene/instrument pattern. Determine quantization, overdub, Undo and transport behavior before implementation. Distinct from MUNCH microphone sample recording. **Design constraint:** preserve a clean future path for beat-aligned parameter automation events without implementing automation recording or a generic automation engine in this PR.
 3. **Preset UX + Musical Playability (UX-09/10):** Improve discovery, audition and quality of creative actions; split further if necessary.
 4. **Compact Top (UX-05) + final QA:** Explore collapse interaction and layout separately, run physical iPad and regression checks, confirm remaining MUNCH stabilization checks and handle the v0.6.1 release-version bump through its canonical release process.
 
@@ -190,7 +191,9 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 **Confirmed direction:** occasional collaborative jams with other musicians and gear.
 
 - Live performance controls, expressive effect manipulation, and scene triggering.
-- **MUTATOR — decided feature concept (2026-11-24), proposed for v0.8:** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
+- **MUTATOR — decided feature concept (2026-11-24), candidate for v0.7 or v0.8 (not part of the Ruff release commitment):** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
+- **MUTATOR instrument coverage — decided 2026-11-24:** available to all five instruments (BOP, GOO, BLIP, FUZZ, MUNCH), with instrument-specific useful default mappings. It should work during Live Pattern Recording: notes are recorded, while live parameter movements remain unrecorded until automation recording exists.
+- **Live Automation Recording — planned concept, proposed for v0.8:** record real-time movements from MUTATOR and regular knobs as beat-aligned, editable, replayable parameter automation. Keep automation separate from note events; preserve overdub, Undo and reversible editing. Decide recording modes, smoothing, conflicts, persistence and UX before implementation. Advanced automation editing may follow in v0.9.
 - **MIDI Clock synchronization** for compatible gear.
 - **Ableton Link** for shared tempo and beat phase between participating apps/devices.
 - Investigate sync roles, transport behavior, latency, and recovery from device/app interruptions.
@@ -223,6 +226,10 @@ A cohesive, reliable, installable tablet-first groovebox:
 - Consistent characterful identity and polished performance.
 - Explicit documentation of any platform-specific limitations.
 
+## v1.1 (proposed) — The Skin Playground
+
+**Post-v1.0 idea; not authorized for implementation now.** Optional complete visual themes, not merely palette swaps: different colors, character artwork and decorative hardware styling, while retaining identical musical behavior, control locations, accessible touch targets and project compatibility. Keep Original HarbuMatic as default; explore Midnight Ghosts, Kitsune and Rave Machine as illustrative concepts, not committed assets. Switch skins from Settings without disrupting playback or losing edits. Avoid unnecessary hardcoded visual dependencies before v1.0, but do not build a skin framework prematurely.
+
 ## Architecture decisions to protect now
 
 These are **forward-looking constraints**, not requests to build every future feature in v0.5.
@@ -254,7 +261,9 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Dedicated jungle/breakbeat creation feature | **Decided** |
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
-| Live keyboard MUTATOR: assignable real-time sound-shaping controller, HiChord-inspired; control shape and mapping details open | **Decided concept 2026-11-24; proposed v0.8** |
+| Live keyboard MUTATOR: assignable real-time sound-shaping controller, HiChord-inspired; control shape and mapping details open | **Decided concept; all five instruments; candidate v0.7/v0.8** |
+| Live Automation Recording: capture MUTATOR and knob movements in musical time, editable separately from notes | **Decided future goal; proposed v0.8, detailed UX/architecture open** |
+| Optional visual skins / The Skin Playground | **Post-v1.0 proposal (v1.1); no implementation now** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
 | Dynamic Scene Library (ENH-001) in v0.6.1 | **Implemented, merged PR #18 and owner-verified on physical iPad (2026-11-23)** |
