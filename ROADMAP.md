@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (v0.6.1 sequence and HBM-061-05 MUNCH CHOP)  
+> Last updated: 2026-11-24 (MUNCH CHOP accepted; Live Pattern Recording next)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -30,7 +30,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23 merged; owner-accepted iPad UX through PR #23; next HBM-061-05 MUNCH CHOP (UX-14/15) |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27 merged; MUNCH CHOP (UX-14/15) owner-accepted on iPad; next Live Pattern Recording |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -133,12 +133,12 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **One task / one PR / physical iPad acceptance / merge, sequentially.** Do not combine stages into a single implementation PR.
 
-1. **HBM-061-05 — NEXT, authorized:** MUNCH CHOP (UX-14/15). Waveform, eight pads, slice sequencer and MAGIC CHOP visible together on typical iPad landscape; dedicated local Play/Stop preview of the current slice pattern, looping at project BPM without starting the song/global transport. Reuse existing engine/scheduler, investigate safe behavior during global playback and voice stop semantics before implementing. No changes to other MUNCH modes or global transport behavior without approval.
-2. **Live Pattern Recording — following task, scope not yet specified:** Play pads/keyboard live and record editable events to the current scene/instrument pattern. Determine quantization, overdub, Undo and transport behavior before implementation. Distinct from MUNCH microphone sample recording.
+1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
+2. **Live Pattern Recording — NEXT, scope not yet specified:** Play pads/keyboard live and record editable events to the current scene/instrument pattern. Determine quantization, overdub, Undo and transport behavior before implementation. Distinct from MUNCH microphone sample recording.
 3. **Preset UX + Musical Playability (UX-09/10):** Improve discovery, audition and quality of creative actions; split further if necessary.
 4. **Compact Top (UX-05) + final QA:** Explore collapse interaction and layout separately, run physical iPad and regression checks, confirm remaining MUNCH stabilization checks and handle the v0.6.1 release-version bump through its canonical release process.
 
-**HBM-061-05 guardrails:** One focused PR, no auto-merge, no new instruments, no Ruff v0.7, no audio-engine rewrite, no unrelated schema/version changes. See `docs/UX-REVIEW-061.md` for acceptance criteria, verified code map and open technical decisions.
+**Next-task guardrails:** Live Pattern Recording requires its own focused design and PR; decide quantization, overdub, Undo and transport behavior before implementation. Preserve current CHOP Preview, audio timing, saved patterns and iPad ergonomics. See `docs/UX-REVIEW-061.md` for accepted UX-14/15 and remaining decisions.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
