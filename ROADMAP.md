@@ -136,14 +136,14 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
 2. **Live Pattern Recording — DONE / owner-accepted (PR #29):** REC and Quantize On/Off, live capture on all five instruments, overdub, Undo/Redo and current-version `.hbn` round-trip. Owner physical iPad test passed 29/30 checks (2026-11-24). Multi-touch on existing sequencer playing surfaces was not accepted; owner explicitly deferred dedicated multi-touch performance to future Universal Live Play instead of requiring a PR #29 fix. MUNCH PLAY keyboard multi-touch works. `npm test` reported 280/280 PASS; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR environment, although supplemental Chromium E2E/layout checks passed. PR #29 merged. No claim that the deferred multi-touch capability is implemented.
-3. **Preset UX + Musical Playability (UX-09/10) — NEXT:** Improve discovery, audition and quality of creative actions; split further if necessary.
-4. **Compact Top (UX-05) + final QA:** Explore collapse interaction and layout separately, run physical iPad and regression checks, confirm remaining MUNCH stabilization checks and handle the v0.6.1 release-version bump through its canonical release process.
+3. **Preset UX + Musical Playability (UX-09/10) — FINAL FOCUSED POLISH:** Address only concrete, high-impact preset discoverability/audition and musical playability issues. No broad redesign or indefinite polish cycle; defer non-blocking improvements to the UX backlog.
+4. **Final release QA (no Compact Top):** Run essential physical iPad and regression checks, confirm remaining MUNCH stabilization blockers, and reconcile canonical release identity. Defer all non-blocking polish. **Compact Top (UX-05) moved to post-v0.6.1 Nice to Have / UX Backlog**; not a release gate.
 
-**Next-task guardrails:** Preset UX + Musical Playability is next. Keep it focused and split preset discovery/audition from musical-generation improvements if scope grows. Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
+**Next-task guardrails:** Keep the final preset/playability pass small; defer additional improvements instead of expanding the release. After essential QA, proceed to v0.7 Ruff in the Jungle.  Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
-**Status: Agreed to track; not authorized for implementation now.** During the tablet-first playability review, evaluate an expanded and a highly compact/collapsed state for the top area (header, instrument strip and transport). The user's initial idea is a collapsed height around **20% of the current expanded area**, as an aspirational space-saving target rather than a fixed requirement.
+**Status: Nice to Have / UX Backlog after v0.6.1; explicitly not a v0.6.1 release gate (2026-11-24).** During the tablet-first playability review, evaluate an expanded and a highly compact/collapsed state for the top area (header, instrument strip and transport). The user's initial idea is a collapsed height around **20% of the current expanded area**, as an aspirational space-saving target rather than a fixed requirement.
 
 - Prioritize freeing vertical space for playing, sequencer editing and MUNCH workflows on landscape iPad.
 - Preserve quick, comfortable access to Play, Stop, future Pattern Record, active instrument selection and essential feedback.
@@ -285,6 +285,11 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |
 | Final instrument names | **Open** |
 | PWA-only vs. native wrapper for external sync | **Open** |
+
+## Nice to Have / UX Backlog
+
+- **Compact Top (UX-05):** collapsible instrument/transport area to free iPad landscape workspace; preserve accessible transport, REC, instrument selection, Quick Volume and character identity. Deferred from v0.6.1 by owner decision on 2026-11-24. Revisit after new creative features, not before v0.7.
+- Other non-blocking preset, visual and microinteraction polish found during v0.6.1 QA; prioritize only when there is demonstrated user value.
 
 ## Parking lot — ideas for later
 
