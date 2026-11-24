@@ -1,5 +1,5 @@
 # v0.6.1 — iPad UX Review & Polish Plan
-Captured 2026-11-23; updated 2026-11-24. This document tracks decisions and scope. HBM-061-04 is merged and owner-accepted. HBM-061-05 (UX-14/15) is implemented and owner-accepted after PR #25 and the PR #26 fix restored via PR #27; Live Pattern Recording is next for scoping. Other proposed items remain planning only.
+Captured 2026-11-23; updated 2026-11-24. This document tracks decisions and scope. HBM-061-04 is merged and owner-accepted. HBM-061-05 (UX-14/15) is implemented and owner-accepted after PR #25 and the PR #26 fix restored via PR #27; Live Pattern Recording (PR #29) is merged and owner-accepted; remaining v0.6.1 work is essential release QA. Preset UX and Musical Playability deferred to final pre-v1.0 polish. Other proposed items remain planning only.
 
 ## Status legend
 DECIDED = owner-approved direction; OBSERVED = owner screenshot/feedback; PROPOSED = design hypothesis; OPEN = needs technical/product decision; DONE = merged and owner-verified.
@@ -40,8 +40,8 @@ One task → one PR → physical iPad test → owner approval → merge. Do not 
 1. **DONE:** HBM-061-03 / PR #21 (UX-01..04) and HBM-061-04 / PR #23 (UX-07,08,16,17) merged; owner accepted physical iPad testing on 2026-11-24. UX-02 release-version bump remains separate.
 2. **DONE / OWNER-ACCEPTED: HBM-061-05 — MUNCH CHOP UX-14/15.** PR #25 delivered full CHOP landscape workspace and isolated local slice Preview/Stop. Physical iPad testing passed 35/36 initially, with row 8 bottom-edge clipping remaining. PR #26 fixed the clipping; PR #27 restored the fix to `main` after it was merged to the wrong branch. Owner confirmed the final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests and UI/baseline checks; not independently rerun for this documentation update.
 3. **NEXT / TO SCOPE: Live Pattern Recording.** Play live pads/keyboard and record editable sequencer events, not sample audio. Decide quantization, overdub, undo and transport semantics before implementation; no implementation authorization implied by this status update.
-4. **THEN: Preset UX + Musical Playability (UX-09/10).** Review preset discoverability/audition and musical usefulness of creative actions; split into focused PRs if necessary.
-5. **LAST: Compact Top (UX-05) + final v0.6.1 QA.** Explore compact/collapsible header as a separate design decision, run regression and physical iPad release checks, and handle release-version bump separately.
+4. **NEXT: Essential v0.6.1 release QA only.** Verify outstanding MUNCH stabilization checks and relevant regressions; no broad polish. Compact Top (UX-05) is deferred to Nice to Have / UX Backlog.
+5. **DEFERRED: Preset UX + Musical Playability (UX-09/10)** is the final focused polish milestone after v0.9, immediately before v1.0, per owner decision 2026-11-24.
 
 ### HBM-061-05 implementation entry points (main, 2026-11-24)
 - `src/views/munch.js`: `chop()` composes tools, pads, MAGIC CHOP and `sequencer()`; `bindPad()` handles live pad presses; `munchStep()` displays existing global playhead.
