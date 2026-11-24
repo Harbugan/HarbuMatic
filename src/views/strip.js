@@ -124,7 +124,6 @@ export function buildCards() {
     card.addEventListener('click', e => {
       if (e.target.closest('.pill, .knob')) return;
       A.selectSlot(id);
-      A.engine.audition(id, auditionPitch(m, store.project.key, 'pitch', id), .8);
     });
     card.addEventListener('keydown', e => {
       if (e.target.closest('.pill, .knob')) return;

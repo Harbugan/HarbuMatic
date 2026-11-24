@@ -29,7 +29,7 @@
 
 /* ---------- right panel ---------- */
 .rtabs { display: flex; gap: 6px; align-items: center; }
-.rtab-seg { flex: 1; display: flex; }
+.rtab-seg { flex: 1; min-width: 0; display: flex; }
 .rtab-seg .seg { flex: 1; }
 .rtab-seg .seg button { flex: 1; letter-spacing: 1.2px; }
 .uni-home { position: relative; min-height: 96px; border-radius: 20px; background: linear-gradient(180deg, #f1e8ff, #fde9f0); box-shadow: 0 2px 4px #0000000d inset; display: flex; align-items: center; gap: 4px; padding: 4px 12px 4px 0; flex: none; }
@@ -216,10 +216,10 @@ body.coarse .mood-chip { min-height: var(--tap); }
 .device.munch .right {
   position: fixed; z-index: 45; top: calc(8px + var(--sa-t)); bottom: calc(8px + var(--sa-b)); right: calc(8px + var(--sa-r));
   width: min(360px, 92vw); transform: translateX(calc(100% + 30px)); transition: transform .25s cubic-bezier(.3, .9, .3, 1);
-  box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 12px;
+  box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 14px;
 }
 .device.munch.drawer-open .right { transform: none; }
-.device.munch .drawer-close { display: inline-flex !important; }
+.device.munch .drawer-close { display: inline-grid !important; }
 .view.sound:has(.mw) { overflow: hidden; }
 .mw { --mw-pink: #F2AFC0; --mw-pink-d: #E07D98; --mw-mint: #A5DFCE; --mw-mint-d: #5FBFA3; --mw-yel: #F5D19A; --mw-yel-d: #E9AE57;
   flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }

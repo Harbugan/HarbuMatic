@@ -3,7 +3,7 @@
    ========================================================= */
 .device {
   position: relative; height: 100vh; height: 100dvh; max-width: 1600px; margin: 0 auto;
-  padding: calc(10px + var(--sa-t)) calc(14px + var(--sa-r)) calc(12px + var(--sa-b)) calc(14px + var(--sa-l));
+  padding: calc(10px + var(--sa-t)) calc(14px + var(--sa-r)) calc(20px + var(--sa-b)) calc(14px + var(--sa-l));
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; gap: var(--gap);
 }
 .device::before { /* the instrument case */
@@ -15,7 +15,7 @@
 .screw::after { content: ""; position: absolute; left: 2px; right: 2px; top: 4.5px; height: 1.5px; background: #a88d72; transform: rotate(35deg); border-radius: 2px; }
 .screw.tl { left: 14px; top: 14px; } .screw.tr { right: 14px; top: 14px; } .screw.bl { left: 14px; bottom: 14px; } .screw.br { right: 14px; bottom: 14px; }
 /* version + creator credit, engraved on the case's bottom bezel: always visible, never over a control */
-.ident { position: absolute; left: 50%; bottom: calc(1px + var(--sa-b)); transform: translateX(-50%); max-width: calc(100% - 80px);
+.ident { position: absolute; left: 50%; bottom: calc(5px + var(--sa-b)); transform: translateX(-50%); max-width: calc(100% - 80px);
   font-size: 9px; line-height: 10px; letter-spacing: .8px; color: #9b8571; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .panel { border-radius: var(--r-xl); background: var(--panel); box-shadow: var(--sh-panel); padding: 10px; min-height: 0; min-width: 0; }
 
@@ -68,20 +68,22 @@
 .device.expanded .right {
   position: fixed; z-index: 45; top: calc(8px + var(--sa-t)); bottom: calc(8px + var(--sa-b)); right: calc(8px + var(--sa-r));
   width: min(360px, 92vw); transform: translateX(calc(100% + 30px)); transition: transform .25s cubic-bezier(.3, .9, .3, 1);
-  box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 12px;
+  box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 14px;
 }
 .device.expanded.drawer-open .right { transform: none; }
-.device.expanded .drawer-close, .device.expanded .lab-toggle { display: inline-flex !important; }
+.device.expanded .drawer-close { display: inline-grid !important; }
+.device.expanded .lab-toggle { display: inline-flex !important; }
 
 @media (max-width: 899px), (orientation: portrait) and (max-width: 1100px) {
   .main { grid-template-columns: minmax(0, 1fr); }
   .right {
     position: fixed; z-index: 45; top: calc(8px + var(--sa-t)); bottom: calc(8px + var(--sa-b)); right: calc(8px + var(--sa-r));
     width: min(370px, 92vw); transform: translateX(calc(100% + 30px)); transition: transform .25s cubic-bezier(.3, .9, .3, 1);
-    box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 12px;
+    box-shadow: 0 30px 70px -20px #5a405088, var(--sh-panel); padding: 14px;
   }
   .device.drawer-open .right { transform: none; }
-  .drawer-close, .lab-toggle { display: inline-flex !important; }
+  .drawer-close { display: inline-grid !important; }
+  .lab-toggle { display: inline-flex !important; }
   .strip { grid-template-columns: minmax(0, 1fr); }
   .transport { grid-template-columns: 112px 92px minmax(0, 1fr) 200px; grid-template-rows: 50px; }
   .transport .bpm { grid-row: 1; grid-column: 4; }
@@ -103,8 +105,8 @@
 
 /* shorter landscape screens (iPad 10–11" in Safari with toolbars) */
 @media (max-height: 760px) and (orientation: landscape) {
-  .device { gap: 8px; padding-top: calc(8px + var(--sa-t)); padding-bottom: calc(11px + var(--sa-b)); }
-  .ident { bottom: var(--sa-b); } /* the bezel line fits in the slimmer bottom padding */
+  .device { gap: 8px; padding-top: calc(8px + var(--sa-t)); padding-bottom: calc(18px + var(--sa-b)); }
+  .ident { bottom: calc(4px + var(--sa-b)); } /* the bezel line sits cleanly inside the lower bezel */
   .hdr { min-height: 46px; }
   .wordmark { font-size: 24px; }
   .transport { grid-template-rows: 48px 40px; gap: 6px; padding: 8px; }
