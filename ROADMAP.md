@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-23 (v0.6.1 UX review captured)  
+> Last updated: 2026-11-24 (live keyboard MUTATOR concept added)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -166,7 +166,8 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 **Confirmed direction:** occasional collaborative jams with other musicians and gear.
 
-- Live performance controls, expressive effect manipulation, scene triggering, and potentially XY pads.
+- Live performance controls, expressive effect manipulation, and scene triggering.
+- **MUTATOR — decided feature concept (2026-11-24), proposed for v0.8:** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
 - **MIDI Clock synchronization** for compatible gear.
 - **Ableton Link** for shared tempo and beat phase between participating apps/devices.
 - Investigate sync roles, transport behavior, latency, and recovery from device/app interruptions.
@@ -230,6 +231,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Dedicated jungle/breakbeat creation feature | **Decided** |
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
+| Live keyboard MUTATOR: assignable real-time sound-shaping controller, HiChord-inspired; control shape and mapping details open | **Decided concept 2026-11-24; proposed v0.8** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
 | Native project file extension: **.hbn** | **Decided** |
 | Dynamic Scene Library (ENH-001) in v0.6.1 | **Implemented, merged PR #18 and owner-verified on physical iPad (2026-11-23)** |
