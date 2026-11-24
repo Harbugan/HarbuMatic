@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (MUNCH CHOP accepted; Live Pattern Recording next)  
+> Last updated: 2026-11-24 (PR #29 Live Pattern Recording merged and owner-accepted; Preset UX next)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -30,7 +30,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5** | The Foundation | Tablet-first UX, modular architecture, better JAM/ARRANGE, musical generation, reliability | **Live** |
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and awaiting physical iPad verification; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
-| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27 merged; MUNCH CHOP (UX-14/15) owner-accepted on iPad; next Live Pattern Recording |
+| **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **In progress** — PR #15/#18/#21/#23/#25/#27/#29 merged; MUNCH CHOP and Live Pattern Recording owner-accepted on iPad; next Preset UX + Musical Playability |
 | **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
@@ -135,11 +135,11 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 **One task / one PR / physical iPad acceptance / merge, sequentially.** Do not combine stages into a single implementation PR.
 
 1. **HBM-061-05 — DONE / owner-accepted:** MUNCH CHOP (UX-14/15) implemented in PR #25; dedicated local Preview/Stop, live step edits, BPM/swing and transport isolation passed physical iPad checks (35/36 initial). Row-8 bottom-edge clipping fixed in PR #26; the fix was restored to `main` through PR #27 after a branch-target mix-up. Owner confirmed final iPad layout looks correct on 2026-11-24. PR #26 reported 271/271 unit tests plus UI/baseline checks; these were implementation-reported, not independently rerun during documentation update.
-2. **Live Pattern Recording — NEXT, scope not yet specified:** Play pads/keyboard live and record editable events to the current scene/instrument pattern. Determine quantization, overdub, Undo and transport behavior before implementation. Distinct from MUNCH microphone sample recording. **Design constraint:** preserve a clean future path for beat-aligned parameter automation events without implementing automation recording or a generic automation engine in this PR.
-3. **Preset UX + Musical Playability (UX-09/10):** Improve discovery, audition and quality of creative actions; split further if necessary.
+2. **Live Pattern Recording — DONE / owner-accepted (PR #29):** REC and Quantize On/Off, live capture on all five instruments, overdub, Undo/Redo and current-version `.hbn` round-trip. Owner physical iPad test passed 29/30 checks (2026-11-24). Multi-touch on existing sequencer playing surfaces was not accepted; owner explicitly deferred dedicated multi-touch performance to future Universal Live Play instead of requiring a PR #29 fix. MUNCH PLAY keyboard multi-touch works. `npm test` reported 280/280 PASS; standard `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR environment, although supplemental Chromium E2E/layout checks passed. PR #29 merged. No claim that the deferred multi-touch capability is implemented.
+3. **Preset UX + Musical Playability (UX-09/10) — NEXT:** Improve discovery, audition and quality of creative actions; split further if necessary.
 4. **Compact Top (UX-05) + final QA:** Explore collapse interaction and layout separately, run physical iPad and regression checks, confirm remaining MUNCH stabilization checks and handle the v0.6.1 release-version bump through its canonical release process.
 
-**Next-task guardrails:** Live Pattern Recording requires its own focused design and PR; decide quantization, overdub, Undo and transport behavior before implementation. Preserve current CHOP Preview, audio timing, saved patterns and iPad ergonomics. See `docs/UX-REVIEW-061.md` for accepted UX-14/15 and remaining decisions.
+**Next-task guardrails:** Preset UX + Musical Playability is next. Keep it focused and split preset discovery/audition from musical-generation improvements if scope grows. Preserve Live Pattern Recording, CHOP Preview, timing, Undo and `.hbn`. Deferred multi-touch performance belongs to Universal Live Play, not a sequencer retrofit.
 
 ### Future UX exploration — Collapsible top instrument/transport area
 
@@ -186,11 +186,16 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 **Exit criterion:** Quickly turn a break into expressive, editable jungle rhythms with HarbuMatic's signature playful feel.
 
+## Future feature — Universal Live Play (proposed v0.8)
+
+**Decided experience, release placement provisional (2026-11-24):** a summonable, tablet-first performance surface available across HarbuMatic without navigating away from the current JAM/SOUND/ARRANGE workflow. It follows the selected instrument: a polyphonic multi-touch keyboard for melodic instruments, dedicated multi-touch drum pads for BOP, and keyboard/slice-pad options for MUNCH. Designed for both live playing and existing Live Pattern Recording, with clear close/open behavior, reliable independent finger release and no stuck voices. Plan sufficient iPad landscape space for future simultaneous keyboard/pads and MUTATOR. This is **not implemented**; do not retrofit the existing sequencer's multi-touch as part of PR #29. Decide exact overlay/panel behavior and scope before implementation.
+
 ## v0.8 — Play Together
 
 **Confirmed direction:** occasional collaborative jams with other musicians and gear.
 
 - Live performance controls, expressive effect manipulation, and scene triggering.
+- **Universal Live Play (proposed):** shared summonable keyboard/drum-pad/slice-pad performance surface across the app; see dedicated future-feature section above.
 - **MUTATOR — decided feature concept (2026-11-24), candidate for v0.7 or v0.8 (not part of the Ruff release commitment):** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
 - **MUTATOR instrument coverage — decided 2026-11-24:** available to all five instruments (BOP, GOO, BLIP, FUZZ, MUNCH), with instrument-specific useful default mappings. It should work during Live Pattern Recording: notes are recorded, while live parameter movements remain unrecorded until automation recording exists.
 - **Live Automation Recording — planned concept, proposed for v0.8:** record real-time movements from MUTATOR and regular knobs as beat-aligned, editable, replayable parameter automation. Keep automation separate from note events; preserve overdub, Undo and reversible editing. Decide recording modes, smoothing, conflicts, persistence and UX before implementation. Advanced automation editing may follow in v0.9.
@@ -262,6 +267,8 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Feature name: **Ruff in the Jungle** | **Decided** |
 | Ruff mascot: kawaii anteater / kattemyrer | **Decided direction** |
 | Live keyboard MUTATOR: assignable real-time sound-shaping controller, HiChord-inspired; control shape and mapping details open | **Decided concept; all five instruments; candidate v0.7/v0.8** |
+| Universal Live Play: summonable multi-touch keyboard for melodic instruments, drum pads for BOP and keyboard/slice pads for MUNCH | **Decided future experience; proposed v0.8, not implemented** |
+| Live Pattern Recording (PR #29): REC, Quantize On/Off, overdub, five instruments | **Merged and owner-accepted on iPad 2026-11-24; multi-touch on sequencer surfaces deferred; standard UI/baseline scripts not run in PR environment** |
 | Live Automation Recording: capture MUTATOR and knob movements in musical time, editable separately from notes | **Decided future goal; proposed v0.8, detailed UX/architecture open** |
 | Optional visual skins / The Skin Playground | **Post-v1.0 proposal (v1.1); no implementation now** |
 | MIDI Clock and Ableton Link are desired | **Decided goal; feasibility pending** |
