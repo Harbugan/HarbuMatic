@@ -358,8 +358,8 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-cancel { align-self: center; }
 
 /* waveform display */
-.mw-wave { position: relative; flex: none; height: 140px; display: flex; gap: 6px; border-radius: 18px; padding: 6px; background: var(--navy); box-shadow: 0 0 0 4px #efe0ce, 0 0 0 5px #e1ccb5, 0 4px 10px #0005 inset; }
-.mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 120px; }
+.mw-wave { position: relative; flex: none; height: 132px; display: flex; gap: 6px; border-radius: 18px; padding: 6px; background: var(--navy); box-shadow: 0 0 0 4px #efe0ce, 0 0 0 5px #e1ccb5, 0 4px 10px #0005 inset; }
+.mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 116px; }
 .mw-wave-cv { display: block; flex: 1; min-width: 0; height: 100%; border-radius: 13px; touch-action: none; outline: none; }
 .mw-wave-cv:focus-visible { box-shadow: 0 0 0 3px var(--lav-d); }
 
@@ -418,7 +418,7 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-bankbtn { flex: 1; border: 0; min-height: 36px; border-radius: 10px; background: transparent; font-weight: 900; font-size: 11px; color: #6d6378; cursor: pointer; writing-mode: vertical-rl; transform: rotate(180deg); }
 .mw-bankbtn.on { background: #fff; color: var(--navy); box-shadow: 0 -2px 0 #dcc6ad; }
 .mw-pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.mw-pad { --pc: var(--mw-pink); border: 0; cursor: pointer; min-height: 56px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-family: inherit;
+.mw-pad { --pc: var(--mw-pink); border: 0; cursor: pointer; min-height: 58px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-family: inherit;
   background: radial-gradient(circle at 35% 25%, #fff 0, color-mix(in srgb, var(--pc) 55%, #fff) 45%, var(--pc) 100%);
   box-shadow: 0 1px 0 #fff inset, 0 -4px 0 #0000001a inset, 0 5px 0 color-mix(in srgb, var(--pc) 70%, #6b4a5a), 0 10px 14px -8px #6b4a5a99; transition: transform .07s, box-shadow .07s; touch-action: manipulation; }
 .mw-pad b { font-size: 22px; color: var(--navy); line-height: 1; }
@@ -437,12 +437,20 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-style { border: 0; flex: 1 1 0; min-width: 0; min-height: 38px; padding: 0 4px; border-radius: 11px; background: #ffffffb0; font-weight: 900; font-size: 12px; color: #7a6a52; cursor: pointer; }
 .mw-style.on { background: #fff; color: var(--navy); box-shadow: 0 2px 0 var(--mw-yel-d); }
 .mw-seq { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 18px; background: var(--cream-2); box-shadow: 0 1px 3px #0000000d inset; }
-.mw-seqhead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.mw-scenes { display: flex; flex-wrap: wrap; gap: 3px; }
-.mw-scene { border: 0; min-width: 36px; min-height: 38px; padding: 0 6px; border-radius: 10px; background: #efe2d2; font-weight: 900; color: #6d6378; cursor: pointer; }
+.mw-seqhead { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; min-width: 0; }
+.mw-preview { --btn-edge: var(--mw-mint-d); flex: none; min-width: 88px; min-height: 40px; padding: 0 11px; gap: 5px; font-size: 13px; letter-spacing: .5px;
+  background: linear-gradient(180deg, #effcf7, var(--mw-mint)); color: var(--navy); }
+.mw-preview .mw-prev-i { display: grid; place-items: center; }
+.mw-preview .ico { width: 15px; height: 15px; }
+.mw-preview.on { --btn-edge: var(--mw-pink-d); background: linear-gradient(180deg, #ffe6ee, var(--mw-pink)); color: var(--navy);
+  box-shadow: 0 1px 0 #fff inset, 0 3px 0 var(--mw-pink-d), 0 0 10px #e07d9855; }
+.mw-scenes { display: flex; flex-wrap: nowrap; gap: 3px; min-width: 0; flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; margin-bottom: -2px; }
+.mw-scenes::-webkit-scrollbar { display: none; }
+.mw-scene { border: 0; flex: none; min-width: 36px; min-height: 38px; padding: 0 6px; border-radius: 10px; background: #efe2d2; font-weight: 900; color: #6d6378; cursor: pointer; }
 .mw-scene.on { background: linear-gradient(180deg, #fff, var(--mw-mint)); color: var(--navy); box-shadow: 0 2px 0 var(--mw-mint-d); }
+.mw-bars, .mw-seqtool, .mw-pages, .mw-melodic { flex: none; }
 .mw-pages { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.mw-page-t { font-size: 12px; min-width: 34px; text-align: center; color: #6d6378; font-variant-numeric: tabular-nums; }
+.mw-page-t { font-size: 12px; min-width: 30px; text-align: center; color: #6d6378; font-variant-numeric: tabular-nums; }
 .mw-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 3px; }
 .mw-row { --pc: var(--mw-pink); flex: 1 1 0; min-height: 36px; display: grid; grid-template-columns: 44px repeat(var(--steps), minmax(0, 1fr)); gap: 3px; align-items: stretch; }
 .mw-rowlbl { border: 0; border-radius: 10px; font-weight: 900; font-size: 14px; color: var(--navy); cursor: pointer; background: color-mix(in srgb, var(--pc) 70%, #fff); box-shadow: 0 2px 0 color-mix(in srgb, var(--pc) 70%, #6b4a5a); min-width: 38px; min-height: 36px; }
@@ -468,35 +476,71 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 /* Lab panel while MUNCH is selected */
 .lab-munch { display: flex; flex-direction: column; gap: 8px; }
 
+/* 11" landscape and narrower: keep CHOP sequencer header on one single row with preview + scenes + tools + pages */
+@media (max-width: 1260px) and (orientation: landscape) {
+  .mw-tl-t { display: none; }
+  .mw-seqtool button { padding: 0 9px; }
+  .mw-bars button { min-width: 36px; padding: 0 6px; }
+}
 /* narrower landscape (≈1024 px): slimmer left column, compact head */
 @media (max-width: 1120px) {
-  .mw-chop { grid-template-columns: 300px minmax(0, 1fr); }
+  .mw-chop { grid-template-columns: 292px minmax(0, 1fr); gap: 10px; }
   .mw-tab { min-width: 64px; padding: 0 10px; letter-spacing: 1px; }
   .mw-fit button { min-width: 38px; padding: 0 4px; }
   .mw-fit-l small { display: none; }
   .mw-drawer .btn-l { display: none; }
-  .mw-seqhead { gap: 6px; }
-  .mw-bars button { min-width: 36px; padding: 0 6px; }
-  .mw-seqtool button { padding: 0 9px; }
+  .mw-seqhead { gap: 4px; }
+  .mw-preview { min-width: 78px; padding: 0 9px; font-size: 12px; gap: 4px; }
+  .mw-scenes { gap: 2px; }
+  .mw-bars button { min-width: 36px; padding: 0 5px; }
+  .mw-seqtool button { padding: 0 8px; }
   .mw-tl-t { display: none; }
-  .mw-pages .btn.icon { width: 40px; min-width: 40px; }
+  .mw-pages { gap: 2px; }
+  .mw-pages .btn.icon { width: 36px; min-width: 36px; }
+  .mw-page-t { min-width: 24px; font-size: 11px; }
 }
-/* lower landscape screens (1024×768, Safari with toolbars): a lower display, tighter pads */
-@media (max-height: 820px) and (orientation: landscape) {
-  .mw-sliceinfo { display: none; } /* short screens: undo/redo stay in the header */
-  .mw-wave { height: 92px; }
-  .mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 88px; }
-  .mw-seq { padding: 4px 6px; gap: 4px; }
+@media (max-width: 1080px) and (orientation: landscape) {
+  .mw-chop { grid-template-columns: 266px minmax(0, 1fr); gap: 8px; }
+  .mw-preview { min-width: 76px; padding: 0 8px; }
+  .mw-bars button { min-width: 36px; padding: 0 4px; }
+  .mw-seqtool button { min-width: 36px; padding: 0 6px; }
+}
+/* 11" iPad landscape (1194×834, 1210×834, 1180×820) and shorter: keep waveform, 8 pads, sequencer and MAGIC CHOP visible together without clipping */
+@media (max-height: 860px) and (orientation: landscape) {
+  .mw { gap: 6px; }
+  .mw-head { min-height: 48px; }
+  .mw-char.small { width: 52px; height: 46px; }
+  .mw-wave { height: 102px; padding: 5px 6px; }
+  .mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 92px; }
+  .mw-chop { gap: 10px; }
+  .mw-left { gap: 6px; }
+  .mw-tools { gap: 5px; }
+  .mw-tools .btn { min-height: 40px; }
+  .mw-pads { gap: 6px; }
+  .mw-pad { min-height: 54px; }
+  .mw-sliceinfo .mw-si-b { display: none; } /* header keeps Undo/Redo; keep slice readout visible */
+  .mw-si-t { line-height: 1.25; }
+  .mw-magic { padding: 6px; gap: 5px; }
+  .mw-magic-go { min-height: 44px; font-size: 16px; }
+  .mw-style { min-height: 36px; }
+  .mw-seq { padding: 6px; gap: 5px; }
   .mw-grid { gap: 2px; } .mw-row { gap: 2px; }
-  .device .mw-seqhead .seg button, .mw-scene, .mw-melodic { min-height: 36px; }
+  .device .mw-seqhead .seg button, .mw-scene, .mw-melodic, .mw-preview { min-height: 36px; }
   .device .mw-seqhead .seg { padding: 2px; }
   .device .mw-pages .btn.icon { min-height: 36px; height: 36px; }
-  .mw-pad { min-height: 52px; }
   .mw-char.big { width: 150px; height: 136px; }
   .mw-big { min-height: 84px; }
 }
+/* lower landscape screens (1024×768, 1180×740 Safari with toolbars): slightly lower display & pads so all 8 sequencer rows fit with zero clipping */
+@media (max-height: 772px) and (orientation: landscape) {
+  .mw-wave { height: 86px; padding: 4px 6px; }
+  .mw[data-tab=play] .mw-wave, .mw[data-tab=twist] .mw-wave { height: 82px; }
+  .mw-pad { min-height: 48px; }
+  .mw-magic-go { min-height: 42px; font-size: 15px; }
+  .mw-seq { padding: 4px 6px; gap: 4px; }
+}
 /* very short landscape (≈700 px): the workspace scrolls rather than squeezing touch targets */
-@media (max-height: 720px) and (orientation: landscape) {
+@media (max-height: 715px) and (orientation: landscape) {
   .view.sound:has(.mw) { overflow-y: auto; }
   .mw { flex: none; min-height: 100%; }
 }
@@ -512,6 +556,7 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
   .mw-bankbtn { writing-mode: horizontal-tb; transform: none; }
   .mw-magic { margin-top: 0; }
   .mw-seq { min-height: 420px; }
+  .mw-seqhead { flex-wrap: wrap; }
   .mw-feed { flex-direction: column; text-align: center; }
   .mw-feed-btns { justify-content: center; }
   .mkeys { min-height: 220px; }

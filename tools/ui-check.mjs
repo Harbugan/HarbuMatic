@@ -1034,6 +1034,146 @@ async function rollPoint(page, step, rowOrPitch) {
     }
   }
 
+  console.log('\n— HBM-061-05: MUNCH CHOP layout (UX-14) & local preview (UX-15) —');
+  {
+    const { makeWav } = await import('../tests/helpers/audio.mjs');
+    const wavBuf = Buffer.from(makeWav({ seconds: 2, rate: 22050, freq: 220 }));
+    const CHOP_SIZES = [[1194, 834, '1194×834'], [1180, 820, '1180×820'], [1180, 740, '1180×740'], [1366, 1024, '1366×1024'], [1024, 768, '1024×768'], [820, 1180, '820×1180']];
+    const LANDSCAPE_NO_SCROLL = new Set(['1194×834', '1180×820', '1180×740', '1366×1024', '1024×768']);
+
+    for (const [w, h, tag] of CHOP_SIZES) {
+      const { ctx: c, page: pg, errors: errs } = await open(browser, w, h);
+      await pg.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); });
+      await pg.waitForTimeout(100);
+      await pg.setInputFiles('[data-testid=munch-file]', { name: 'chop-test.wav', mimeType: 'audio/wav', buffer: wavBuf });
+      await pg.waitForFunction(() => !!document.querySelector('.mw-status[data-status=ready]'), null, { timeout: 6000 });
+      await pg.click('[data-testid=munch-tab-chop]');
+      await pg.waitForTimeout(150);
+
+      const a = await layoutAudit(pg);
+      const m = await pg.evaluate(() => {
+        const W = innerWidth, H = innerHeight;
+        const inVp = el => {
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= H + 1 && r.right <= W + 1;
+        };
+        const vs = document.querySelector('#viewSound');
+        const pads = [...document.querySelectorAll('[data-testid=munch-pads] .mw-pad')];
+        const rows = [...document.querySelectorAll('[data-testid=munch-grid] .mw-row')];
+        const cells = [...document.querySelectorAll('[data-testid=munch-grid] .mw-cell')];
+        const styles = [...document.querySelectorAll('[data-testid=munch-magic] .mw-style')];
+        const prev = document.querySelector('[data-testid=munch-preview]');
+        const seqHead = document.querySelector('.mw-seqhead');
+        const magicGo = document.querySelector('[data-testid=munch-magic-go]');
+        return {
+          scrollY: vs.scrollHeight > vs.clientHeight + 1,
+          overflowY: getComputedStyle(vs).overflowY,
+          overflowX: document.documentElement.scrollWidth > W || vs.scrollWidth > vs.clientWidth + 1,
+          waveIn: inVp(document.querySelector('[data-testid=munch-wave]')),
+          allPadsIn: pads.length === 8 && pads.every(inVp),
+          allRowsIn: rows.length === 8 && rows.every(inVp),
+          magicIn: inVp(magicGo) && styles.length === 5 && styles.every(inVp),
+          previewIn: inVp(prev),
+          sliceInfoIn: inVp(document.querySelector('.mw-si-t')),
+          minPadH: Math.min(...pads.map(p => Math.round(p.getBoundingClientRect().height))),
+          minCellW: Math.min(...cells.map(x => Math.round(x.getBoundingClientRect().width))),
+          minCellH: Math.min(...cells.map(x => Math.round(x.getBoundingClientRect().height))),
+          previewH: prev ? Math.round(prev.getBoundingClientRect().height) : 0,
+          magicH: magicGo ? Math.round(magicGo.getBoundingClientRect().height) : 0,
+          seqHeadH: seqHead ? Math.round(seqHead.getBoundingClientRect().height) : 0,
+        };
+      });
+
+      ok(!m.overflowX && !a.overlaps.length && !a.spill.length, `${tag} MUNCH CHOP: no horizontal overflow, overlaps or spill`);
+      ok(m.minPadH >= 48 && m.minCellW >= 36 && m.minCellH >= 36 && m.previewH >= 36 && m.magicH >= 42, `${tag} MUNCH CHOP: comfortable touch targets (pad=${m.minPadH}px, cell=${m.minCellW}×${m.minCellH}px, preview=${m.previewH}px, magic=${m.magicH}px)`);
+      if (LANDSCAPE_NO_SCROLL.has(tag)) {
+        ok(!m.scrollY && !a.offscreen.length && m.waveIn && m.allPadsIn && m.allRowsIn && m.magicIn && m.previewIn && m.sliceInfoIn,
+          `${tag} MUNCH CHOP: waveform, all 8 pads, 8 sequencer rows, MAGIC CHOP, Preview & slice info visible together without scrolling`);
+        ok(m.seqHeadH <= 48, `${tag} MUNCH CHOP: sequencer header stays single-row (${m.seqHeadH}px)`);
+      } else {
+        ok(m.overflowY === 'auto' && m.waveIn && m.allPadsIn && m.previewIn, `${tag} MUNCH CHOP portrait: deliberate scroll fallback active with pads & preview intact`);
+      }
+
+      // Local CHOP preview interaction tests at flagship 11" landscape (1194×834)
+      if (w === 1194 && h === 834) {
+        const H = fn => pg.evaluate(fn);
+        await pg.click('[data-testid=munch-grid] .mw-row[data-k="0"] .mw-cell[data-s="0"]');
+        await pg.click('[data-testid=munch-grid] .mw-row[data-k="2"] .mw-cell[data-s="4"]');
+        await pg.waitForTimeout(80);
+        const p0 = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played);
+        await pg.click('[data-testid=munch-preview]');
+        await pg.waitForTimeout(450);
+
+        const run1 = await H(() => ({
+          preview: window.__harbu.A.munchPreview.playing,
+          trState: window.__harbu.A.transport.state,
+          trPos: window.__harbu.A.transport.position,
+          btnOn: document.querySelector('[data-testid=munch-preview]')?.classList.contains('on'),
+          btnLabel: document.querySelector('[data-testid=munch-preview] .btn-l')?.textContent,
+          nowCount: document.querySelectorAll('[data-testid=munch-grid] .mw-cell.now').length,
+          played: window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played,
+        }));
+        ok(run1.preview && run1.btnOn && run1.btnLabel === 'Stop', 'CHOP Preview button starts local preview and updates to Stop');
+        ok(run1.trState === 'stopped' && run1.trPos === null, 'CHOP Preview does not start global transport');
+        ok(run1.nowCount === 8 && run1.played > p0, `CHOP Preview shows synced playhead (${run1.nowCount} cells) and plays MUNCH slices (${run1.played - p0} hits)`);
+
+        // Live step edit while previewing: preview continues and playhead stays visible
+        await pg.click('[data-testid=munch-grid] .mw-row[data-k="4"] .mw-cell[data-s="8"]');
+        await pg.waitForTimeout(100);
+        const afterEdit = await H(() => ({
+          preview: window.__harbu.A.munchPreview.playing,
+          nowCount: document.querySelectorAll('[data-testid=munch-grid] .mw-cell.now').length,
+          pressed: document.querySelector('[data-testid=munch-grid] .mw-row[data-k="4"] .mw-cell[data-s="8"]')?.getAttribute('aria-pressed'),
+        }));
+        ok(afterEdit.preview && afterEdit.nowCount === 8 && afterEdit.pressed === 'true', 'live step edits work during preview without stopping or dropping the playhead');
+
+        // Pad audition still works during preview
+        const beforePad = await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played);
+        await pg.locator('[data-testid=munch-pads] .mw-pad[data-k="5"]').dispatchEvent('pointerdown', { pointerId: 1, isPrimary: true });
+        await pg.locator('[data-testid=munch-pads] .mw-pad[data-k="5"]').dispatchEvent('pointerup', { pointerId: 1, isPrimary: true });
+        ok((await H(() => window.__harbu.A.engine.E.ch.get('slot-05').voice.stats.played)) > beforePad, 'pad audition stays responsive during CHOP preview');
+
+        // Stop ends preview, clears playhead, silences voices; repeated restarts stay clean
+        await pg.click('[data-testid=munch-preview]');
+        await pg.waitForTimeout(80);
+        const stStop = await H(() => ({
+          preview: window.__harbu.A.munchPreview.playing,
+          nowCount: document.querySelectorAll('[data-testid=munch-grid] .mw-cell.now').length,
+          active: window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount(),
+          label: document.querySelector('[data-testid=munch-preview] .btn-l')?.textContent,
+        }));
+        ok(!stStop.preview && stStop.nowCount === 0 && stStop.active === 0 && stStop.label === 'Preview', 'CHOP Preview Stop clears playhead and silences all MUNCH voices');
+
+        for (let r = 0; r < 5; r++) {
+          await pg.click('[data-testid=munch-preview]'); await pg.waitForTimeout(80);
+          await pg.click('[data-testid=munch-preview]'); await pg.waitForTimeout(60);
+        }
+        ok(await H(() => !window.__harbu.A.munchPreview.playing && window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount() === 0 && window.__harbu.A.transport.state === 'stopped'), 'repeated Play/Stop cycles leave zero active voices and never start global transport');
+
+        // Coexistence with global transport & cleanup on scene/tab/mode/slot transitions
+        await H(() => window.__harbu.A.togglePlay());
+        await pg.waitForTimeout(120);
+        await pg.click('[data-testid=munch-preview]');
+        await pg.waitForTimeout(80);
+        ok(await H(() => window.__harbu.A.munchPreview.playing && window.__harbu.A.transport.state === 'paused'), 'starting CHOP Preview while global transport plays pauses global transport to prevent double MUNCH');
+        await pg.click('.mw-scene:not(.on)');
+        await pg.waitForTimeout(80);
+        ok(await H(() => !window.__harbu.A.munchPreview.playing && window.__harbu.A.engine.E.ch.get('slot-05').voice.activeCount() === 0), 'switching scene stops CHOP Preview and cleans up voices');
+        await pg.click('[data-testid=munch-preview]'); await pg.waitForTimeout(60);
+        await pg.click('[data-testid=munch-tab-play]'); await pg.waitForTimeout(80);
+        ok(await H(() => !window.__harbu.A.munchPreview.playing), 'leaving CHOP tab stops CHOP Preview');
+        await pg.click('[data-testid=munch-tab-chop]'); await pg.waitForTimeout(80);
+        await pg.click('[data-testid=munch-preview]'); await pg.waitForTimeout(60);
+        await pg.click('.mode[data-mode=jam]'); await pg.waitForTimeout(80);
+        ok(await H(() => !window.__harbu.A.munchPreview.playing), 'leaving SOUND mode stops CHOP Preview');
+      }
+
+      ok(!errs.length, `${tag} HBM-061-05: no console errors${errs.length ? ' — ' + errs[0] : ''}`);
+      await c.close();
+    }
+  }
+
   await browser.close();
   console.log(failures ? `\n${failures} check(s) failed` : '\nAll UI checks passed');
   process.exit(failures ? 1 : 0);

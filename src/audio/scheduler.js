@@ -14,7 +14,7 @@
 // hands each hit to engine.trigger(slotId, …). Event hits are keyed by slot id.
 
 import { DRUMS } from '../core/constants.js';
-import { playableSlots, typeOfSlot, sceneIdAt } from '../core/project.js';
+import { playableSlots, slotById, typeOfSlot, sceneIdAt } from '../core/project.js';
 import { clamp } from '../core/util.js';
 import { startPosition, advance, isLoopBoundary } from './position.js';
 
@@ -137,4 +137,92 @@ export function createTransport(engine, getProject, hooks = {}) {
     },
   });
   return T;
+}
+
+/**
+ * Local lookahead preview for a single sampler slot's slice pattern (MUNCH CHOP).
+ * Reuses the existing timing constants, engine, AudioContext, BPM, swing and voice dispatch
+ * without starting or mutating global transport or triggering any other instrument.
+ */
+export function createSlicePreview(engine, getProject, hooks = {}) {
+  const P = {
+    state: 'stopped', slotId: null, scene: -1, step: 0, next: 0, timer: 0, queue: [],
+    get playing() { return P.state === 'playing'; },
+  };
+  const emit = () => hooks.onState && hooks.onState(P.state);
+
+  function scheduleStep(t) {
+    const project = getProject();
+    const slot = P.slotId ? slotById(project, P.slotId) : null;
+    const sc = clamp(project.scene, 0, Math.max(0, project.scenes.length - 1));
+    const sceneId = sceneIdAt(project, sc);
+    const pat = slot && sceneId ? slot.patterns[sceneId] : null;
+    if (!slot || !pat || !slot.sample) { P.stop(); return; }
+    const len = Math.max(1, pat.len || 16);
+    const ls = P.step % len;
+    const sd = engine.stepDur();
+    const sw = ls % 2 ? project.swing * sd * .5 : 0;
+    const hits = [];
+    for (const n of pat.notes) {
+      if (n.slice == null || n.s !== ls) continue;
+      if (n.pr != null && n.pr < 1 && Math.random() > n.pr) continue;
+      const dur = n.l * sd * .98;
+      const hit = { p: n.p, v: n.v, dur, slideIn: false, slideOut: false, slice: n.slice };
+      hits.push({ p: n.p, v: n.v, slide: false, acc: n.v > .9, slice: n.slice });
+      engine.trigger(slot.id, t + sw + (n.o || 0) * sd, hit, 'preview');
+    }
+    P.queue.push({ time: t, step: ls, scene: sc, slotId: slot.id, hits });
+    P.step = (ls + 1) % len;
+  }
+
+  function tick() {
+    const ctx = engine.ctx;
+    if (!ctx || P.state !== 'playing') return;
+    if (P.next < ctx.currentTime - .25) P.next = ctx.currentTime + .02;
+    while (P.next < ctx.currentTime + LOOKAHEAD) {
+      scheduleStep(P.next);
+      if (P.state !== 'playing') return;
+      P.next += engine.stepDur();
+    }
+  }
+
+  function halt(silence = true) {
+    clearInterval(P.timer); P.timer = 0;
+    P.queue.length = 0;
+    if (P.slotId && engine.closePreviewGate) engine.closePreviewGate(P.slotId, silence);
+  }
+
+  Object.assign(P, {
+    start(slotId) {
+      const project = getProject();
+      const slot = slotId ? slotById(project, slotId) : null;
+      if (!slot || !slot.sample) return false;
+      halt(true);
+      const ctx = engine.init();
+      if (engine.openPreviewGate) engine.openPreviewGate(slot.id);
+      P.slotId = slot.id;
+      P.scene = clamp(project.scene, 0, Math.max(0, project.scenes.length - 1));
+      P.step = 0;
+      P.next = ctx.currentTime + .06;
+      P.state = 'playing';
+      P.timer = setInterval(tick, INTERVAL);
+      tick();
+      emit();
+      return true;
+    },
+    stop() {
+      const was = P.state !== 'stopped' || P.timer !== 0;
+      halt(true);
+      P.state = 'stopped';
+      P.step = 0;
+      P.scene = -1;
+      P.slotId = null;
+      if (was) emit();
+    },
+    toggle(slotId) {
+      if (P.state === 'playing' && (!slotId || P.slotId === slotId)) { P.stop(); return false; }
+      return P.start(slotId);
+    },
+  });
+  return P;
 }
