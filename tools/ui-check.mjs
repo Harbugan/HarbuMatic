@@ -557,7 +557,16 @@ async function rollPoint(page, step, rowOrPitch) {
         ok(!over && !a.offscreen.length && !a.overlaps.length && !a.spill.length, `${w}×${h} MUNCH ${tab}: fits, nothing clipped or overlapping${[...a.offscreen, ...a.overlaps, ...a.spill].length ? ' — ' + [...a.offscreen, ...a.overlaps, ...a.spill].slice(0, 4).join('; ') : ''}`);
         if (tab === 'chop' && landscape) {
           const vis = await Promise.all(['[data-testid=munch-chop-here]', '[data-testid=munch-pads] .mw-pad[data-k="7"]', '[data-testid=munch-magic-go]', '[data-testid=munch-grid] .mw-row[data-k="7"] .mw-cell:last-child'].map(sel => inView(pg, sel)));
-          ok(vis.every(Boolean), `${w}×${h} CHOP: waveform tools, eight pads, MAGIC CHOP and all eight sequencer rows on screen without scrolling (${vis.join()})`);
+          const row8Full = await pg.evaluate(() => {
+            const vs = document.querySelector('#viewSound'), seq = document.querySelector('.mw-seq');
+            const row = document.querySelector('[data-testid=munch-grid] .mw-row[data-k="7"]');
+            if (!vs || !seq || !row) return false;
+            const vsR = vs.getBoundingClientRect(), seqR = seq.getBoundingClientRect();
+            const els = [row, row.querySelector('.mw-rowlbl'), ...row.querySelectorAll('.mw-cell')].filter(Boolean);
+            return vs.scrollHeight <= vs.clientHeight && seqR.bottom <= vsR.bottom + 0.5 &&
+              els.every(e => { const r = e.getBoundingClientRect(); return r.height > 0 && r.bottom <= innerHeight && r.bottom <= vsR.bottom + 0.5 && r.bottom <= seqR.bottom - 2; });
+          });
+          ok(vis.every(Boolean) && row8Full, `${w}×${h} CHOP: waveform tools, eight pads, MAGIC CHOP and all eight sequencer rows (including row 8 bottom edge) unclipped without scrolling (${vis.join()}, row8=${row8Full})`);
         }
         if (tab === 'play') ok(await inView(pg, '[data-testid=munch-keys] .mk:last-child'), `${w}×${h} PLAY: the whole keyboard is on screen`);
       }
@@ -1038,11 +1047,21 @@ async function rollPoint(page, step, rowOrPitch) {
   {
     const { makeWav } = await import('../tests/helpers/audio.mjs');
     const wavBuf = Buffer.from(makeWav({ seconds: 2, rate: 22050, freq: 220 }));
-    const CHOP_SIZES = [[1194, 834, '1194×834'], [1180, 820, '1180×820'], [1180, 740, '1180×740'], [1366, 1024, '1366×1024'], [1024, 768, '1024×768'], [820, 1180, '820×1180']];
-    const LANDSCAPE_NO_SCROLL = new Set(['1194×834', '1180×820', '1180×740', '1366×1024', '1024×768']);
+    const CHOP_SIZES = [
+      [1194, 834, '1194×834', 0],
+      [1180, 820, '1180×820', 0],
+      [1194, 780, '1194×780', 0],
+      [1180, 740, '1180×740', 0],
+      [1180, 740, '1180×740 (safe-area)', 20],
+      [1366, 1024, '1366×1024', 0],
+      [1024, 768, '1024×768', 0],
+      [820, 1180, '820×1180', 0],
+    ];
+    const LANDSCAPE_NO_SCROLL = new Set(['1194×834', '1180×820', '1194×780', '1180×740', '1180×740 (safe-area)', '1366×1024', '1024×768']);
 
-    for (const [w, h, tag] of CHOP_SIZES) {
+    for (const [w, h, tag, safeBottom] of CHOP_SIZES) {
       const { ctx: c, page: pg, errors: errs } = await open(browser, w, h);
+      if (safeBottom) await pg.addStyleTag({ content: `:root { --sa-b: ${safeBottom}px; }` });
       await pg.evaluate(() => { window.__harbu.A.stop(); window.__harbu.A.selectSlot('slot-05'); });
       await pg.waitForTimeout(100);
       await pg.setInputFiles('[data-testid=munch-file]', { name: 'chop-test.wav', mimeType: 'audio/wav', buffer: wavBuf });
@@ -1056,23 +1075,32 @@ async function rollPoint(page, step, rowOrPitch) {
         const inVp = el => {
           if (!el) return false;
           const r = el.getBoundingClientRect();
-          return r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= H + 1 && r.right <= W + 1;
+          return r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= H && r.right <= W + 1;
         };
         const vs = document.querySelector('#viewSound');
+        const seq = document.querySelector('.mw-seq');
+        const vsR = vs.getBoundingClientRect();
+        const seqR = seq.getBoundingClientRect();
         const pads = [...document.querySelectorAll('[data-testid=munch-pads] .mw-pad')];
         const rows = [...document.querySelectorAll('[data-testid=munch-grid] .mw-row')];
         const cells = [...document.querySelectorAll('[data-testid=munch-grid] .mw-cell')];
+        const row8 = document.querySelector('[data-testid=munch-grid] .mw-row[data-k="7"]');
+        const row8Els = row8 ? [row8, row8.querySelector('.mw-rowlbl'), ...row8.querySelectorAll('.mw-cell')].filter(Boolean) : [];
         const styles = [...document.querySelectorAll('[data-testid=munch-magic] .mw-style')];
         const prev = document.querySelector('[data-testid=munch-preview]');
         const seqHead = document.querySelector('.mw-seqhead');
         const magicGo = document.querySelector('[data-testid=munch-magic-go]');
+        const row8MaxBottom = row8Els.length ? Math.max(...row8Els.map(e => e.getBoundingClientRect().bottom)) : Infinity;
         return {
-          scrollY: vs.scrollHeight > vs.clientHeight + 1,
+          scrollY: vs.scrollHeight > vs.clientHeight,
           overflowY: getComputedStyle(vs).overflowY,
           overflowX: document.documentElement.scrollWidth > W || vs.scrollWidth > vs.clientWidth + 1,
           waveIn: inVp(document.querySelector('[data-testid=munch-wave]')),
           allPadsIn: pads.length === 8 && pads.every(inVp),
           allRowsIn: rows.length === 8 && rows.every(inVp),
+          row8Unclipped: row8Els.length > 0 && seqR.bottom <= vsR.bottom + 0.5 && row8MaxBottom <= H && row8MaxBottom <= vsR.bottom + 0.5 && row8MaxBottom <= seqR.bottom - 2,
+          row8ClearanceSeq: +(seqR.bottom - row8MaxBottom).toFixed(1),
+          row8ClearanceVs: +(vsR.bottom - row8MaxBottom).toFixed(1),
           magicIn: inVp(magicGo) && styles.length === 5 && styles.every(inVp),
           previewIn: inVp(prev),
           sliceInfoIn: inVp(document.querySelector('.mw-si-t')),
@@ -1088,8 +1116,8 @@ async function rollPoint(page, step, rowOrPitch) {
       ok(!m.overflowX && !a.overlaps.length && !a.spill.length, `${tag} MUNCH CHOP: no horizontal overflow, overlaps or spill`);
       ok(m.minPadH >= 48 && m.minCellW >= 36 && m.minCellH >= 36 && m.previewH >= 36 && m.magicH >= 42, `${tag} MUNCH CHOP: comfortable touch targets (pad=${m.minPadH}px, cell=${m.minCellW}×${m.minCellH}px, preview=${m.previewH}px, magic=${m.magicH}px)`);
       if (LANDSCAPE_NO_SCROLL.has(tag)) {
-        ok(!m.scrollY && !a.offscreen.length && m.waveIn && m.allPadsIn && m.allRowsIn && m.magicIn && m.previewIn && m.sliceInfoIn,
-          `${tag} MUNCH CHOP: waveform, all 8 pads, 8 sequencer rows, MAGIC CHOP, Preview & slice info visible together without scrolling`);
+        ok(!m.scrollY && !a.offscreen.length && m.waveIn && m.allPadsIn && m.allRowsIn && m.row8Unclipped && m.magicIn && m.previewIn && m.sliceInfoIn,
+          `${tag} MUNCH CHOP: waveform, all 8 pads, all 8 sequencer rows (row 8 bottom clearance seq=${m.row8ClearanceSeq}px, view=${m.row8ClearanceVs}px), MAGIC CHOP, Preview & slice info visible without scrolling`);
         ok(m.seqHeadH <= 48, `${tag} MUNCH CHOP: sequencer header stays single-row (${m.seqHeadH}px)`);
       } else {
         ok(m.overflowY === 'auto' && m.waveIn && m.allPadsIn && m.previewIn, `${tag} MUNCH CHOP portrait: deliberate scroll fallback active with pads & preview intact`);
