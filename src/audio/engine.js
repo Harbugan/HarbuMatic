@@ -33,7 +33,7 @@ function makeIR(ctx, sec) {
  * @param opts.samples  sample bank (src/samples/bank.js) handed to sampler voices; decoding stays in the bank
  */
 export function createEngine(getProject, { samples = null } = {}) {
-  const E = { ctx: null, ch: new Map(), gates: null, shared: null, onInterrupt: null, samples, session: createAudioSession() };
+  const E = { ctx: null, ch: new Map(), gates: null, previewGates: {}, shared: null, onInterrupt: null, samples, session: createAudioSession() };
   const slotParams = id => slotById(getProject(), id).params;
   const stepDur = () => 60 / getProject().bpm / 4;
   const audible = id => { const pr = getProject(), s = slotById(pr, id); return !!s && slotAudible(pr, s); };
@@ -90,7 +90,10 @@ export function createEngine(getProject, { samples = null } = {}) {
     const keep = new Set(want.map(s => s.id));
     for (const [id, entry] of E.ch) {
       const s = want.find(x => x.id === id);
-      if (!keep.has(id) || !s || s.type !== entry.type) { disposeChannel(entry); E.ch.delete(id); if (E.gates) delete E.gates[id]; }
+      if (!keep.has(id) || !s || s.type !== entry.type) {
+        closePreviewGate(id, false);
+        disposeChannel(entry); E.ch.delete(id); if (E.gates) delete E.gates[id];
+      }
     }
     for (const s of want) if (!E.ch.has(s.id)) E.ch.set(s.id, createChannel(s));
   }
@@ -112,14 +115,42 @@ export function createEngine(getProject, { samples = null } = {}) {
     }
     silenceSustained();
   }
+  /** open an isolated session gate for local single-slot preview (e.g. MUNCH CHOP), independent of global transport gates */
+  function openPreviewGate(id) {
+    if (!E.ctx) return null;
+    closePreviewGate(id, false);
+    const entry = E.ch.get(id); if (!entry) return null;
+    const g = E.ctx.createGain(); g.gain.value = 1; g.connect(entry.voice.input);
+    E.previewGates[id] = g;
+    return g;
+  }
+  /** close a single slot's local preview gate and silence only that slot's voices (never touches global transport or other slots) */
+  function closePreviewGate(id, silence = true) {
+    if (!E.ctx) return;
+    const now = E.ctx.currentTime, g = E.previewGates[id];
+    if (g) {
+      g.gain.cancelScheduledValues(now);
+      g.gain.setTargetAtTime(0, now, .006);
+      setTimeout(() => { try { g.disconnect(); } catch (e) { /* gone */ } }, 250);
+      delete E.previewGates[id];
+    }
+    if (silence) {
+      const entry = E.ch.get(id);
+      if (entry) entry.voice.silence(now);
+    }
+  }
   /** stop sustained voices (the mono bass keeps running between notes) */
   function silenceSustained() {
     if (!E.ctx) return;
     const now = E.ctx.currentTime;
     for (const entry of E.ch.values()) entry.voice.silence(now);
   }
-  /** where a voice should connect: the session gate while playing, else straight in (auditions) */
-  const voiceOut = (id, live) => (live && E.gates && E.gates[id] ? E.gates[id] : E.ch.get(id).voice.input);
+  /** where a voice should connect: preview gate during local preview, session gate while playing, else straight in (auditions) */
+  const voiceOut = (id, live) => (
+    live === 'preview' && E.previewGates[id] ? E.previewGates[id]
+      : live && E.gates && E.gates[id] ? E.gates[id]
+        : E.ch.get(id).voice.input
+  );
 
   function applyParams(id) {
     if (!E.ctx) return;
@@ -175,7 +206,7 @@ export function createEngine(getProject, { samples = null } = {}) {
   }
 
   return {
-    E, init, applyParams, applyAll, applyGlobalFx, openGates, closeGates, silenceSustained, syncSlots,
+    E, init, applyParams, applyAll, applyGlobalFx, openGates, closeGates, openPreviewGate, closePreviewGate, silenceSustained, syncSlots,
     trigger, audition, noteOn, noteOff, audible, stepDur,
     get ctx() { return E.ctx; }, get analyser() { return E.analyser; },
     set onInterrupt(fn) { E.onInterrupt = fn; },

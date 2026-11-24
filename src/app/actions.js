@@ -30,7 +30,7 @@ import { transformPattern } from '../music/transform.js';
 import { chooseHarmony } from '../music/harmony.js';
 import { applyMacros as applyMacroParams } from '../music/macros.js';
 import { createEngine } from '../audio/engine.js';
-import { createTransport } from '../audio/scheduler.js';
+import { createTransport, createSlicePreview } from '../audio/scheduler.js';
 import { isLoopBoundary } from '../audio/position.js';
 
 export const history = createHistory();
@@ -41,6 +41,9 @@ export const engine = createEngine(() => store.project, { samples });
 export const transport = createTransport(engine, () => store.project, {
   onState: () => emit('transport'),
   beforeStep: (pos, boundary) => autoEvolveHook(pos, boundary),
+});
+export const munchPreview = createSlicePreview(engine, () => store.project, {
+  onState: () => emit('munchpreview'),
 });
 
 function safeStorage() {
@@ -143,6 +146,10 @@ function restoreSnapshot(json) {
   ensureSelection();
   reconcileUiScenes(prev, store.project);
   reconcileTransport(prev, store.project);
+  if (munchPreview.playing) {
+    const s = munchPreview.slotId ? slot(munchPreview.slotId) : null;
+    if (!s || !s.sample || store.project.scene !== munchPreview.scene) stopMunchPreview();
+  }
   engine.applyAll(); syncSamples(); prepareStretch();
   save(); emit('project');
 }
@@ -154,6 +161,7 @@ export function patternEdited() { save(); emit('pattern'); }
 
 /* ---------- project lifecycle ---------- */
 function adopt(project, msg, { saved = false } = {}) {
+  stopMunchPreview();
   transport.stop();
   if (!saved) flushSave();
   store.project = project;
@@ -314,6 +322,7 @@ export async function importFile(file, { sampleStore = samples.store, decode, li
 /* ---------- selection / modes ---------- */
 export function selectSlot(id) {
   if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments cannot be selected
+  stopMunchPreview();
   const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
   if (!typeOf(id).ui.tools.includes(u.tool)) u.tool = 'draw'; // e.g. Slide exists only where slides do
@@ -338,24 +347,26 @@ export function selectScene(i) {
   const p = store.project;
   if (!Number.isInteger(i) || i < 0 || i >= p.scenes.length) return;
   if (p.scene === i) { transport.queueScene(i); emit('scene'); return; }
+  stopMunchPreview();
   p.scene = i; save();
   transport.queueScene(i);
   emit('scene');
 }
-export function setMode(m) { navigated(m); store.ui.mode = m; if (m !== 'jam') store.ui.expanded = false; store.ui.drawer = false; emit('layout'); }
-export function setExpanded(on) { navigated('jam'); store.ui.expanded = on; store.ui.drawer = false; if (store.ui.mode !== 'jam') store.ui.mode = 'jam'; emit('layout'); }
+export function setMode(m) { if (m !== 'sound') stopMunchPreview(); navigated(m); store.ui.mode = m; if (m !== 'jam') store.ui.expanded = false; store.ui.drawer = false; emit('layout'); }
+export function setExpanded(on) { stopMunchPreview(); navigated('jam'); store.ui.expanded = on; store.ui.drawer = false; if (store.ui.mode !== 'jam') store.ui.mode = 'jam'; emit('layout'); }
 export function setDrawer(on) { store.ui.drawer = on; emit('drawer'); }
 export function setTool(k) { store.ui.tool = k; emit('tool'); }
 
 /* ---------- transport ---------- */
 export function togglePlay() {
+  stopMunchPreview();
   engine.init(); engine.applyAll();
   // a sample still decoding (e.g. right after opening a song) gets a moment, so the first notes are not silent
   const ids = playingSampleIds();
   if (transport.state !== 'playing' && ids.length && samples.isLoading(ids)) { samples.whenSettled(ids, 2000).then(() => { if (transport.state !== 'playing') transport.toggle(); }); return; }
   transport.toggle();
 }
-export function stop() { transport.stop(); }
+export function stop() { stopMunchPreview(); transport.stop(); }
 const drumSlots = () => store.project.slots.filter(s => typeOfSlot(s).role === 'drums');
 export function setBpm(v) {
   const b = clamp(Math.round(v), 50, 200); if (b === store.project.bpm) return;
@@ -491,6 +502,7 @@ export function createScene({ name, select = true } = {}) {
   p.slots.forEach(s => { s.patterns[id] = createPatternFor(s.type); });
   const idx = p.scenes.length - 1;
   if (select) {
+    stopMunchPreview();
     p.scene = idx;
     store.ui.libSel = idx;
     transport.queueScene(idx);
@@ -517,6 +529,7 @@ export function duplicateScene(i = store.project.scene, { name, select = true } 
   });
   const idx = p.scenes.length - 1;
   if (select) {
+    stopMunchPreview();
     p.scene = idx;
     store.ui.libSel = idx;
     transport.queueScene(idx);
@@ -561,6 +574,7 @@ export function deleteScene(i) {
   const p = store.project;
   if (!validSceneIndex(p, i)) return false;
   if (p.scenes.length <= 1) { emit('toast', 'A song needs at least one scene'); return false; }
+  stopMunchPreview();
   const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
   const removed = p.scenes[i], removedId = removed.id;
   const prevSelId = sceneIdAt(p, p.scene);
@@ -587,6 +601,7 @@ export function moveScene(from, to) {
   if (!validSceneIndex(p, from)) return false;
   to = clamp(to, 0, p.scenes.length - 1);
   if (from === to) return false;
+  stopMunchPreview();
   const prev = { scenes: p.scenes.slice(), arrangement: p.arrangement.slice(), songMode: p.songMode, scene: p.scene };
   const prevSelId = sceneIdAt(p, p.scene);
   checkpoint();
@@ -621,6 +636,7 @@ export function setBlockScene(id, sc) { const i = blockIndex(id), sid = sceneIdA
 export function clearSong() { checkpoint(); store.project.arrangement = []; store.ui.arrSel = null; if (transport.pos && transport.pos.song) transport.stop(); save(); emit('arrangement'); }
 export function playFromBlock(id) {
   const i = blockIndex(id); if (i < 0) return;
+  stopMunchPreview();
   engine.init(); engine.applyAll();
   store.project.songMode = true; save();
   transport.playFromBlock(i); emit('arrangement');
@@ -628,6 +644,7 @@ export function playFromBlock(id) {
 export function previewScene(i) {
   const p = store.project;
   if (!validSceneIndex(p, i)) return;
+  stopMunchPreview();
   engine.init(); engine.applyAll();
   if (p.songMode) { p.songMode = false; emit('arrangement'); }
   p.scene = i; save();
@@ -684,6 +701,7 @@ export function sampleState(slotId) {
 /** put a stored sample into a slot (new reference, default eight slices; params keep their edits) */
 export function assignSample(slotId, meta) {
   const s = slot(slotId); if (!s) return;
+  stopMunchPreview();
   checkpoint();
   s.sample = sampleRefFor(meta);
   warnedMissing.delete(meta.id);
@@ -761,6 +779,7 @@ let recordSlot = null;
 export async function recordStart(slotId = store.ui.sel) {
   engine.init();
   recordSlot = slotId;
+  stopMunchPreview();
   transport.state === 'playing' && transport.pause(); // a quiet room: nothing from HarbuMatic leaks into the mic
   try { await recorder.start(); emit('munch', { kind: 'listen' }); return true; }
   catch (e) { emit('toast', sampleErrorText(e)); emit('munch', { kind: 'oops' }); return false; }
@@ -783,6 +802,45 @@ const canSound = () => typeof window !== 'undefined' && !!(window.AudioContext |
 const hear = fn => { if (canSound()) { try { return fn(); } catch (e) { /* audio not available */ } } return null; };
 const M = () => store.ui.munch;
 const sampleOf = id => { const s = slot(id); return s && s.sample; };
+
+let previewReq = 0;
+/** stop local CHOP slice preview cleanly, silencing scheduled MUNCH preview voices without touching global transport */
+export function stopMunchPreview() {
+  previewReq++;
+  if (munchPreview.playing) munchPreview.stop();
+}
+/** switch MUNCH tab (play | chop | twist); leaving CHOP stops local preview */
+export function setMunchTab(tab) {
+  if (M().tab === tab) return;
+  if (tab !== 'chop') stopMunchPreview();
+  M().tab = tab;
+  emit('munchtab');
+}
+/**
+ * Toggle local CHOP slice-pattern preview for a MUNCH slot.
+ * Loops only that slot's slice pattern from step 1 at the project BPM without starting global transport.
+ * If global transport is already playing, pauses it (preserving song/scene position) to prevent double MUNCH.
+ */
+export function toggleMunchPreview(slotId = store.ui.sel) {
+  if (munchPreview.playing && munchPreview.slotId === slotId) {
+    stopMunchPreview();
+    return false;
+  }
+  const s = slot(slotId);
+  if (!s || !isSamplerSlot(slotId) || !s.sample) return false;
+  if (transport.state === 'playing') transport.pause();
+  engine.init(); engine.applyAll();
+  const req = ++previewReq;
+  const id = s.sample.id;
+  if (samples.isLoading([id])) {
+    samples.whenSettled([id], 2000).then(() => {
+      if (req !== previewReq) return;
+      if (store.ui.mode === 'sound' && store.ui.sel === slotId && M().tab === 'chop') munchPreview.start(slotId);
+    });
+    return true;
+  }
+  return munchPreview.start(slotId);
+}
 
 /** change a slot's slice boundaries structurally and remap every slice note (all scenes + snapshots), one history step */
 function restructure(slotId, next, { select, marker = null, msg } = {}) {

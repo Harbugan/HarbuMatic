@@ -34,10 +34,12 @@ const sel = () => store.ui.sel;
 
 /* ---------- public API (main.js) ---------- */
 
+let lastCol = -1, lastStep = -1;
+
 /** full render into the SOUND view host */
 export function renderMunch(host) {
   releaseAll();
-  refs = {}; knobs = [];
+  refs = {}; knobs = []; lastCol = -1;
   const s = slot(), ref = s.sample, st = A.sampleState(sel()), rec = A.recorder.state;
   const empty = !ref || st.status === 'missing' || rec === 'recording' || rec === 'starting' || rec === 'stopping';
   const ws = h('div', { class: 'mw' + (empty ? ' empty' : ''), 'data-testid': 'munch', 'data-tab': u().tab });
@@ -52,6 +54,11 @@ export function renderMunch(host) {
   }
   host.append(ws);
   drawWave();
+  if (u().tab === 'chop' && lastStep >= 0) {
+    const localOn = A.munchPreview.playing && A.munchPreview.slotId === sel();
+    const globalOn = A.transport.playing && A.transport.position && A.transport.position.scene === store.project.scene;
+    if (localOn || globalOn) munchStep(lastStep);
+  }
   if (rec === 'recording') tickRecording();
 }
 
@@ -72,6 +79,17 @@ export function refreshMunchParams() {
   if (refs.status) refs.status.textContent = statusLine();
   drawWave();
 }
+/** update the local CHOP preview Play/Stop button in place without rebuilding the workspace */
+export function refreshMunchPreview() {
+  const b = refs.preview; if (!b) return;
+  const on = A.munchPreview.playing && A.munchPreview.slotId === sel();
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  b.setAttribute('aria-label', on ? 'Stop MUNCH slice preview' : 'Preview MUNCH slice pattern');
+  b.title = on ? 'Stop local MUNCH preview' : 'Preview this MUNCH slice pattern alone (loops from step 1)';
+  const ic = b.querySelector('.mw-prev-i'); if (ic) ic.innerHTML = ico(on ? 'stop' : 'play');
+  const lb = b.querySelector('.btn-l'); if (lb) lb.textContent = on ? 'Stop' : 'Preview';
+}
 /** scheduler hits for MUNCH (drained in rAF at their audio time): pads, keys and the character move */
 export function munchHits(hits) {
   for (const x of hits) {
@@ -81,9 +99,9 @@ export function munchHits(hits) {
   if (hits.length) bounce('note');
 }
 /** sequencer playhead column */
-let lastCol = -1;
 export function munchStep(step) {
-  if (!refs.grid) return;
+  lastStep = step;
+  if (!refs.grid) { if (step < 0) lastCol = -1; return; }
   const p = pat(), m = u(), per = refs.perPage || 16, local = step >= 0 ? step % p.len : -1;
   const col = local >= 0 && Math.floor(local / per) === m.page ? local % per : -1;
   if (col === lastCol) return;
@@ -136,7 +154,7 @@ function head(s, st, empty) {
     const tabs = h('div', { class: 'mw-tabs', role: 'tablist', 'aria-label': 'MUNCH layer' });
     [['play', 'PLAY'], ['chop', 'CHOP'], ['twist', 'TWIST']].forEach(([k, l]) => {
       const b = h('button', { type: 'button', role: 'tab', class: 'mw-tab' + (u().tab === k ? ' on' : ''), 'aria-selected': String(u().tab === k), 'data-testid': `munch-tab-${k}` }, l);
-      b.onclick = () => { if (u().tab === k) return; u().tab = k; rerender(); };
+      b.onclick = () => A.setMunchTab(k);
       tabs.append(b);
     });
     hd.append(tabs);
@@ -405,6 +423,18 @@ function sequencer(ref, n, host) {
   const pages = p.len / per;
   m.page = Math.min(m.page, pages - 1);
   const head = h('div', { class: 'mw-seqhead' });
+  const previewOn = A.munchPreview.playing && A.munchPreview.slotId === sel();
+  const prevBtn = h('button', {
+    type: 'button',
+    class: 'btn mw-preview' + (previewOn ? ' on' : ''),
+    'data-testid': 'munch-preview',
+    'aria-pressed': String(previewOn),
+    'aria-label': previewOn ? 'Stop MUNCH slice preview' : 'Preview MUNCH slice pattern',
+    title: previewOn ? 'Stop local MUNCH preview' : 'Preview this MUNCH slice pattern alone (loops from step 1)',
+  }, h('span', { class: 'mw-prev-i', html: ico(previewOn ? 'stop' : 'play') }), h('span', { class: 'btn-l' }, previewOn ? 'Stop' : 'Preview'));
+  prevBtn.onclick = () => A.toggleMunchPreview(sel());
+  refs.preview = prevBtn;
+  head.append(prevBtn);
   const scenes = h('div', { class: 'mw-scenes', role: 'group', 'aria-label': 'Scene' });
   store.project.scenes.forEach((s, i) => {
     const badge = sceneLabel(i);

@@ -15,7 +15,7 @@ import { renderJamBar, updateLeds } from '../views/jam.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs } from '../views/sound.js';
 import { renderArrange, markPlayingBlock } from '../views/arrange.js';
-import { refreshMunchSel, refreshMunchParams, munchHits, munchStep, munchReact } from '../views/munch.js';
+import { refreshMunchSel, refreshMunchParams, refreshMunchPreview, munchHits, munchStep, munchReact } from '../views/munch.js';
 import { waveDragging } from '../views/munch-wave.js';
 import { renderSongButton, openMenu, closeMenu, bindFileInput, newSongDialog } from '../views/menu.js';
 
@@ -69,13 +69,18 @@ function wire() {
   const munchUpdate = () => { if (!munchOpen()) return; if (waveDragging()) refreshMunchSel(); else renderSound(); };
   ['samples', 'recorder', 'pattern', 'scene'].forEach(evt => on(evt, munchUpdate));
   on('munchsel', () => { if (munchOpen()) refreshMunchSel(); });
+  on('munchtab', () => { if (munchOpen()) renderSound(); });
+  on('munchpreview', () => {
+    if (munchOpen()) refreshMunchPreview();
+    if (!A.munchPreview.playing && !A.transport.playing && munchOpen()) munchStep(-1);
+  });
   on('munch', ({ kind }) => { if (munchOpen()) munchReact(kind); });
   on('tempo', () => { renderTransport(); if (munchOpen()) munchUpdate(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); if (typeOf().role === 'drums') syncShapers(); });
   on('lab', renderLab);
   on('arrangement', () => { if (store.ui.mode === 'arrange') renderArrange(); renderScenes(); });
   on('transport', () => {
     renderTransport(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange();
-    if (!A.transport.playing) { setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen()) munchStep(-1); }
+    if (!A.transport.playing) { setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen() && !A.munchPreview.playing) munchStep(-1); }
   });
   on('transformed', ({ intensity, info }) => { uniReact(intensity); if (info) toast(info); if (!A.transport.playing) auditionPattern(); });
   on('evolved', () => { /* UI catches up in the next frame via 'pattern' */ });
@@ -96,7 +101,7 @@ function auditionPattern() { // when stopped, give a tiny taste of the new idea
 const drumCat = () => { const s = visibleSlots().find(x => getInstrumentType(x.type).pattern === 'drum'); return s ? CAT[s.id] : null; };
 let lastBar = -1, lastScene = -1;
 function frame() {
-  const E = A.engine, tr = A.transport;
+  const E = A.engine, tr = A.transport, mp = A.munchPreview;
   if (E.ctx && tr.playing) {
     const now = E.ctx.currentTime;
     let changedScene = false;
@@ -113,6 +118,16 @@ function frame() {
     if (store.ui.mode === 'arrange') markPlayingBlock();
     if (store.ui.mode === 'jam') { Seq.render(); updateLeds(); }
     updateWiggle();
+  }
+  if (E.ctx && mp.playing) {
+    const now = E.ctx.currentTime;
+    while (mp.queue.length && mp.queue[0].time <= now) {
+      const ev = mp.queue.shift();
+      if (munchOpen() && ev.slotId === store.ui.sel && ev.scene === store.project.scene) {
+        if (ev.hits.length) munchHits(ev.hits);
+        munchStep(ev.step);
+      }
+    }
   }
   drawScreen();
   requestAnimationFrame(frame);
@@ -159,7 +174,10 @@ function init() {
   window.addEventListener('keydown', keys);
   document.body.classList.toggle('no-motion', !store.ui.motion);
   document.body.classList.toggle('coarse', store.ui.coarse);
-  A.engine.onInterrupt = state => { if (A.transport.playing) { A.transport.pause(); toast(state === 'interrupted' ? 'Audio was interrupted — tap Resume' : 'Audio paused by the system — tap Resume'); } };
+  A.engine.onInterrupt = state => {
+    if (A.munchPreview.playing) A.stopMunchPreview();
+    if (A.transport.playing) { A.transport.pause(); toast(state === 'interrupted' ? 'Audio was interrupted — tap Resume' : 'Audio paused by the system — tap Resume'); }
+  };
   // save immediately when the tab is hidden (iPad may discard background tabs)
   document.addEventListener('visibilitychange', () => { if (document.hidden) { A.flushSave(); A.recordCancel(); } }); // backgrounded: never keep the mic open
   window.addEventListener('pagehide', () => A.flushSave());
