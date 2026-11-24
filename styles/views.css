@@ -421,7 +421,7 @@ body.no-motion .mw-char .rig, body.no-motion .mw-char .mouth { animation: none !
 .mw-pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .mw-pad { --pc: var(--mw-pink); border: 0; cursor: pointer; min-height: 58px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; font-family: inherit;
   background: radial-gradient(circle at 35% 25%, #fff 0, color-mix(in srgb, var(--pc) 55%, #fff) 45%, var(--pc) 100%);
-  box-shadow: 0 1px 0 #fff inset, 0 -4px 0 #0000001a inset, 0 5px 0 color-mix(in srgb, var(--pc) 70%, #6b4a5a), 0 10px 14px -8px #6b4a5a99; transition: transform .07s, box-shadow .07s; touch-action: manipulation; }
+  box-shadow: 0 1px 0 #fff inset, 0 -4px 0 #0000001a inset, 0 5px 0 color-mix(in srgb, var(--pc) 70%, #6b4a5a), 0 10px 14px -8px #6b4a5a99; transition: transform .07s, box-shadow .07s; touch-action: none; }
 .mw-pad b { font-size: 22px; color: var(--navy); line-height: 1; }
 .mw-pad small { font-size: 10px; color: #5d5468bb; font-weight: 800; }
 .mw-pad.sel { outline: 3px solid var(--navy); outline-offset: 2px; }

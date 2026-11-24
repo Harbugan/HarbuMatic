@@ -46,6 +46,8 @@ export const store = {
     },
     // MUNCH opens SOUND when selected unless the player left it on purpose (see selectSlot / setMode in actions.js)
     munchNav: { away: false, autoFrom: null },
+    // Live pattern recording state (view/session state only, never saved in the song)
+    rec: { mode: 'off', quantize: true },
   },
 };
 export const slot = (id = store.ui.sel) => slotById(store.project, id);

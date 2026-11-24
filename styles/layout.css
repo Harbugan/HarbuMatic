@@ -32,12 +32,14 @@
 .hdr-r { display: flex; gap: 8px; align-items: center; flex: none; }
 
 /* ---------- strip: transport + instrument cards ---------- */
-.strip { display: grid; grid-template-columns: 238px minmax(0, 1fr); gap: var(--gap); }
-.transport { display: grid; grid-template-columns: 62px 54px minmax(0, 1fr); grid-template-rows: 54px 44px; gap: 8px; padding: 9px; }
+.strip { display: grid; grid-template-columns: 274px minmax(0, 1fr); gap: var(--gap); }
+.transport { display: grid; grid-template-columns: 50px 46px 46px minmax(0, 1fr); grid-template-rows: 54px 44px; gap: 6px; padding: 9px; }
 .transport .play { grid-row: 1; grid-column: 1; }
 .transport .stop { grid-row: 1; grid-column: 2; }
-.transport .lcd { grid-row: 1; grid-column: 3; }
-.transport .bpm { grid-row: 2; grid-column: 1 / 4; }
+.transport .rec { grid-row: 1; grid-column: 3; }
+.transport .lcd { grid-row: 1; grid-column: 4; }
+.transport .quant { grid-row: 2; grid-column: 1; }
+.transport .bpm { grid-row: 2; grid-column: 2 / 5; }
 .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
 .cards[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
@@ -59,9 +61,12 @@
 .device.expanded .bottom { display: none; }
 .device.expanded .main { grid-template-columns: minmax(0, 1fr); }
 .device.compact .strip { grid-template-columns: auto minmax(0, 1fr); }
-.device.compact .transport { grid-template-columns: 54px 50px 176px; grid-template-rows: 48px; padding: 6px 8px; }
+.device.compact .transport { grid-template-columns: 46px 44px 44px 42px 168px; grid-template-rows: 48px; gap: 6px; padding: 6px 8px; }
 .device.compact .transport .lcd { display: none; }
-.device.compact .transport .bpm { grid-row: 1; grid-column: 3; }
+.device.compact .transport .quant { grid-row: 1; grid-column: 4; }
+.device.compact .transport .bpm { grid-row: 1; grid-column: 5; grid-template-columns: 38px 1fr 38px; gap: 4px; }
+.device.compact .bpm-box { align-items: center; padding-top: 0; }
+.device.compact .bpm-box b { font-size: 20px; }
 .device.compact .transport .btn-l { display: none; }
 
 /* ---------- drawer: right panel slides over (portrait, narrow, expanded) ---------- */
@@ -86,11 +91,14 @@
   .drawer-close { display: inline-grid !important; }
   .lab-toggle { display: inline-flex !important; }
   .strip { grid-template-columns: minmax(0, 1fr); }
-  .transport { grid-template-columns: 112px 92px minmax(0, 1fr) 200px; grid-template-rows: 50px; }
-  .transport .bpm { grid-row: 1; grid-column: 4; }
-  .device.compact .transport { grid-template-columns: 60px 54px 1fr 180px; }
-  .device.compact .transport .lcd { display: block; }
-  .device.compact .transport .bpm { grid-column: 4; }
+  .transport { grid-template-columns: 64px 56px 56px 52px minmax(0, 1fr) 184px; grid-template-rows: 50px; }
+  .transport .quant { grid-row: 1; grid-column: 4; }
+  .transport .lcd { grid-row: 1; grid-column: 5; }
+  .transport .bpm { grid-row: 1; grid-column: 6; }
+  .device.compact .transport { grid-template-columns: 50px 46px 46px 44px 1fr 174px; }
+  .device.compact .transport .quant { grid-row: 1; grid-column: 4; }
+  .device.compact .transport .lcd { display: block; grid-row: 1; grid-column: 5; }
+  .device.compact .transport .bpm { grid-row: 1; grid-column: 6; }
   .device.compact .strip { grid-template-columns: minmax(0, 1fr); }
   .brand .wordmark { display: none; }
   .hdr { gap: 8px; padding: 0 4px; }
@@ -121,12 +129,11 @@
 }
 @media (max-width: 1120px) and (orientation: landscape) {
   :root { --right-w: 272px; }
-  .strip { grid-template-columns: 222px minmax(0, 1fr); }
-  .transport { grid-template-columns: 58px 50px minmax(0, 1fr); }
-  .device.compact .transport { grid-template-columns: 50px 46px 162px; gap: 6px; }
-  .device.compact .transport .bpm { gap: 4px; }
-  .device.compact .bpm-box { align-items: center; padding-top: 0; }
-  .device.compact .bpm-box b { font-size: 20px; }
+  .strip { grid-template-columns: 252px minmax(0, 1fr); }
+  .transport { grid-template-columns: 46px 44px 44px minmax(0, 1fr); gap: 5px; }
+  .device.compact .transport { grid-template-columns: repeat(4, 44px); grid-template-rows: 38px 36px; gap: 4px; padding: 5px 6px; }
+  .device.compact .transport .quant { grid-row: 1; grid-column: 4; }
+  .device.compact .transport .bpm { grid-row: 2; grid-column: 1 / 5; grid-template-columns: 38px 1fr 38px; gap: 4px; }
   .mode { padding: 0 13px; }
   .brand .wordmark { font-size: 24px; }
   .device .cat { width: 70px; height: 62px; } /* leaves room for M + S on ~1024 px wide landscape (BUG-002) */
@@ -142,9 +149,10 @@
   .cards, .cards[data-count="5"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bottom { grid-template-columns: minmax(0, 1fr); }
   .mode span { display: none; }
-  .transport { grid-template-columns: 1fr 1fr; grid-template-rows: 50px 44px; }
+  .transport { grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 50px 44px; }
+  .transport .quant { grid-row: 1; grid-column: 4; }
   .transport .lcd { display: none; }
-  .transport .bpm { grid-row: 2; grid-column: 1 / 3; }
+  .transport .bpm { grid-row: 2; grid-column: 1 / 5; }
 }
 @media (max-width: 800px) and (orientation: portrait) {
   .device .cat { width: 52px; height: 48px; }

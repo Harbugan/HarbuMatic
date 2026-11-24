@@ -262,7 +262,9 @@ export function importProject(obj) {
    --------------------------------------------------------- */
 function cleanDrumCell(c) {
   if (!isObj(c)) return null;
-  return { v: num(c.v, .8, .05, 1), p: num(c.p, 1, .05, 1) };
+  const out = { v: num(c.v, .8, .05, 1), p: num(c.p, 1, .05, 1) };
+  if (typeof c.o === 'number' && c.o) out.o = num(c.o, 0, -.45, .45);
+  return out;
 }
 function cleanNote(n, len, slices = false) {
   if (!isObj(n)) return null;
@@ -270,7 +272,7 @@ function cleanNote(n, len, slices = false) {
   if (s < 0 || s >= len) return null;
   const out = { s, p: Math.round(num(n.p, 60, 0, 127)), l: Math.round(num(n.l, 1, 1, len - s)), v: num(n.v, .8, .05, 1) };
   if (typeof n.pr === 'number' && n.pr < 1) out.pr = num(n.pr, 1, .05, 1);
-  if (typeof n.o === 'number' && n.o) out.o = num(n.o, 0, -.4, .4);
+  if (typeof n.o === 'number' && n.o) out.o = num(n.o, 0, -.45, .45);
   if (n.slide) out.slide = true;
   if (n.locked) out.locked = true;
   if (slices && Number.isInteger(n.slice) && n.slice >= 0 && n.slice < MAX_SLICES) out.slice = n.slice; // sampler slice trigger

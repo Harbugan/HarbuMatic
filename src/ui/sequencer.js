@@ -16,8 +16,19 @@ import { fixSlides } from '../music/generate.js';
 import * as A from '../app/actions.js';
 
 const RV = { cv: null, g: null, W: 0, H: 0, dpr: 1, drag: null, hover: null };
+const liveHeld = new Map(); // pointerId → { kind: 'drum'|'note', slotId, drum?, row?, pitch?, handle? }
 export const playhead = { step: -1, time: 0, scene: -1 };
 const LO = 21, HI = 108;
+
+/** Release any currently held live touches on the sequencer keys/pads (mode/slot/stop safety). */
+export function releaseLive() {
+  if (!liveHeld.size) return;
+  for (const [, item] of liveHeld) {
+    if (item.kind === 'note' && item.handle) A.liveNoteOff(item.handle);
+  }
+  liveHeld.clear();
+  render();
+}
 
 function rowsFor() {
   const p = store.project, sc = makeScale(p.key, p.scale), out = [];
@@ -125,21 +136,26 @@ export function render() {
   if (G.drums) drawDrums(g, G, m, s0, s1); else drawNotes(g, G, m, s0, s1);
   // keys / labels
   g.fillStyle = '#232238'; g.fillRect(0, 0, G.keysW, RV.H);
+  const heldDrums = G.drums && liveHeld.size ? new Set([...liveHeld.values()].filter(x => x.kind === 'drum').map(x => x.row)) : null;
+  const heldNotes = !G.drums && liveHeld.size ? new Set([...liveHeld.values()].filter(x => x.kind === 'note').map(x => x.pitch)) : null;
   if (G.drums) {
     DRUMS.forEach((d, r) => {
-      const y = G.gridTop + r * G.rowH, sel = r === u.drumRow;
-      rr(g, 5, y + 3, G.keysW - 10, G.rowH - 6, 9); g.fillStyle = sel ? m.color : '#3A3858'; g.fill();
-      g.fillStyle = sel ? '#28283F' : '#D9D2F2'; g.font = `800 ${u.coarse ? 13 : 12}px Nunito, system-ui`; g.fillText(d.name, 14, y + G.rowH / 2 + 1);
-      if (G.p.locked[d.id]) { g.fillStyle = sel ? '#28283F' : m.color; g.font = '900 12px Nunito'; g.fillText('🔒︎', G.keysW - 26, y + G.rowH / 2 + 1); }
+      const y = G.gridTop + r * G.rowH, sel = r === u.drumRow, down = !!(heldDrums && heldDrums.has(r));
+      rr(g, 5, y + 3, G.keysW - 10, G.rowH - 6, 9);
+      g.fillStyle = down ? '#FFF6EC' : sel ? m.color : '#3A3858'; g.fill();
+      if (down) { g.strokeStyle = m.color; g.lineWidth = 2; g.stroke(); }
+      g.fillStyle = down || sel ? '#28283F' : '#D9D2F2'; g.font = `800 ${u.coarse ? 13 : 12}px Nunito, system-ui`; g.fillText(d.name, 14, y + G.rowH / 2 + 1);
+      if (G.p.locked[d.id]) { g.fillStyle = down || sel ? '#28283F' : m.color; g.font = '900 12px Nunito'; g.fillText('🔒︎', G.keysW - 26, y + G.rowH / 2 + 1); }
     });
   } else {
     for (let i = 0; i < G.rows; i++) {
       const q = G.rowPitch(i); if (q == null) break;
       const y = G.gridTop + i * G.rowH, black = [1, 3, 6, 8, 10].includes(q % 12), root = ((q - key) % 12 + 12) % 12 === 0;
-      g.fillStyle = root ? m.color : black && !u.fold ? '#4A4565' : '#F6EBDC';
+      const down = !!(heldNotes && heldNotes.has(q));
+      g.fillStyle = down ? '#FF7086' : root ? m.color : black && !u.fold ? '#4A4565' : '#F6EBDC';
       rr(g, 3, y + 1, G.keysW - (black && !u.fold ? 16 : 6), G.rowH - 2, 4); g.fill();
-      if (u.fold || root || q % 12 === 0) {
-        g.fillStyle = black && !u.fold ? '#fff' : '#4A3F5C'; g.font = `800 ${u.coarse ? 11 : 9.5}px Nunito, system-ui`;
+      if (down || u.fold || root || q % 12 === 0) {
+        g.fillStyle = down ? '#fff' : black && !u.fold ? '#fff' : '#4A3F5C'; g.font = `800 ${u.coarse ? 11 : 9.5}px Nunito, system-ui`;
         g.fillText(NOTE[q % 12] + (Math.floor(q / 12) - 1), 8, y + G.rowH / 2 + .5);
       }
     }
@@ -162,9 +178,10 @@ export function render() {
     if (u.zoom > 1 && (pos < u.scrollX || pos > u.scrollX + G.vis)) u.scrollX = Math.floor(pos / G.vis) * G.vis;
     const x = G.x(pos);
     if (x >= G.keysW) {
-      g.fillStyle = '#F2AFC0'; g.fillRect(x - 1, G.gridTop, 2, G.gridBot - G.gridTop);
-      g.fillStyle = '#F2AFC044'; g.fillRect(x - 4, G.gridTop, 8, G.gridBot - G.gridTop);
-      g.beginPath(); g.arc(x, G.rulerH / 2, 5, 0, 7); g.fillStyle = '#F2AFC0'; g.fill();
+      const rec = A.isRecording();
+      g.fillStyle = rec ? '#FF5A72' : '#F2AFC0'; g.fillRect(x - 1, G.gridTop, 2, G.gridBot - G.gridTop);
+      g.fillStyle = rec ? '#FF5A7244' : '#F2AFC044'; g.fillRect(x - 4, G.gridTop, 8, G.gridBot - G.gridTop);
+      g.beginPath(); g.arc(x, G.rulerH / 2, 5, 0, 7); g.fillStyle = rec ? '#FF5A72' : '#F2AFC0'; g.fill();
     }
   }
   const empty = G.drums ? !DRUMS.some(d => G.p.steps[d.id].some(Boolean)) : !G.p.notes.length;
@@ -192,6 +209,11 @@ function drawNotes(g, G, m, s0, s1) {
     if (off) { g.strokeStyle = '#F5D19A'; g.lineWidth = 2; g.stroke(); }
     if (n === RV.hover || (RV.drag && RV.drag.n === n)) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); }
     g.fillStyle = '#ffffff70'; rr(g, x + 3, y + 2, Math.max(0, w - 6), 3, 2); g.fill();
+    if (n.o && Math.abs(n.o) >= .02) {
+      g.fillStyle = '#28283F99';
+      const ox = clamp(x + 4 + (n.o + .45) / .9 * Math.max(0, Math.min(w - 10, G.stepW - 10)), x + 3, x + w - 5);
+      g.fillRect(ox, y + hh - 4, 2, 3);
+    }
     if (n.v > .9 && typeOf().capabilities.accent) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText('!', x + 5, y + hh / 2 + 1); }
     if (n.slice != null) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.fillText(`S${n.slice + 1}`, x + 4, y + hh / 2 + 1); } // MUNCH slice trigger (edited in SOUND → CHOP)
     if (n.pr != null && n.pr < 1) { g.fillStyle = '#28283F'; g.font = '900 9px Nunito'; if (w > 26) g.fillText(Math.round(n.pr * 100) + '%', x + w - 26, y + hh / 2 + 1); else { g.beginPath(); g.arc(x + w - 6, y + hh / 2, 2.5, 0, 7); g.fill(); } }
@@ -212,6 +234,11 @@ function drawDrums(g, G, m, s0, s1) {
       if (c.v > .9) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); }
       if (locked) { g.setLineDash([3, 3]); g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.stroke(); g.setLineDash([]); }
       g.fillStyle = '#ffffff80'; rr(g, x + pad + 3, y + pad + 3, Math.max(0, w - 6), 3, 2); g.fill();
+      if (c.o && Math.abs(c.o) >= .02) {
+        g.fillStyle = '#28283Faa';
+        const ox = x + pad + 3 + (c.o + .45) / .9 * Math.max(0, w - 8);
+        g.fillRect(ox, y + pad + hh - 5, 2, 3);
+      }
       if (c.p < 1 && w > 20) { g.fillStyle = '#28283F'; g.font = '900 10px Nunito'; g.textAlign = 'center'; g.fillText(Math.round(c.p * 100) + '%', x + G.stepW / 2, y + G.rowH / 2 + 2); g.textAlign = 'left'; }
       else if (c.p < 1) { g.fillStyle = '#28283F'; g.beginPath(); g.arc(x + G.stepW / 2, y + G.rowH / 2, 2.5, 0, 7); g.fill(); }
     }
@@ -225,13 +252,44 @@ const slop = () => (store.ui.coarse ? 10 : 5);
 const edgeZone = (G, n) => { const w = n.l * G.stepW; const z = Math.max(store.ui.coarse ? 16 : 9, G.stepW * .3); return w < z * 2.2 ? w * .4 : z; };
 const cycle = (v, list) => { const i = list.findIndex(x => Math.abs(x - v) < .02); return list[(i + 1) % list.length]; };
 
+function releaseLivePointer(pointerId) {
+  const item = liveHeld.get(pointerId);
+  if (!item) return false;
+  liveHeld.delete(pointerId);
+  if (item.kind === 'note' && item.handle) A.liveNoteOff(item.handle);
+  render();
+  return true;
+}
+
 function down(e) {
-  if (RV.drag && RV.drag.id !== e.pointerId) return; // ignore second finger
+  if (e.button === 2) { RV.drag = null; return; }
   A.engine.init();
   const { x, y } = posOf(e), G = geo(), u = store.ui, tool = u.tool;
+  // Simultaneous multi-touch live pads/keys on the left column (never blocked by RV.drag or another finger)
+  if (y >= G.rulerH && x < G.keysW) {
+    if (G.drums && tool !== 'lock') {
+      try { RV.cv.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
+      const row = G.rowAt(y), id = DRUMS[row].id;
+      u.drumRow = row;
+      const v = clamp(.6 + .4 * (x / Math.max(1, G.keysW)), .6, 1);
+      A.liveDrumHit(u.sel, id, v);
+      liveHeld.set(e.pointerId, { kind: 'drum', slotId: u.sel, drum: id, row });
+      render();
+      return;
+    }
+    if (!G.drums && y < G.gridBot && (A.isRecording() || A.isRecArmed() || liveHeld.size > 0)) {
+      try { RV.cv.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
+      const q = G.pitchAt(y);
+      const v = clamp(.45 + .55 * (x / Math.max(1, G.keysW)), .45, 1);
+      const handle = A.liveNoteOn(u.sel, q, v);
+      liveHeld.set(e.pointerId, { kind: 'note', slotId: u.sel, pitch: q, handle });
+      render();
+      return;
+    }
+  }
+  if (RV.drag && RV.drag.id !== e.pointerId) return; // ignore second finger for grid editing
   try { RV.cv.setPointerCapture(e.pointerId); } catch (er) { /* synthetic */ }
   const base = { id: e.pointerId, sx: x, sy: y, moved: false };
-  if (e.button === 2) { RV.drag = null; return; }
   if (y < G.rulerH) { if (u.zoom > 1) RV.drag = { ...base, type: 'scrollX', start: u.scrollX }; return; }
   if (G.drums) {
     const row = G.rowAt(y), id = DRUMS[row].id;
@@ -278,6 +336,7 @@ function setVelAt(G, x, y) {
   G.p.notes.forEach(n => { if (n.s === s) n.v = v; }); render();
 }
 function move(e) {
+  if (liveHeld.has(e.pointerId)) return;
   const { x, y } = posOf(e), d = RV.drag;
   const G = geo();
   if (!d) { // hover feedback (mouse only)
@@ -311,6 +370,7 @@ function move(e) {
   }
 }
 function up(e) {
+  if (releaseLivePointer(e.pointerId)) return;
   const d = RV.drag; if (!d || d.id !== e.pointerId) return;
   RV.drag = null;
   const G = geo(), u = store.ui;
@@ -329,7 +389,10 @@ function up(e) {
   done();
   A.patternEdited();
 }
-function cancel(e) { if (RV.drag && RV.drag.id === e.pointerId) { RV.drag = null; A.sealHistory(); A.patternEdited(); } }
+function cancel(e) {
+  if (releaseLivePointer(e.pointerId)) return;
+  if (RV.drag && RV.drag.id === e.pointerId) { RV.drag = null; A.sealHistory(); A.patternEdited(); }
+}
 function done() { RV.hover = null; }
 function wheel(e) {
   e.preventDefault(); const G = geo(), u = store.ui;
