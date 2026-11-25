@@ -54,6 +54,18 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **Design intent:** choosing instruments should feel like assembling a little band of characters, not configuring a DAW.
 
+## Future idea — Genre-based startup presets / Groove Worlds (exploration only, 2026-11-25)
+
+**Status: Idea backlog; not scoped, scheduled or approved for implementation.** Revisit after Ruff and The Catpound are available, when a wider instrument selection makes genre-specific starting bands useful.
+
+Explore reusing the existing startup choices (currently including Dreamy) as meaningful musical starting points such as **Jungle, Vaporwave, House**, plus other styles to be decided. Keep an immediate **Start Fresh** option.
+
+- Selecting a style preselects a coherent combination of available instruments and sound presets (e.g. RUFF for Jungle).
+- After choosing a style, offer **New Song** (empty composition, chosen instruments/presets ready to play) or **Play Demo** (a short illustrative composition using that setup).
+- All selections remain editable and replaceable through the normal instrument workflow; these are **starting configurations, not separate modes**, and not a mandatory onboarding wizard.
+- Revisit naming, style count, default band choices, demo content and how startup selection/preset loading currently work when this idea is actually designed.
+- No changes to current startup UX, instrument architecture or demos are authorized by this note.
+
 ## v0.5 — The Foundation
 
 **Live baseline.** This section records the original v0.5 goals; individual completion and verification should be checked against code and testing.
