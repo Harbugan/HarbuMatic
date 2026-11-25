@@ -31,7 +31,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and owner-verified on physical iPad 2026-11-24; low mic recording level tracked as non-blocking MUNCH-5; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
 | **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Physical iPad QA accepted (7/7 final checks)** — PR #15/#18/#21/#23/#25/#27/#29 merged; automated release regression checks still outstanding; next Ruff v0.7 after release gate; Preset UX deferred to final pre-1.0 polish |
-| **v0.7** | **Ruff in the Jungle** | Purpose-built jungle/breakbeat maker | Name and feature direction decided; scope proposed |
+| **v0.7** | **Ruff in the Jungle** | Standalone sixth breakbeat instrument, hybrid Break Pool, CHOP IT!, live pads | **Product scope approved 2026-11-25; technical review pending; not implemented** |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
 | **Pre-v1.0** | Preset UX + Musical Playability | Final preset/audition and creative-quality polish after v0.9 | Planned final polish milestone |
@@ -44,11 +44,11 @@ The roadmap is directional, **not** a promise of release dates or a locked imple
 
 **The Catpound** is a dedicated, playful instrument-selection screen accessible from the top navigation near SOUND. It is not merely a dropdown or generic instrument list: it is where the player assembles their band of kawaii instrument cats.
 
-- **Your Band (top):** five simultaneous active instrument slots (matching the five-instrument baseline: BOP, GOO, BLIP, FUZZ, MUNCH), visually showing the selected cats.
+- **Your Band (top):** existing five-slot baseline is historical; Ruff v0.7 targets six simultaneous instruments (five visible at once). Revisit final Catpound capacity and replacement behavior against the implemented v0.7 architecture before Catpound development.
 - **The Catpound (below):** a collection of available instrument cats side by side, each with its own identity and sound.
 - **Interaction:** drag cats into an active slot to join or replace the band; drag a cat out to free its slot; allow rearrangement. Provide a clear tap-to-select alternative for touch accessibility and precision.
 - **Creative safety:** replacing or removing a cat must not silently destroy patterns, instrument settings, scenes or saved work. Design reversible replacement and clear restoration semantics.
-- **Architecture:** distinguish instrument type, slot identity and saved musical data; keep the five-active-slot model as the baseline for existing and future projects.
+- **Architecture:** distinguish instrument type, slot identity and saved musical data; preserve current-version project integrity and align future capacity with the approved six-instrument Ruff direction, subject to code validation.
 - **Placement:** provisionally v0.9 alongside instrument replacement; revisit scope and release placement before implementation. No UI or code changes requested now.
 - **Open design questions:** exact handling of existing patterns on replacement, whether multiple instances of one instrument are allowed, and how inactive instrument state is stored.
 
@@ -185,22 +185,28 @@ Explore reusing the existing startup choices (currently including Dreamy) as mea
 
 Owner completed the focused physical iPad final QA: **7/7 PASS** (MUNCH microphone capture, sample import/reopen, retrigger, Stop, Stretch, Tape, and BOP/GOO/BLIP/FUZZ + scene/REC/.hbn regression). The original MUNCH-1…4 physical-device verification blockers are resolved. **Known non-blocking P2:** microphone capture level is very low (MUNCH-5; cause not established). Standard automated `npm run test:ui` and `npm run test:baseline` were NOT RUN in the PR #29 environment; a final automated release regression pass is still required or must be explicitly documented as unavailable. This is **physical QA acceptance**, not a claim of complete technical release sign-off. No additional preset UX or Compact Top work is required before starting v0.7 design.
 
-## v0.7 — Ruff in the Jungle
+## v0.7 — Ruff in the Jungle (product specification approved 2026-11-25)
 
-**Decided name:** **Ruff in the Jungle** — a deliberate nod to The Prodigy's *Ruff in the Jungle Bizness*.
+**Status: owner-approved product scope; NOT implemented.** Technical feasibility, implementation slices, physical iPad layout and release QA remain open. Full specification: [docs/RUFF-07-SPEC.md](docs/RUFF-07-SPEC.md). Ruff is a **standalone sixth instrument**, not a BOP mode or MUNCH skin; the mascot is a punk/rave **kawaii cat** with lime accents and a Keith Flint-inspired attitude (original character design, not a replica).
 
-A **purpose-built jungle and breakbeat creation environment**, potentially integrated with BOP. Not merely a jungle preset.
+**Musical identity:** a playful, immediate Breakbeat Performance Machine with the energy of 90s jungle, breakbeat and rave. Play first; tweak forever. Generated and manually edited events share one non-destructive pattern.
 
-- Load or select breaks; chop them into slices and sequence/rearrange the slices.
-- Fast rolls, retriggers, ghost notes, reverse, pitch changes, and syncopated break variations.
-- Musically guided break transformations: tight, funky, and chaotic but usable.
-- A playful **CHOP IT!** creative action is a proposed interaction.
-- Distinct mascot direction: **a kawaii anteater (kattemyrer)** with oversized rave headphones, mischievous energy, and audio-reactive animations.
-- Explore an original 90s rave-inspired visual identity while retaining HarbuMatic's aesthetic.
+**Approved scope:**
+- **Hybrid Break Pool:** original distributable built-in jungle breaks plus user-imported audio; future licensed recordings may be added only after rights clearance. Ten historical breaks are musical references, **not bundled audio**. Choose up to three active sources A/B/C from an extensible pool; each has audition, volume and mute. Replacing a source must not silently destroy edits.
+- **16-step hybrid sequencer:** compact combined groove view and expanded A/B/C lanes editing the same pattern. Multiple break slices may play on the same step; contextual slice/step editor and individual/whole-column locks.
+- **Break-aware slicing; CHOP IT!:** TIGHT, FUNKY, RUFF and CHAOS styles; New Groove and Evolve; Subtle–Wild intensity; musical variation respects locks and Undo. No separate variation slots/history in v0.7.
+- **Eight dynamic performance pads:** automatic slice mapping with manual overrides; HOLD, ROLL, momentary live CHAOS, retrigger, ghost notes and reverse. Releasing CHAOS returns to the original groove without destructive pattern mutation unless intentionally recorded.
+- **Recording:** reuse Live Pattern Recording with Quantize On/Off; capture pad slices and representable discrete effects in the shared pattern. Do not assume continuous parameter automation.
+- **Audio:** Stretch (pitch-preserving tempo fit) by default; Tape alternative; pitch/reverse and DIRT character; three active breaks with individual volume/mute plus Ruff instrument volume.
+- **iPad UX:** SOUND workspace, six simultaneous instruments with a compact selector showing five at once; sequencer and pads readily available; three compact expandable break-source panels; contextual editor; landscape no routine vertical scrolling.
 
-**Still open:** Whether this is a special BOP mode, a shared tool, or an interchangeable instrument.
+**Explicit exclusions:** universal cross-instrument Live Play, MUTATOR, continuous effect automation, full Catpound replacement UI, and bundled unlicensed historical recordings. No automatic version bump or code change is authorized by this planning update.
 
-**Exit criterion:** Quickly turn a break into expressive, editable jungle rhythms with HarbuMatic's signature playful feel.
+**Technical gates before PR #1:** inspect slot/project schema and current-version .hbn round-trip, existing sample/Stretch/Tape reuse, polyphonic slice scheduling and choke, live recording event model, library asset handling, touch/multi-touch and physical iPad Safari performance. Specify HOLD/CHAOS event semantics and replacement safety during implementation design. Pre-1.0 historical migration remains waived per baseline policy; preserve current-version projects and never silently delete stored work.
+
+**Delivery:** small sequential Antigravity PRs with focused automated checks and owner physical iPad acceptance; verify musical quality, timing, transport, save/reopen, other instruments and landscape ergonomics. The final PR plan must follow repository inspection, not assumptions.
+
+**Exit criterion:** select up to three breaks, create an immediately musical jungle groove, play/record expressive variations, edit/lock/undo, and save/reopen reliably on a physical iPad.
 
 ## Future feature — Universal Live Play (proposed v0.8)
 
@@ -212,8 +218,8 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 - Live performance controls, expressive effect manipulation, and scene triggering.
 - **Universal Live Play (proposed):** shared summonable keyboard/drum-pad/slice-pad performance surface across the app; see dedicated future-feature section above.
-- **MUTATOR — decided feature concept (2026-11-24), candidate for v0.7 or v0.8 (not part of the Ruff release commitment):** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
-- **MUTATOR instrument coverage — decided 2026-11-24:** available to all five instruments (BOP, GOO, BLIP, FUZZ, MUNCH), with instrument-specific useful default mappings. It should work during Live Pattern Recording: notes are recorded, while live parameter movements remain unrecorded until automation recording exists.
+- **MUTATOR — decided feature concept (2026-11-24), deferred beyond Ruff v0.7:** a tactile, analog-inspired, assignable real-time performance controller beside the live keyboard, inspired by HiChord. While playing notes/chords, move the controller with another finger to continuously shape the active instrument's sound. Support assignment to musically useful parameters such as filter cutoff, resonance, pitch, drive, modulation or FX wetness, subject to each engine's capabilities. Prioritize simultaneous multi-touch keyboard + MUTATOR use, smooth audible response without clicks/latency, clear parameter feedback, and an immediately playable default mapping. Explore XY control with independent X/Y assignments, but **do not lock the physical control shape yet**. Decide parameter ranges, reset/hold behavior, per-instrument mappings, recording/automation and persistence during UX/technical design. Must fit the iPad landscape workspace without requiring scrolling. No implementation authorized yet.
+- **MUTATOR instrument coverage — decided 2026-11-24:** intended across available instruments (including Ruff once integrated), with instrument-specific useful default mappings. It should work during Live Pattern Recording: notes are recorded, while live parameter movements remain unrecorded until automation recording exists.
 - **Live Automation Recording — planned concept, proposed for v0.8:** record real-time movements from MUTATOR and regular knobs as beat-aligned, editable, replayable parameter automation. Keep automation separate from note events; preserve overdub, Undo and reversible editing. Decide recording modes, smoothing, conflicts, persistence and UX before implementation. Advanced automation editing may follow in v0.9.
 - **MIDI Clock synchronization** for compatible gear.
 - **Ableton Link** for shared tempo and beat phase between participating apps/devices.
@@ -225,9 +231,9 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 ## v0.9 — Expand & Finish
 
-**Confirmed direction:** five fixed active slots from v0.6, with user-facing replacement of an instrument type in a slot introduced later.
+**Confirmed direction:** instrument replacement UI is deferred; v0.6 had five fixed slots, while v0.7 product scope targets six concurrent instruments. Validate final slot behavior against the implementation before building Catpound.
 
-- Select alternative instrument engines within the existing five-slot layout; do not silently erase existing patterns or instrument state.
+- Select alternative instrument engines within the then-current slot layout; do not silently erase existing patterns or instrument state.
 - Candidate future engines: sampler, FM synth, or other characterful instruments (**examples, not commitments**).
 - Define behavior when replacing an instrument with existing patterns/automation.
 - **Dynamic Scene Library moved to v0.6.1 (ENH-001).**
@@ -269,7 +275,7 @@ A cohesive, reliable, installable tablet-first groovebox:
 
 These are **forward-looking constraints**, not requests to build every future feature in v0.5.
 
-1. **Instrument slot abstraction:** five slots from v0.6; separate stable slot identity from instrument type/engine identity, preparing for future replacement.
+1. **Instrument slot abstraction:** five slots from v0.6, with six simultaneous instruments targeted for Ruff v0.7 (pending technical validation); keep stable slot identity separate from engine type and prepare for future replacement.
 2. **Audio source abstraction:** synthesis now, sample playback/recording later.
 3. **Transport/sync abstraction:** internal clock now, external MIDI Clock/Link integration later.
 4. **Project format:** use .hbn with embedded sample assets; v0.6.1 is the experimental data baseline, without mandatory historical migrations.
@@ -283,7 +289,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | --- | --- |
 | Product direction: Playful Groovebox with Musical Toy personality | **Decided** |
 | Primary platform: iPad/tablet | **Decided** |
-| Five simultaneous instrument slots (BOP, GOO, BLIP, FUZZ, MUNCH) from v0.6 | **Decided; supersedes four-slot rule** |
+| Five simultaneous instrument slots (BOP, GOO, BLIP, FUZZ, MUNCH) from v0.6 | **Implemented historical baseline; Ruff v0.7 targets six, pending technical validation** |
 | Future ability to swap instruments in those slots (UI deferred beyond v0.6) | **Decided** |
 | Import and record samples; chop and loop them | **Decided** |
 | MUNCH standalone fifth instrument; shared sample engine | **Decided** |
