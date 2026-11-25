@@ -53,7 +53,7 @@ function captureTriggers(project, sceneIdx, steps = 32) {
   return calls;
 }
 
-test('new projects start with exactly one empty scene across all five instruments', () => {
+test('new projects start with exactly one empty scene across all six instruments', () => {
   const p = freshSong();
   assert.equal(p.scenes.length, 1);
   assert.equal(p.scenes[0].id, 'scene-01');
@@ -61,7 +61,7 @@ test('new projects start with exactly one empty scene across all five instrument
   assert.equal(p.scenes[0].harmony, null);
   assert.equal(p.scene, 0);
   assert.deepEqual(p.arrangement, []);
-  assert.equal(p.slots.length, 5);
+  assert.equal(p.slots.length, 6);
   for (const s of p.slots) {
     assert.deepEqual(Object.keys(s.patterns), ['scene-01']);
     assert.ok(patternIsEmpty(s.type, s.patterns['scene-01']), `${s.type} starts empty`);

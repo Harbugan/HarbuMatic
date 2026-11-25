@@ -100,6 +100,22 @@ export function catSVG(type) {
       <path d="M49 82 Q60 74 71 82 Q66 88 60 88 Q54 88 49 82 Z" fill="#F49AB2"/>
       <path d="M47 63.6 L50 69 L53 62.8 Z M67 62.8 L70 69 L73 63.6 Z" fill="#fff"/>
     </g>`;
+  // RUFF: punk kawaii jungle cat with spiky ear tufts, lime coat and pink headphones.
+  if (tr === 'ruff') body = `
+    <path d="M84 95 Q102 90 98 73 Q95 66 89 70" fill="none" stroke="${INK}" stroke-width="8" stroke-linecap="round"/><path d="M84 95 Q102 90 98 73 Q95 66 89 70" fill="none" stroke="${C}" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M42 101 Q40 81 60 79 Q80 81 78 101 Z" fill="${C}" ${st}/>
+    <ellipse cx="51" cy="101" rx="7" ry="4" fill="${C}" ${st}/><ellipse cx="69" cy="101" rx="7" ry="4" fill="${C}" ${st}/>
+    <path d="M25 48 L24 12 L50 29 Z" fill="${C}" ${st}/><path d="M31 38 L31 22 L43 30 Z" fill="${hp}" opacity=".75"/>
+    <path d="M95 48 L96 12 L70 29 Z" fill="${C}" ${st}/><path d="M89 38 L89 22 L77 30 Z" fill="${hp}" opacity=".75"/>
+    <path d="M48 26 L55 11 L60 22 L66 10 L72 26 Z" fill="${hp}" ${st}/>
+    <ellipse cx="60" cy="54" rx="36" ry="29" fill="${C}" ${st}/>
+    ${phones('M23 53 Q20 11 60 11 Q100 11 97 53', [14, 41], [90, 41], hp)}
+    ${eyePair(47, 73, 54, 4.2, 5)}
+    <path d="M40 46 L52 49" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/><path d="M80 46 L68 49" stroke="${INK}" stroke-width="2.5" stroke-linecap="round"/>
+    <g class="eyes-alt"><path d="M42 56 Q47 49 52 56" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M68 56 Q73 49 78 56" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+    <ellipse cx="37" cy="64" rx="5.5" ry="3.2" fill="${hp}" opacity=".55"/><ellipse cx="83" cy="64" rx="5.5" ry="3.2" fill="${hp}" opacity=".55"/>
+    <path d="M51 63 Q60 70 69 63" stroke="${INK}" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M55 64.5 L57.5 69 L60 65.5 Z" fill="#fff" stroke="${INK}" stroke-width="1.3" stroke-linejoin="round"/>`;
   return `<svg viewBox="0 0 120 110" aria-hidden="true">${shadow}<g class="rig">${body}</g></svg>`;
 }
 

@@ -12,12 +12,12 @@ import { importProject, patternAt, sceneIndexOf, slotById, createSlot, nextSlotI
 const fx = f => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8'));
 const load = f => { store.project = importProject(fx(f)); store.ui.sel = 'slot-01'; A.history.clear(); };
 
-test('boot starts on the demo song with slot-01 (BOP) selected and all five slots visible', () => {
+test('boot starts on the demo song with slot-01 (BOP) selected and all six slots visible', () => {
   const { fresh } = A.bootProject();
   assert.equal(fresh, true);
   assert.equal(store.ui.sel, 'slot-01');
   assert.equal(typeOf().name, 'BOP');
-  assert.deepEqual(visibleSlots().map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
+  assert.deepEqual(visibleSlots().map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
 });
 
 test('selection uses slot ids; tools a type lacks fall back to Draw', () => {

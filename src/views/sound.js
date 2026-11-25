@@ -1,10 +1,12 @@
 // Sound Shapers bar (macros + FX toggles) and the SOUND view (deep parameters).
 
-import { store, P, typeOf, slot, isSamplerSlot } from '../app/store.js';
+import { store, P, typeOf, slot, isSamplerSlot, isPlaceholderSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
+import { BREAK_LANES } from '../core/instruments.js';
 import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
 import { Knob, Seg } from '../ui/controls.js';
+import { catSVG } from '../ui/characters.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
 import { renderMunch, setMunchRerender } from './munch.js';
 
@@ -14,8 +16,12 @@ export function renderBottom() {
   const host = $('#shapers'); host.innerHTML = '';
   host.append(h('span', { class: 'shapers-title' }, h('b', {}, 'Sound shapers'), h('small', {}, def.name)));
   shaperKnobs = {};
-  if (!def.capabilities.macros) host.append(h('span', { class: 'mini-hint' }, def.capabilities.samples ? `Shape ${def.name} in SOUND → TWIST` : `${def.name} has no sound shapers yet: shape it in SOUND`));
-  else MACRO_KEYS.forEach(k => {
+  if (!def.capabilities.macros) {
+    const msg = def.capabilities.samples ? `Shape ${def.name} in SOUND → TWIST`
+      : isPlaceholderSlot(sel) ? `${def.name} is a non-playing foundation slot — break engine coming next`
+        : `${def.name} has no sound shapers yet: shape it in SOUND`;
+    host.append(h('span', { class: 'mini-hint' }, msg));
+  } else MACRO_KEYS.forEach(k => {
     const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${hints[k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
     shaperKnobs[k] = kn; host.append(kn.el);
   });
@@ -65,14 +71,33 @@ let soundSwitches = [];
 export function renderSound() {
   const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = []; soundSwitches = [];
   if (isSamplerSlot()) { renderMunch(host); host.scrollTop = scroll; return; } // MUNCH has its own workspace
-  const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type;
-  const hear = () => A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch'));
-  const pr = h('div', { class: 'presets' }, h('span', { class: 'sect' }, 'Presets'));
-  Object.entries(PRESETS[type] || {}).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
+  const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type, placeholder = isPlaceholderSlot(sel);
+  const hear = () => { if (!placeholder) A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch')); };
+  const pr = h('div', { class: 'presets' });
+  if (placeholder) {
+    pr.append(h('span', { class: 'ruff-ph-tag' }, 'Foundation · Non-playing'));
+  } else {
+    pr.append(h('span', { class: 'sect' }, 'Presets'));
+    Object.entries(PRESETS[type] || {}).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
+  }
   host.append(h('div', { class: 'view-head sound-head' },
-    h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, 'Sound design')),
+    h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, placeholder ? 'Breakbeat Machine' : 'Sound design')),
     pr));
   const groups = h('div', { class: 'sgroups sound-grid', 'data-inst': type });
+  if (placeholder) {
+    const sl = slot(sel);
+    const sources = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l =>
+      h('div', { class: 'ruff-lane-pill' },
+        h('b', {}, `Break ${l.toUpperCase()}`),
+        h('span', {}, sl && sl.breaks && sl.breaks[l] ? sl.breaks[l] : 'Empty (Break Pool coming next)'))));
+    groups.append(h('div', { class: 'sgroup wide ruff-sound-ph', 'data-group': 'ruff-foundation' },
+      h('div', { class: 'ruff-ph-card compact' },
+        h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
+        h('div', { class: 'ruff-ph-body' },
+          h('h4', {}, `${m.name} workspace foundation`),
+          h('p', {}, 'Audio engine, break pool, slicing, pads and CHOP IT! are staged for the next v0.7 PRs. Channel settings below persist in your song without producing sound yet.'),
+          sources))));
+  }
   [...(SOUNDDEF[type] || []), ...COMMON].forEach(([title, defs]) => {
     const row = h('div', { class: 'row' });
     defs.forEach(d => {
