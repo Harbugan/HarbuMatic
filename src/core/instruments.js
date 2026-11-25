@@ -83,6 +83,19 @@ const TYPES = {
     paramChoices: { mode: ['oneshot', 'gate', 'loop'], fit: ['off', 'half', '1', '2', '4'], fitMode: ['stretch', 'tape'] },
     keepUnknownParams: true, // keep params a later build adds (see extraKeys in src/core/samples.js)
   },
+  // Breakbeat Performance Machine (v0.7 PR1 foundation). Present as the sixth slot in new songs
+  // (slot-06 by default). Intentional non-playing placeholder until the audio engine lands:
+  // selectable in the UI (status: 'placeholder'), never scheduled or soloed (engine: null).
+  ruff: {
+    type: 'ruff', name: 'RUFF', description: 'Breakbeat Machine', status: 'placeholder',
+    role: null, engine: null, pattern: 'break', defaultLength: 16,
+    capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, breaks: true },
+    visual: { color: '#C6EB88', dark: '#8BC940', darker: '#5B8F22', headphones: '#F07BB3', css: 'ruff', character: 'ruff' },
+    ui: { tools: [], audition: null },
+    defaultParams: { vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .15 },
+    paramRanges: { vol: [0, 1], pan: [-1, 1], drive: [0, 1], delay: [0, 1], reverb: [0, 1] },
+    keepUnknownParams: true,
+  },
 };
 Object.values(TYPES).forEach(deepFreeze);
 export const INSTRUMENT_TYPES = freeze(TYPES);
@@ -90,15 +103,17 @@ export const INSTRUMENT_TYPES = freeze(TYPES);
 /** v4/v5 songs stored instruments under these track keys, in this order (= slot-01 … slot-04) */
 export const LEGACY_TRACKS = freeze(['drums', 'bass', 'synth', 'fuzz']);
 export const LEGACY_TRACK_TYPES = freeze({ drums: 'bop', bass: 'goo', synth: 'blip', fuzz: 'fuzz' });
-/** instrument types of a new song, in slot order (slot-01 … slot-05) */
-export const DEFAULT_SLOT_TYPES = freeze(['bop', 'goo', 'blip', 'fuzz', 'munch']);
+/** instrument types of a new song, in slot order (slot-01 … slot-06) */
+export const DEFAULT_SLOT_TYPES = freeze(['bop', 'goo', 'blip', 'fuzz', 'munch', 'ruff']);
+/** break lanes in a RUFF pattern (A/B/C concurrent break sources) */
+export const BREAK_LANES = freeze(['a', 'b', 'c']);
 /**
  * Instrument every song must hold, and the slot id it gets when a song lacks it. Songs from v0.4/v0.5 and
  * four-slot v6 songs gain this slot when they are opened (see ensureMunchSlot in src/core/project.js).
  */
 export const MUNCH_TYPE = 'munch';
 export const MUNCH_SLOT_NUMBER = 5;
-/** most slots a song may hold (four classic instruments + MUNCH + headroom for later) */
+/** most slots a song may hold (four classic instruments + MUNCH + RUFF + headroom for later) */
 export const MAX_SLOTS = 8;
 
 export const hasInstrumentType = id => Object.prototype.hasOwnProperty.call(TYPES, id);
@@ -114,11 +129,13 @@ let previewEnabled = false;
 export function setPreviewInstruments(on) { previewEnabled = !!on; }
 export const previewInstrumentsEnabled = () => previewEnabled;
 const live = t => t.status === 'ready' || (t.status === 'preview' && previewEnabled);
-/** every registered type that is playable right now (planned and disabled preview types only on request) */
+/** every registered type that is playable right now (planned/placeholder and disabled preview types only on request) */
 export const listInstrumentTypes = ({ includePlanned = false } = {}) =>
   Object.values(TYPES).filter(t => includePlanned || live(t));
 /** playable = ready (or an enabled preview) and backed by an audio engine */
 export const isPlayableType = id => hasInstrumentType(id) && live(TYPES[id]) && !!TYPES[id].engine;
+/** selectable = playable or an intentional non-playing UI placeholder (never planned-hidden) */
+export const isSelectableType = id => hasInstrumentType(id) && (isPlayableType(id) || TYPES[id].status === 'placeholder');
 export const typeForLegacyTrack = track => LEGACY_TRACK_TYPES[track] || null;
 
 /** fresh, mutable default parameters for a type */
@@ -132,6 +149,11 @@ export function emptyPatternOfKind(kind, len) {
     DRUMS.forEach(d => { steps[d.id] = Array(len).fill(null); });
     return { len, steps, locked: {} };
   }
+  if (kind === 'break') {
+    const lanes = {};
+    BREAK_LANES.forEach(l => { lanes[l] = Array(len).fill(null); });
+    return { len, lanes, locked: {} };
+  }
   return { len, notes: [] };
 }
 /** a new empty pattern for a type (its default length unless given) */
@@ -139,4 +161,8 @@ export function createPatternFor(id, len) {
   const def = getInstrumentType(id);
   return emptyPatternOfKind(def.pattern, len || def.defaultLength);
 }
-export const patternKindIsEmpty = (kind, p) => (kind === 'drum' ? !DRUMS.some(d => p.steps[d.id].some(Boolean)) : !p.notes.length);
+export const patternKindIsEmpty = (kind, p) => (
+  kind === 'drum' ? !DRUMS.some(d => p.steps[d.id].some(Boolean))
+    : kind === 'break' ? !BREAK_LANES.some(l => p.lanes[l].some(Boolean))
+      : !p.notes.length
+);

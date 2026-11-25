@@ -19,7 +19,7 @@ test('new song is genuinely empty with one scene and fully playable', () => {
   assert.deepEqual(p.arrangement, []);
   assert.equal(p.scenes.length, 1);
   assert.equal(p.scenes[0].id, 'scene-01');
-  assert.deepEqual(p.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch']);
+  assert.deepEqual(p.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch', 'ruff']);
   p.slots.forEach(s => {
     assert.deepEqual(Object.keys(s.patterns), p.scenes.map(sc => sc.id));
     Object.values(s.patterns).forEach(pt => assert.ok(patternIsEmpty(s.type, pt)));

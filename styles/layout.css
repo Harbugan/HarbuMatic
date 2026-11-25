@@ -40,7 +40,9 @@
 .transport .lcd { grid-row: 1; grid-column: 4; }
 .transport .quant { grid-row: 2; grid-column: 1; }
 .transport .bpm { grid-row: 2; grid-column: 2 / 5; }
-.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+.cards-wrap { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.cards-wrap.paged { grid-template-columns: 30px minmax(0, 1fr) 30px; gap: 6px; align-items: stretch; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); min-width: 0; }
 .cards[data-count="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* ---------- main ---------- */

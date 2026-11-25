@@ -62,7 +62,11 @@
         <button class="bpm-b" id="bpmUp" type="button" aria-label="Faster">+</button>
       </div>
     </div>
-    <div class="cards" id="cards" aria-label="Instruments"></div>
+    <div class="cards-wrap" id="cardsWrap">
+      <button class="cards-nav prev" id="cardsPrev" type="button" aria-label="Previous instrument" hidden>‹</button>
+      <div class="cards" id="cards" aria-label="Instruments"></div>
+      <button class="cards-nav next" id="cardsNext" type="button" aria-label="Next instrument" hidden>›</button>
+    </div>
   </section>
 
   <main class="main">
@@ -70,7 +74,8 @@
       <div id="viewJam" class="view jam">
         <div class="toolbar" id="jamBar" role="toolbar" aria-label="Sequencer tools"></div>
         <div class="hint ed-hint" id="edHint"></div>
-        <div class="roll-wrap"><canvas id="roll" aria-label="Sequencer grid"></canvas></div>
+        <div class="roll-wrap" id="rollWrap"><canvas id="roll" aria-label="Sequencer grid"></canvas></div>
+        <div class="ruff-placeholder" id="ruffPlaceholder" hidden></div>
         <div class="leds" id="leds" aria-hidden="true"></div>
       </div>
       <div id="viewSound" class="view sound" hidden></div>

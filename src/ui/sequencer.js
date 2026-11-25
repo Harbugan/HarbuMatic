@@ -8,7 +8,7 @@
 //   Vel/Chance/Slide/Lock – tap a note or drum cell
 //   Keys column – tap to hear, drag up/down to scroll · Ruler – drag sideways when zoomed
 
-import { store, pat, typeOf, isDrumSlot, uiTop, uiLastLen } from '../app/store.js';
+import { store, pat, typeOf, isDrumSlot, isBreakSlot, isPlaceholderSlot, uiTop, uiLastLen } from '../app/store.js';
 import { DRUMS, NOTE } from '../core/constants.js';
 import { clamp } from '../core/util.js';
 import { makeScale } from '../music/theory.js';
@@ -69,7 +69,7 @@ export function geo() {
 
 /** scroll the piano roll so the current notes are in view */
 export function fitView() {
-  const u = store.ui; if (isDrumSlot() || !RV.W) return;
+  const u = store.ui; if (isDrumSlot() || isBreakSlot() || isPlaceholderSlot() || !RV.W) return;
   const notes = pat().notes;
   const G = geo();
   const center = notes.length ? notes.reduce((a, n) => a + n.p, 0) / notes.length : typeOf().ui.viewCenter;
@@ -78,7 +78,7 @@ export function fitView() {
   u.top[u.sel] = G.list[topIdx];
 }
 export function scrollRows(n) {
-  const u = store.ui; if (isDrumSlot()) return;
+  const u = store.ui; if (isDrumSlot() || isBreakSlot() || isPlaceholderSlot()) return;
   const G = geo(); const i = clamp(G.topIdx + n, 0, Math.max(0, G.list.length - G.rows)); u.top[u.sel] = G.list[i]; render();
 }
 export const octave = dir => scrollRows(-dir * (store.ui.fold ? makeScale(store.project.key, store.project.scale).intervals.length : 12));
@@ -94,7 +94,7 @@ export function resize() {
 function rr(g, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 
 export function render() {
-  if (!RV.g || !RV.W || !RV.H) return;
+  if (!RV.g || !RV.W || !RV.H || isBreakSlot() || isPlaceholderSlot()) return;
   const g = RV.g, G = geo(), u = store.ui, m = typeOf().visual;
   g.setTransform(RV.dpr, 0, 0, RV.dpr, 0, 0);
   g.fillStyle = '#28283F'; g.fillRect(0, 0, RV.W, RV.H);

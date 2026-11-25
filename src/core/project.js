@@ -25,8 +25,8 @@
 
 import { DRUM_IDS, NSCENES, MAX_SCENES, SCENE_NAMES, SCALES, MOODS, LENGTHS, MAX_REPS, DEFAULT_MACROS, DEFAULT_FX, DEFAULT_LAB } from './constants.js';
 import {
-  getInstrumentType, hasInstrumentType, isPlayableType, defaultParamsFor, createPatternFor, emptyPatternOfKind,
-  patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
+  getInstrumentType, hasInstrumentType, isPlayableType, isSelectableType, defaultParamsFor, createPatternFor, emptyPatternOfKind,
+  patternKindIsEmpty, LEGACY_TRACKS, LEGACY_TRACK_TYPES, DEFAULT_SLOT_TYPES, BREAK_LANES, MAX_SLOTS, MUNCH_TYPE, MUNCH_SLOT_NUMBER,
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
@@ -72,8 +72,10 @@ export function duplicateSceneName(project, sourceName) {
    --------------------------------------------------------- */
 export const slotById = (project, id) => project.slots.find(s => s.id === id) || null;
 export const typeOfSlot = slot => getInstrumentType(slot.type);
-/** slots whose instrument can sound (and is shown); planned types such as MUNCH are skipped */
+/** slots whose instrument can sound; planned and non-playing placeholder types are skipped */
 export const playableSlots = project => project.slots.filter(s => isPlayableType(s.type));
+/** slots shown and selectable in the UI (playable instruments + intentional non-playing placeholders) */
+export const selectableSlots = project => project.slots.filter(s => isSelectableType(s.type));
 export const sceneIdAt = (project, idx) => (project.scenes[idx] ? project.scenes[idx].id : null);
 export const sceneIndexOf = (project, id) => project.scenes.findIndex(s => s.id === id);
 /** scene index an arrangement block plays (0 if its reference is broken; validation prevents that) */
@@ -86,7 +88,7 @@ export function setPatternAt(project, slotId, sceneIdx, pattern) {
   const s = slotById(project, slotId), sid = sceneIdAt(project, sceneIdx);
   if (s && sid) s.patterns[sid] = pattern;
 }
-/** solo only counts on playable slots: a planned instrument (e.g. MUNCH) has no engine and must not silence the others */
+/** solo only counts on playable slots: a planned or placeholder instrument has no engine and must not silence the others */
 export const anySolo = project => project.slots.some(s => s.solo && isPlayableType(s.type));
 export const slotAudible = (project, slot) => (anySolo(project) ? slot.solo : !slot.mute);
 /**
@@ -110,11 +112,13 @@ export const newBlock = (sceneId, reps = 1) => ({ id: uid('blk'), sceneId, reps 
 
 /** one instrument instance with default sound and empty patterns for the given scenes */
 export function createSlot(type, id, sceneIds) {
+  const def = getInstrumentType(type);
   const slot = {
     id, type, mute: false, solo: false, params: defaultParamsFor(type), macros: DEFAULT_MACROS(),
     patterns: Object.fromEntries(sceneIds.map(sid => [sid, createPatternFor(type)])),
   };
-  if (getInstrumentType(type).capabilities.samples) slot.sample = null; // sampler slots reference a sample (src/core/samples.js)
+  if (def.capabilities.samples) slot.sample = null; // sampler slots reference a sample (src/core/samples.js)
+  if (def.capabilities.breaks) slot.breaks = Object.fromEntries(BREAK_LANES.map(l => [l, null])); // A/B/C break source refs (PR2+ pool)
   return slot;
 }
 
@@ -278,6 +282,24 @@ function cleanNote(n, len, slices = false) {
   if (slices && Number.isInteger(n.slice) && n.slice >= 0 && n.slice < MAX_SLICES) out.slice = n.slice; // sampler slice trigger
   return out;
 }
+function cleanBreakCell(c) {
+  if (!isObj(c)) return null;
+  const out = { v: num(c.v, .8, .05, 1), p: num(c.p, 1, .05, 1) };
+  if (Number.isInteger(c.slice) && c.slice >= 0 && c.slice < MAX_SLICES) out.slice = c.slice;
+  if (typeof c.o === 'number' && c.o) out.o = num(c.o, 0, -.45, .45);
+  if (c.rev) out.rev = true;
+  if (c.locked) out.locked = true;
+  return out;
+}
+function cleanBreakSources(b) {
+  const src = isObj(b) ? b : {};
+  const out = {};
+  BREAK_LANES.forEach(l => {
+    const v = src[l];
+    out[l] = typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null;
+  });
+  return out;
+}
 /** repair a pattern of the given type ('bop', 'goo', …) */
 export function validatePattern(type, p, defLen = 16) {
   const def = getInstrumentType(type), kind = def.pattern, slices = !!def.capabilities.slices;
@@ -291,6 +313,18 @@ export function validatePattern(type, p, defLen = 16) {
       if (p.locked && p.locked[id]) locked[id] = true;
     });
     return { len, steps, locked };
+  }
+  if (kind === 'break') {
+    const lanes = {}, locked = {};
+    BREAK_LANES.forEach(id => {
+      const row = Array.isArray(p.lanes && p.lanes[id]) ? p.lanes[id] : [];
+      lanes[id] = Array.from({ length: len }, (_, i) => cleanBreakCell(row[i]));
+      if (p.locked && p.locked[id]) locked[id] = true;
+    });
+    if (isObj(p.locked)) {
+      for (let i = 0; i < len; i++) if (p.locked[String(i)]) locked[String(i)] = true;
+    }
+    return { len, lanes, locked };
   }
   const notes = (Array.isArray(p.notes) ? p.notes : []).map(n => cleanNote(n, len, slices)).filter(Boolean);
   return { len, notes };
@@ -354,6 +388,8 @@ function cleanSlots(input, sceneIds) {
     };
     // a sampler keeps its sample reference even when the asset is missing on this device (never dropped silently)
     if (def.capabilities.samples) out.sample = cleanSampleRef(s.sample);
+    // RUFF keeps its A/B/C break source references (PR2+ Break Pool)
+    if (def.capabilities.breaks) out.breaks = cleanBreakSources(s.breaks);
     return out;
   });
 }

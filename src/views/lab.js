@@ -31,6 +31,16 @@ export function renderLab() {
   host.append(h('div', { class: 'uni-home' }, uni, h('div', { class: 'uni-say' }, h('b', {}, 'Happy Accident Lab'), h('span', {}, `Playing with ${m.name} in scene ${sceneLabel(p.scene)}`))));
 
   if (m.capabilities.samples) { renderSamplerLab(host, p); host.scrollTop = scroll; return; }
+  if (m.capabilities.breaks) {
+    host.append(h('div', { class: 'lab-munch' },
+      h('p', { class: 'mini-hint' }, `${m.name} is a v0.7 foundation slot. CHOP IT! groove generation arrives in a later PR.`),
+      h('button', { type: 'button', class: 'lbtn big', onclick: () => { A.setDrawer(false); A.setMode('sound'); } },
+        h('span', { class: 'lbtn-i', html: ico('spark') }),
+        h('span', { class: 'lbtn-t' }, `Open ${m.name}`, h('small', {}, 'view foundation workspace in SOUND')))));
+    keyAndSnaps(host, p);
+    host.scrollTop = scroll;
+    return;
+  }
   const gen = m.capabilities.generate;
   const act = (k, label, kind, cls = '', sub) => {
     const b = h('button', { type: 'button', class: 'lbtn ' + cls, title: gen ? label : `${label} is not available for ${m.name}`, disabled: !gen }, h('span', { class: 'lbtn-i', html: ico(k) }), h('span', { class: 'lbtn-t' }, label, sub ? h('small', {}, gen ? sub : 'not for ' + m.name) : null));

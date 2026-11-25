@@ -1,12 +1,14 @@
 // JAM toolbar. Standard = Play & Create (draw/erase + expand). Expanded = Deep Edit
 // (every editing tool, length, zoom, scale fold, octave). Both drive the same sequencer.
 
-import { store, pat, typeOf, isDrumSlot } from '../app/store.js';
+import { store, pat, typeOf, isDrumSlot, isPlaceholderSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { sceneLabel } from '../core/constants.js';
+import { BREAK_LANES } from '../core/instruments.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg } from '../ui/controls.js';
+import { catSVG } from '../ui/characters.js';
 import * as Seq from '../ui/sequencer.js';
 import { occupancy } from './strip.js';
 import { playhead } from '../ui/sequencer.js';
@@ -22,18 +24,58 @@ const HINTS = {
   slide: 'Tap a GOO note to glide into the next one',
   lock: 'Locked notes and rows survive Generate, Mutate & friends',
 };
-export const hintFor = () => { const t = store.ui.tool, x = HINTS[t] || ''; return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel']; };
+export const hintFor = () => {
+  if (isPlaceholderSlot()) return `${typeOf().name} is a non-playing v0.7 foundation slot — break audio and sequencer arrive in the next PRs`;
+  const t = store.ui.tool, x = HINTS[t] || '';
+  return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel'];
+};
 
 const COMMON_TOOLS = new Set(['draw', 'erase', 'vel', 'prob', 'lock']);
 
+function renderPlaceholderJam(m, sc) {
+  const host = $('#ruffPlaceholder');
+  if (!host) return;
+  const p = pat();
+  host.innerHTML = '';
+  const lanes = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l =>
+    h('div', { class: 'ruff-lane-pill' },
+      h('b', {}, `Break ${l.toUpperCase()}`),
+      h('span', {}, `${p && p.lanes && p.lanes[l] ? p.lanes[l].filter(Boolean).length : 0} / ${p ? p.len : 16} steps`))));
+  host.append(
+    h('div', { class: 'ruff-ph-card' },
+      h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
+      h('div', { class: 'ruff-ph-body' },
+        h('div', { class: 'ruff-ph-head' },
+          h('h3', {}, `${m.name} · ${m.description}`),
+          h('span', { class: 'ruff-ph-tag' }, 'Foundation · Non-playing')),
+        h('p', {}, `Scene ${sceneLabel(sc)} holds an independent 16-step A/B/C break pattern for ${m.name}. Playback, break pool, slicing and CHOP IT! are not active yet.`),
+        lanes,
+        h('div', { class: 'ruff-ph-actions' },
+          h('button', { type: 'button', class: 'tool on', onclick: () => A.setMode('sound') }, `Open ${m.name} in SOUND`)))));
+}
+
 export function renderJamBar() {
-  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', TOOLS = toolsFor(m);
+  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', placeholder = isPlaceholderSlot(), TOOLS = toolsFor(m);
   const bar = $('#jamBar'); bar.innerHTML = '';
-  bar.classList.toggle('deep', !!u.expanded);
+  bar.classList.toggle('deep', !!u.expanded && !placeholder);
   const sc = store.project.scene;
+  const rollWrap = $('#rollWrap'), ph = $('#ruffPlaceholder'), leds = $('#leds');
+  if (rollWrap) rollWrap.hidden = placeholder;
+  if (ph) ph.hidden = !placeholder;
+  if (leds) leds.hidden = placeholder;
+
+  const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
+  if (placeholder) {
+    const actions = h('div', { class: 'tgroup tb-actions' },
+      btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }));
+    bar.append(chip, h('span', { class: 'spacer' }), actions);
+    $('#edHint').textContent = hintFor();
+    renderPlaceholderJam(m, sc);
+    return;
+  }
+
   if (!u.expanded && !['draw', 'erase'].includes(u.tool)) u.tool = 'draw'; // standard mode: simple tools only
   if (!TOOLS.some(([k]) => k === u.tool)) u.tool = 'draw';
-  const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
   const makeToolBtn = ([k, label]) => {
     const b = btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) });
     b.dataset.tool = k;
@@ -83,7 +125,7 @@ export function renderJamBar() {
 }
 
 export function updateLeds() {
-  const leds = $('#leds'); if (!leds) return;
+  const leds = $('#leds'); if (!leds || isPlaceholderSlot()) return;
   if (leds.children.length !== 16) { leds.innerHTML = ''; for (let i = 0; i < 16; i++) leds.append(h('i', { class: i % 4 === 0 ? 'beat' : '' })); }
   const p = pat(), sc = store.project.scene, occ = occupancy(store.ui.sel, sc, p.len);
   const live = A.transport.playing && playhead.scene === sc && playhead.step >= 0;

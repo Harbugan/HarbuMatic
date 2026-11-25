@@ -44,7 +44,7 @@ function dispatch(project, { steps = 64, seed = 1 } = {}) {
 /** a v6 song as Phase 1 (v0.6 dev, four slots) saved it: the demo with content in every place that can hold it */
 function phase1Song() {
   const p = createDemoProject();
-  p.slots = p.slots.filter(s => s.type !== 'munch');
+  p.slots = p.slots.filter(s => s.type !== 'munch' && s.type !== 'ruff');
   p.slots[1].mute = true; p.slots[2].solo = true;
   p.slots[0].params.tune = 3; p.slots[3].macros.space = .9;
   p.songMode = true; p.scenes[4].name = 'Bridge';
@@ -54,9 +54,9 @@ function phase1Song() {
 }
 
 /* ---------- project model ---------- */
-test('every new song has exactly five stable slots, and new songs agree with each other', () => {
+test('every new song has six stable slots including MUNCH and RUFF, and new songs agree with each other', () => {
   for (const p of [createEmptyProject(), createDemoProject()]) {
-    assert.deepEqual(p.slots.map(s => `${s.id}:${s.type}`), ['slot-01:bop', 'slot-02:goo', 'slot-03:blip', 'slot-04:fuzz', 'slot-05:munch']);
+    assert.deepEqual(p.slots.map(s => `${s.id}:${s.type}`), ['slot-01:bop', 'slot-02:goo', 'slot-03:blip', 'slot-04:fuzz', 'slot-05:munch', 'slot-06:ruff']);
     assert.deepEqual(munchSlots(p)[0].patterns, Object.fromEntries(p.scenes.map(sc => [sc.id, { len: 16, notes: [] }])));
   }
 });
@@ -201,10 +201,10 @@ test('the engine builds one channel per playable slot (five by default) and wire
   withFakeAudio(() => {
     const five = createEmptyProject(), e5 = createEngine(() => five);
     e5.init();
-    assert.deepEqual([...e5.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'all five default slots get a channel');
+    assert.deepEqual([...e5.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'first five playable slots get a channel; RUFF placeholder gets none');
     const six = sixPlayable(), e6 = createEngine(() => six);
     e6.init();
-    assert.deepEqual([...e6.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
+    assert.deepEqual([...e6.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-07']);
     const { E } = e6;
     for (const [id, { channel: ch, voice }] of E.ch) {
       assert.ok(ch.pan.out.includes(E.master), `${id}: own pan → master`);
@@ -215,8 +215,8 @@ test('the engine builds one channel per playable slot (five by default) and wire
     const chans = [...E.ch.values()].map(x => x.channel);
     assert.equal(new Set(chans.map(c => c.bus)).size, 6, 'independent mixer channels');
     // volume and pan of the extra instance are its own
-    slotById(six, 'slot-06').params.pan = -.5; e6.applyParams('slot-06'); e6.applyParams('slot-03');
-    e6.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06'], 'transport gates per slot');
+    slotById(six, 'slot-07').params.pan = -.5; e6.applyParams('slot-07'); e6.applyParams('slot-03');
+    e6.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-07'], 'transport gates per slot');
     e6.closeGates();
     // removing the extra slot releases its channel
     six.slots.pop(); e6.syncSlots();

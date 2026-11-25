@@ -57,7 +57,7 @@ test('the four classic instruments keep their v0.5.1 names, colours and default 
     assert.deepEqual(defaultParamsFor(t.type), ref.params);
     assert.ok(MACRO_MAP[t.role], 'macros exist for its role');
   }
-  assert.deepEqual(DEFAULT_SLOT_TYPES, ['bop', 'goo', 'blip', 'fuzz', 'munch']);
+  assert.deepEqual(DEFAULT_SLOT_TYPES, ['bop', 'goo', 'blip', 'fuzz', 'munch', 'ruff']);
   assert.deepEqual(createPatternFor('bop'), { len: 16, steps: Object.fromEntries(DRUM_IDS.map(id => [id, Array(16).fill(null)])), locked: {} });
   for (const id of ['goo', 'blip', 'fuzz']) assert.deepEqual(createPatternFor(id), { len: 32, notes: [] });
   assert.deepEqual(getInstrumentType('goo').ui.tools, ['draw', 'erase', 'vel', 'prob', 'slide', 'lock']);
@@ -82,14 +82,14 @@ test('MUNCH is a ready instrument by default; preview toggle stays available for
 });
 
 /* ---------- slots ---------- */
-test('a new song has exactly five playable slots with stable ids slot-01…slot-05', () => {
+test('a new song has six stable slots (five playable + RUFF placeholder) with ids slot-01…slot-06', () => {
   const p = createEmptyProject();
-  assert.deepEqual(p.slots.map(s => [s.id, s.type]), [['slot-01', 'bop'], ['slot-02', 'goo'], ['slot-03', 'blip'], ['slot-04', 'fuzz'], ['slot-05', 'munch']]);
-  assert.equal(nextSlotId(p), 'slot-06');
+  assert.deepEqual(p.slots.map(s => [s.id, s.type]), [['slot-01', 'bop'], ['slot-02', 'goo'], ['slot-03', 'blip'], ['slot-04', 'fuzz'], ['slot-05', 'munch'], ['slot-06', 'ruff']]);
+  assert.equal(nextSlotId(p), 'slot-07');
   assert.deepEqual(createEmptyProject().slots.map(s => s.id), p.slots.map(s => s.id), 'deterministic');
-  assert.deepEqual(playableSlots(p).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'all five default slots are playable');
+  assert.deepEqual(playableSlots(p).map(s => s.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'first five default slots are playable; RUFF is non-playing placeholder');
   assert.deepEqual(validateProject(structuredClone(p)), p, 'a new song is already valid: validation adds nothing');
-  assert.deepEqual(createDemoProject().slots.map(s => s.type), DEFAULT_SLOT_TYPES, 'the demo song has the same five slots');
+  assert.deepEqual(createDemoProject().slots.map(s => s.type), DEFAULT_SLOT_TYPES, 'the demo song has the same six slots');
 });
 
 test('slot identity is independent of the instrument type', () => {
@@ -99,20 +99,20 @@ test('slot identity is independent of the instrument type', () => {
   // a future "replace instrument" swaps type/params/patterns in place; the slot keeps its id and position
   Object.assign(s, createSlot('fuzz', s.id, p.scenes.map(x => x.id)));
   const v = validateProject(p);
-  assert.deepEqual(v.slots.map(x => x.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
+  assert.deepEqual(v.slots.map(x => x.id), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
   assert.equal(slotById(v, 'slot-03').type, 'fuzz');
 });
 
 test('several instances of one type are valid and independent', () => {
   const p = createEmptyProject();
   p.slots.push(createSlot('blip', nextSlotId(p), p.scenes.map(x => x.id)));
-  setPatternAt(p, 'slot-06', 0, { len: 16, notes: [{ s: 3, p: 72, l: 2, v: .5 }] });
-  slotById(p, 'slot-06').params.cutoff = .9;
+  setPatternAt(p, 'slot-07', 0, { len: 16, notes: [{ s: 3, p: 72, l: 2, v: .5 }] });
+  slotById(p, 'slot-07').params.cutoff = .9;
   const v = importProject(JSON.parse(JSON.stringify(p)));
-  assert.deepEqual(v.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch', 'blip']);
-  assert.equal(patternAt(v, 'slot-06', 0).notes[0].p, 72);
+  assert.deepEqual(v.slots.map(s => s.type), ['bop', 'goo', 'blip', 'fuzz', 'munch', 'ruff', 'blip']);
+  assert.equal(patternAt(v, 'slot-07', 0).notes[0].p, 72);
   assert.equal(patternAt(v, 'slot-03', 0).notes.length, 0);
-  assert.equal(slotById(v, 'slot-06').params.cutoff, .9);
+  assert.equal(slotById(v, 'slot-07').params.cutoff, .9);
   assert.equal(slotById(v, 'slot-03').params.cutoff, .5);
 });
 
@@ -133,7 +133,7 @@ test('slot validation repairs ids, refuses unknown types and too many slots', ()
   const p = createEmptyProject();
   p.slots[1].id = 'slot-01'; p.slots[2].id = 'NOT VALID';
   const v = validateProject(p);
-  assert.equal(new Set(v.slots.map(s => s.id)).size, 5, 'ids unique after repair');
+  assert.equal(new Set(v.slots.map(s => s.id)).size, 6, 'ids unique after repair');
   assert.equal(v.slots[0].id, 'slot-01');
   const unk = createEmptyProject(); unk.slots[0].type = 'theremin';
   assert.throws(() => validateProject(unk), e => e instanceof ProjectError && /does not know/.test(e.message));

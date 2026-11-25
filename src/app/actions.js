@@ -1,7 +1,7 @@
 // Actions: the only place that mutates the project in response to the UI.
 // Views call actions; actions save, record history and emit events; main.js re-renders.
 
-import { store, emit, P, pat, slot, typeOf, isDrumSlot, ensureSelection, isSamplerSlot } from './store.js';
+import { store, emit, P, pat, slot, typeOf, isDrumSlot, isBreakSlot, visibleSlots, MAX_VISIBLE_CARDS, ensureSelection, isSamplerSlot } from './store.js';
 import { MELODIC, MAX_SCENES, sceneLabel } from '../core/constants.js';
 import { clone, clamp } from '../core/util.js';
 import { createHistory } from '../core/history.js';
@@ -15,7 +15,7 @@ import {
   exportPackage, parsePackage, restorePackage, isZipBytes, PackageError,
   PACKAGE_EXTENSION, PACKAGE_MIME, PACKAGE_LIMITS,
 } from '../core/package.js';
-import { createPatternFor, isPlayableType } from '../core/instruments.js';
+import { createPatternFor, isPlayableType, isSelectableType } from '../core/instruments.js';
 import {
   sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH, insertSliceBoundary, splitSlice,
   removeSliceBoundary, remapSlotSlices, sliceAt, sliceCount, fitInfo, fitRate, fitPlayback, FIT_BARS, FIT_MODES, MAX_SLICES, MIN_SLICE,
@@ -323,13 +323,30 @@ export async function importFile(file, { sampleStore = samples.store, decode, li
 }
 
 /* ---------- selection / modes ---------- */
+export function shiftStrip(delta) {
+  const vis = visibleSlots();
+  const maxOff = Math.max(0, vis.length - MAX_VISIBLE_CARDS);
+  const next = clamp((store.ui.stripOffset || 0) + delta, 0, maxOff);
+  if (next === store.ui.stripOffset) return;
+  store.ui.stripOffset = next;
+  emit('strip');
+}
 export function selectSlot(id) {
-  if (store.ui.sel === id || !slot(id) || !isPlayableType(slot(id).type)) return; // planned instruments cannot be selected
+  if (store.ui.sel === id || !slot(id) || !isSelectableType(slot(id).type)) return; // planned-hidden instruments cannot be selected
   finalizeHeldRecNotes();
   stopMunchPreview();
   const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
-  if (!typeOf(id).ui.tools.includes(u.tool)) u.tool = 'draw'; // e.g. Slide exists only where slides do
+  const tools = typeOf(id).ui.tools;
+  if (tools.length && !tools.includes(u.tool)) u.tool = tools[0]; // e.g. Slide exists only where slides do
+  const vis = visibleSlots(), idx = vis.findIndex(s => s.id === id);
+  if (idx >= 0) {
+    const maxOff = Math.max(0, vis.length - MAX_VISIBLE_CARDS);
+    let off = clamp(u.stripOffset || 0, 0, maxOff);
+    if (idx < off) off = idx;
+    else if (idx >= off + MAX_VISIBLE_CARDS) off = idx - MAX_VISIBLE_CARDS + 1;
+    u.stripOffset = off;
+  }
   // MUNCH lives in its SOUND workspace: selecting it opens SOUND, unless the player left that workspace on purpose.
   // When MUNCH opened SOUND by itself, selecting another instrument returns to the mode it came from. The other
   // instruments never change the mode.
@@ -634,7 +651,11 @@ export function setMacro(t, k, v) {
 export function setFx(k, v) { checkpoint(`fx:${k}`); store.project.fx[k] = v; engine.applyGlobalFx(); save(); }
 const applyMix = () => playableSlots(store.project).forEach(s => engine.applyParams(s.id));
 export function toggleMute(t) { checkpoint(); const tr = slot(t); tr.mute = !tr.mute; applyMix(); save(); emit('mix'); }
-export function toggleSolo(t) { checkpoint(); const tr = slot(t); tr.solo = !tr.solo; applyMix(); save(); emit('mix'); }
+export function toggleSolo(t) {
+  const tr = slot(t);
+  if (!tr || !isPlayableType(tr.type)) return;
+  checkpoint(); tr.solo = !tr.solo; applyMix(); save(); emit('mix');
+}
 
 /* ---------- Happy Accident Lab ---------- */
 export function setLab(k, v) { store.project.lab[k] = v; save(); emit('lab'); }
@@ -706,6 +727,7 @@ export function snapshotClear(i) { store.project.snaps[i] = null; save(); emit('
 
 /* ---------- pattern-level edits used by toolbars ---------- */
 export function setLength(len) {
+  if (isBreakSlot()) return;
   const p = pat(); if (p.len === len) return;
   checkpoint(); const old = p.len; p.len = len;
   if (isDrumSlot()) Object.keys(p.steps).forEach(id => { const r = p.steps[id]; p.steps[id] = Array.from({ length: len }, (_, i) => (i < old ? r[i] : null)); });
@@ -713,6 +735,7 @@ export function setLength(len) {
   store.ui.zoom = 1; store.ui.scrollX = 0; save(); emit('pattern');
 }
 export function doubleLength() {
+  if (isBreakSlot()) return;
   const p = pat(); if (p.len >= 64) return;
   checkpoint(); const old = p.len; p.len = old * 2;
   if (isDrumSlot()) Object.keys(p.steps).forEach(id => { p.steps[id] = [...p.steps[id], ...p.steps[id].map(c => (c ? { ...c } : null))]; });
@@ -721,8 +744,9 @@ export function doubleLength() {
 }
 export function clearPattern() {
   checkpoint(); const p = pat();
-  const drums = isDrumSlot();
+  const drums = isDrumSlot(), brk = isBreakSlot();
   if (drums) Object.keys(p.steps).forEach(id => { if (!p.locked[id]) p.steps[id] = Array(p.len).fill(null); });
+  else if (brk) Object.keys(p.lanes).forEach(id => { if (!p.locked[id]) p.lanes[id] = p.lanes[id].map((c, i) => (c && (c.locked || p.locked[String(i)]) ? c : null)); });
   else p.notes = p.notes.filter(n => n.locked);
   save(); emit('pattern'); emit('toast', `${typeOf().name} cleared${drums ? '' : ' (locked notes kept)'}`);
 }

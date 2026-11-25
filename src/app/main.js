@@ -1,6 +1,6 @@
 // Bootstrap: build the UI, wire events to renders, run the animation loop.
 
-import { store, on, typeOf, isDrumSlot, visibleSlots, pat, P, isSamplerSlot } from './store.js';
+import { store, on, typeOf, isDrumSlot, isBreakSlot, isPlaceholderSlot, visibleSlots, pat, P, isSamplerSlot } from './store.js';
 import * as A from './actions.js';
 import { APP_VERSION, VERSION_LABEL, APP_CREDIT } from '../core/constants.js';
 import { getInstrumentType } from '../core/instruments.js';
@@ -65,6 +65,7 @@ function wire() {
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
   on('mix', updateCards);
+  on('strip', updateCards);
   // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
   // is being dragged or live keys/pads are recording, update in place so gestures and multi-touch holds never break.
   const munchUpdate = () => { if (!munchOpen()) return; if (waveDragging()) refreshMunchSel(); else renderSound(); };
@@ -101,7 +102,7 @@ function renderBottomFx() { $$('#fxbar .fxbtn').forEach(b => { const on = !!P(st
 let audT = [];
 function auditionPattern() { // when stopped, give a tiny taste of the new idea
   audT.forEach(clearTimeout); audT = [];
-  const t = store.ui.sel; if (isDrumSlot(t)) return;
+  const t = store.ui.sel; if (isDrumSlot(t) || isBreakSlot(t) || isPlaceholderSlot(t)) return;
   const p = pat(t);
   [...p.notes].sort((a, b) => a.s - b.s).slice(0, 4).forEach((n, i) => audT.push(setTimeout(() => { A.engine.audition(t, n.p, n.v); catReact(t, [{ p: n.p, v: n.v }]); }, i * 120)));
 }
@@ -162,8 +163,8 @@ function keys(e) {
   else if (k === 'l') { if (!store.ui.expanded) A.setExpanded(true); A.setTool('lock'); }
   else if (k === 'g') A.runTransform('generate');
   else if (k === 'm') A.runTransform('mutate');
-  else if (e.key === 'ArrowUp' && !isDrumSlot()) { e.preventDefault(); Seq.octave(1); }
-  else if (e.key === 'ArrowDown' && !isDrumSlot()) { e.preventDefault(); Seq.octave(-1); }
+  else if (e.key === 'ArrowUp' && !isDrumSlot() && !isBreakSlot()) { e.preventDefault(); Seq.octave(1); }
+  else if (e.key === 'ArrowDown' && !isDrumSlot() && !isBreakSlot()) { e.preventDefault(); Seq.octave(-1); }
 }
 
 /* ---------- boot ---------- */

@@ -2,7 +2,8 @@
 // `project` is the portable song data; `ui` is view state that never goes into the song file.
 // Instruments are addressed by slot id ('slot-01' …), never by instrument name.
 
-import { slotById, typeOfSlot, patternAt, playableSlots } from '../core/project.js';
+import { slotById, typeOfSlot, patternAt, selectableSlots } from '../core/project.js';
+import { isPlayableType } from '../core/instruments.js';
 
 const listeners = new Map();
 export const on = (evt, fn) => { if (!listeners.has(evt)) listeners.set(evt, new Set()); listeners.get(evt).add(fn); return () => listeners.get(evt).delete(fn); };
@@ -11,10 +12,13 @@ export const emit = (evt, data) => { (listeners.get(evt) || []).forEach(fn => fn
 const reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
+export const MAX_VISIBLE_CARDS = 5;
+
 export const store = {
   project: null,
   ui: {
     sel: 'slot-01',         // selected instrument slot
+    stripOffset: 0,         // first visible slot index when > MAX_VISIBLE_CARDS slots exist
     mode: 'jam',            // jam | arrange | sound
     expanded: false,        // Deep edit (expanded JAM)
     drawer: false,          // Lab drawer open (portrait / expanded)
@@ -54,16 +58,25 @@ export const slot = (id = store.ui.sel) => slotById(store.project, id);
 /** registry definition of a slot's instrument type */
 export const typeOf = (id = store.ui.sel) => typeOfSlot(slot(id));
 export const isDrumSlot = (id = store.ui.sel) => typeOf(id).pattern === 'drum';
+export const isBreakSlot = (id = store.ui.sel) => { const s = slot(id); return !!(s && typeOfSlot(s).pattern === 'break'); };
+export const isPlaceholderSlot = (id = store.ui.sel) => { const s = slot(id); return !!(s && !isPlayableType(s.type)); };
 export const P = id => slot(id).params;
 export const pat = (id = store.ui.sel, sc = store.project.scene) => patternAt(store.project, id, sc);
-/** the playable instrument slots shown in the UI */
-export const visibleSlots = () => playableSlots(store.project);
+/** the instrument slots shown and selectable in the UI (playable + intentional placeholders) */
+export const visibleSlots = () => selectableSlots(store.project);
 export function uiTop(id = store.ui.sel) { const u = store.ui; if (u.top[id] == null) u.top[id] = typeOf(id).ui.viewTop ?? 79; return u.top[id]; }
 export function uiLastLen(id = store.ui.sel) { const u = store.ui; if (u.lastLen[id] == null) u.lastLen[id] = typeOf(id).ui.noteLength ?? 1; return u.lastLen[id]; }
-/** keep the selection on a visible slot after a project change */
+/** keep the selection and strip window valid after a project change */
 export function ensureSelection() {
   const vis = visibleSlots();
   if (vis.length && !vis.some(s => s.id === store.ui.sel)) store.ui.sel = vis[0].id;
+  const maxOff = Math.max(0, vis.length - MAX_VISIBLE_CARDS);
+  store.ui.stripOffset = Math.max(0, Math.min(store.ui.stripOffset || 0, maxOff));
+  const idx = vis.findIndex(s => s.id === store.ui.sel);
+  if (idx >= 0) {
+    if (idx < store.ui.stripOffset) store.ui.stripOffset = idx;
+    else if (idx >= store.ui.stripOffset + MAX_VISIBLE_CARDS) store.ui.stripOffset = idx - MAX_VISIBLE_CARDS + 1;
+  }
 }
 /** the selected slot is a sampler (MUNCH): SOUND shows its workspace instead of the generic knobs */
 export const isSamplerSlot = (id = store.ui.sel) => { const s = slot(id); return !!(s && typeOfSlot(s).capabilities.samples); };
