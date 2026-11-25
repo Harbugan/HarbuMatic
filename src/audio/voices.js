@@ -20,7 +20,8 @@
 // bank (src/samples/bank.js) for an already decoded AudioBuffer when a hit is due, and stays silent when the
 // buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
 
-import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback } from '../core/samples.js';
+import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback, defaultSlices } from '../core/samples.js';
+import { getBuiltinBreak, breakFitPlayback, laneAudibleLevel, laneVolKey } from '../core/breaks.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -359,6 +360,190 @@ function createMunchVoice({ ctx, shared, channel, params, sample, tempo }) {
   };
 }
 
+/* ---------- RUFF: multi-lane breakbeat playback (v0.7 PR2) ---------- */
+// Reuses the shared SampleBank (decoded AudioBuffers + WSOLA Stretch cache) and follows the same
+// click-free voice-ownership discipline as MUNCH:
+//   - Each lane ('a' | 'b' | 'c') owns one voice key ('lane:a' …), so beats crossfade seamlessly
+//     within a lane while all three lanes play concurrently without interfering.
+//   - Auditions use key 'audition' so repeated taps cut cleanly without piling up or interrupting lanes.
+//   - Each voice routes src → env → laneGain → dest (session gate), so per-lane volume/mute react
+//     instantly mid-bar via apply() while Pause/Stop gates & silence() cut every voice click-free.
+export const RUFF_POLY = 12;
+const RUFF_EDGE = .003;
+const RUFF_LANE_HEADROOM = .72;
+
+function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
+  const active = new Set(); // { src, env, laneGain, t, end, key, lane, breakId, audition, baseDuration, bars, points, onEnded, done }
+  const stats = { played: 0, missed: 0, stolen: 0, crossfaded: 0, stretched: 0, stretchFallback: 0 };
+
+  function finishVoice(v) {
+    if (v.done) return;
+    v.done = true;
+    active.delete(v);
+    try { v.src.disconnect(); v.env.disconnect(); v.laneGain.disconnect(); } catch (e) { /* gone */ }
+    if (v.onEnded) { try { v.onEnded(); } catch (e) { /* callback error */ } }
+  }
+
+  function cut(v, at, fade = CUT) {
+    const when = Math.max(at, v.t);
+    const value = envValueAt(v.points, when);
+    try {
+      v.env.gain.cancelScheduledValues(when);
+      v.env.gain.setValueAtTime(value, when);
+      v.env.gain.linearRampToValueAtTime(0, when + fade);
+      v.src.stop(when + fade + .002);
+    } catch (e) { /* already gone */ }
+    v.points = [...v.points.filter(pt => pt[0] < when), [when, value], [when + fade, 0]];
+    v.end = Math.min(v.end, when + fade);
+    active.delete(v);
+    if (v.audition && v.onEnded && !v.done) {
+      v.done = true;
+      try { v.onEnded(); } catch (e) { /* callback error */ }
+    }
+  }
+
+  function trigger(t, hit, dest) {
+    const bank = shared.samples, p = params();
+    if (!bank) return null;
+    const lane = hit.lane || 'a';
+    const assigned = breaks && breaks();
+    const breakId = hit.breakId || (assigned && assigned[lane]) || null;
+    if (!breakId) return null;
+    const rev = !!hit.rev;
+    const base = bank.buffer(breakId, rev);
+    if (!base) { stats.missed++; return null; }
+
+    const desc = getBuiltinBreak(breakId);
+    const bars = hit.loopBars || (desc && desc.bars) || 2;
+    const slices = (desc && desc.slices) || defaultSlices(16);
+    const bpm = tempo ? tempo() : 120;
+    const fp = breakFitPlayback(p, base.duration, bars, bpm);
+
+    let buf = base, rate = fp.pitchRate;
+    if (fp.stretch !== 1) {
+      const stretched = bank.stretched ? bank.stretched(breakId, rev, fp.stretch, slices) : null;
+      if (stretched) { buf = stretched.buffer; rate = stretched.stretch / fp.stretch; stats.stretched++; }
+      else { rate = 1 / fp.stretch; stats.stretchFallback++; }
+    }
+    if (!(rate > 0) || !(buf.duration > 0)) return null;
+
+    const isAudition = !!hit.audition;
+    const isLoopSeg = !!hit.loop;
+    let offset = 0, playDur = 0, loopBuffer = false;
+    if (isAudition) {
+      offset = 0;
+      playDur = buf.duration / rate;
+    } else if (isLoopSeg) {
+      const startFrac = Math.max(0, Math.min(1, hit.startFrac || 0));
+      offset = (startFrac * buf.duration) % buf.duration;
+      playDur = Math.max(.01, hit.dur || (buf.duration / rate / 8));
+      loopBuffer = true;
+    } else {
+      const reg = hit.slice != null ? sliceRegion(slices, hit.slice) : [0, 1];
+      if (!reg || !(reg[1] > reg[0])) return null;
+      const br = bufferRegion(reg, buf.duration, rev);
+      offset = br.offset;
+      const natural = br.length / rate;
+      playDur = hit.dur ? Math.min(natural, Math.max(.02, hit.dur)) : natural;
+    }
+    if (!(playDur > 0)) return null;
+
+    const key = isAudition ? 'audition' : `lane:${lane}`;
+    let replaced = false;
+    for (const old of [...active]) {
+      if (old.end <= t) { active.delete(old); continue; }
+      if (old.t > t) continue;
+      if (old.key === key) {
+        cut(old, t, CUT);
+        replaced = true;
+        stats.crossfaded++;
+      }
+    }
+    while (active.size >= RUFF_POLY) {
+      const old = active.values().next().value;
+      cut(old, Math.max(t, ctx.currentTime), CUT);
+      stats.stolen++;
+    }
+
+    const vel = Math.max(0, Math.min(1, hit.v ?? 1));
+    const atk = replaced && isLoopSeg ? CUT : RUFF_EDGE;
+    const fadeOut = isLoopSeg ? CUT : RUFF_EDGE;
+    const fadeStart = isLoopSeg ? t + playDur : Math.max(t + atk, t + playDur - fadeOut);
+    const end = isLoopSeg ? t + playDur + fadeOut : t + playDur;
+    const peakAt = Math.min(t + atk, fadeStart);
+
+    const src = ctx.createBufferSource();
+    const env = ctx.createGain();
+    const laneGain = ctx.createGain();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    if (loopBuffer) { src.loop = true; src.loopStart = 0; src.loopEnd = buf.duration; }
+
+    // Auditions stay audible even if the lane is currently muted in the mix
+    const rawLaneVol = isAudition ? Math.max(.25, p[laneVolKey(lane)] ?? .85) : laneAudibleLevel(p, lane);
+    laneGain.gain.value = rawLaneVol * RUFF_LANE_HEADROOM;
+
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(vel, peakAt);
+    env.gain.setValueAtTime(vel, fadeStart);
+    env.gain.linearRampToValueAtTime(0, end);
+
+    src.connect(env);
+    env.connect(laneGain);
+    laneGain.connect(dest);
+
+    const v = {
+      src, env, laneGain, t, end, key, lane, breakId, audition: isAudition,
+      baseDuration: base.duration, bars,
+      points: [[t, 0], [peakAt, vel], [fadeStart, vel], [end, 0]],
+      onEnded: typeof hit.onEnded === 'function' ? hit.onEnded : null,
+      done: false,
+    };
+    src.onended = () => finishVoice(v);
+    src.start(t, offset);
+    src.stop(end + .002);
+    active.add(v);
+    stats.played++;
+    return v;
+  }
+
+  function stopAudition(now = ctx.currentTime) {
+    let stopped = false;
+    for (const v of [...active]) {
+      if (v.audition) { cut(v, now, CUT); stopped = true; }
+    }
+    return stopped;
+  }
+
+  return {
+    input: channel.bus,
+    apply(p, now) {
+      const curBreaks = breaks ? breaks() : null;
+      const bpm = tempo ? tempo() : 120;
+      for (const v of [...active]) {
+        if (!v.audition) {
+          if (curBreaks && curBreaks[v.lane] !== v.breakId) {
+            cut(v, now, CUT);
+            continue;
+          }
+          const targetGain = laneAudibleLevel(p, v.lane) * RUFF_LANE_HEADROOM;
+          try { v.laneGain.gain.setTargetAtTime(targetGain, now, .015); } catch (e) { /* gone */ }
+        }
+        if (p.fitMode === 'tape' && v.baseDuration > 0 && v.bars > 0) {
+          const fp = breakFitPlayback(p, v.baseDuration, v.bars, bpm);
+          try { v.src.playbackRate.setTargetAtTime(fp.pitchRate, now, .015); } catch (e) { /* gone */ }
+        }
+      }
+    },
+    trigger,
+    stopAudition,
+    silence(now) { for (const v of [...active]) cut(v, now, CUT); active.clear(); },
+    dispose() { for (const v of [...active]) cut(v, ctx.currentTime, CUT); active.clear(); },
+    activeCount: () => active.size,
+    stats,
+  };
+}
+
 /** registry `engine` id → voice factory */
-export const VOICE_FACTORIES = Object.freeze({ bop: createBopVoice, goo: createGooVoice, blip: createBlipVoice, fuzz: createFuzzVoice, munch: createMunchVoice });
+export const VOICE_FACTORIES = Object.freeze({ bop: createBopVoice, goo: createGooVoice, blip: createBlipVoice, fuzz: createFuzzVoice, munch: createMunchVoice, ruff: createRuffVoice });
 export const hasVoiceFactory = id => Object.prototype.hasOwnProperty.call(VOICE_FACTORIES, id);

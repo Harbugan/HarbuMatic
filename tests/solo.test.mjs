@@ -13,38 +13,38 @@ const withMunch = (opts = {}) => {
 };
 const audible = p => p.slots.filter(s => playableSlots(p).includes(s)).map(s => slotAudible(p, s));
 
-test('soloing MUNCH silences BOP, GOO, BLIP and FUZZ', () => {
+test('soloing MUNCH silences BOP, GOO, BLIP, FUZZ and RUFF', () => {
   const { p, m } = withMunch({ solo: true });
   assert.equal(anySolo(p), true);
-  assert.deepEqual(audible(p), [false, false, false, false, true]);
+  assert.deepEqual(audible(p), [false, false, false, false, true, false]);
   assert.equal(slotAudible(p, m), true);
 });
 
 test('muting MUNCH silences only MUNCH, and solo wins over mute', () => {
   const { p, m } = withMunch({ mute: true });
-  assert.deepEqual(audible(p), [true, true, true, true, false]);
+  assert.deepEqual(audible(p), [true, true, true, true, false, true]);
   m.solo = true;
-  assert.deepEqual(audible(p), [false, false, false, false, true]);
+  assert.deepEqual(audible(p), [false, false, false, false, true, false]);
 });
 
-test('existing solo behaviour works across all five playable slots', () => {
+test('existing solo behaviour works across all six playable slots', () => {
   const p = createEmptyProject();
   assert.equal(anySolo(p), false);
-  assert.deepEqual(audible(p), [true, true, true, true, true]);
+  assert.deepEqual(audible(p), [true, true, true, true, true, true]);
   p.slots[2].solo = true;
   assert.equal(anySolo(p), true);
-  assert.deepEqual(audible(p), [false, false, true, false, false]);
+  assert.deepEqual(audible(p), [false, false, true, false, false, false]);
   p.slots[2].mute = true; // solo wins over mute, as before
-  assert.deepEqual(audible(p), [false, false, true, false, false]);
+  assert.deepEqual(audible(p), [false, false, true, false, false, false]);
   p.slots[0].solo = true;
-  assert.deepEqual(audible(p), [true, false, true, false, false]);
+  assert.deepEqual(audible(p), [true, false, true, false, false, false]);
 });
 
 test('soloing another instrument alongside MUNCH lets both sound', () => {
   const { p } = withMunch({ solo: true });
   p.slots[3].solo = true;
   assert.equal(anySolo(p), true);
-  assert.deepEqual(audible(p), [false, false, false, true, true]);
+  assert.deepEqual(audible(p), [false, false, false, true, true, false]);
 });
 
 test('several playable instances of one type solo independently', () => {

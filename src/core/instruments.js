@@ -83,17 +83,26 @@ const TYPES = {
     paramChoices: { mode: ['oneshot', 'gate', 'loop'], fit: ['off', 'half', '1', '2', '4'], fitMode: ['stretch', 'tape'] },
     keepUnknownParams: true, // keep params a later build adds (see extraKeys in src/core/samples.js)
   },
-  // Breakbeat Performance Machine (v0.7 PR1 foundation). Present as the sixth slot in new songs
-  // (slot-06 by default). Intentional non-playing placeholder until the audio engine lands:
-  // selectable in the UI (status: 'placeholder'), never scheduled or soloed (engine: null).
+  // Breakbeat Performance Machine (v0.7). Present as the sixth slot in new songs (slot-06 by default).
+  // Plays up to three concurrent A/B/C breaks synced to project BPM (Stretch default, Tape optional)
+  // with independent per-lane volume/mute and global channel volume/mute/FX.
   ruff: {
-    type: 'ruff', name: 'RUFF', description: 'Breakbeat Machine', status: 'placeholder',
-    role: null, engine: null, pattern: 'break', defaultLength: 16,
+    type: 'ruff', name: 'RUFF', description: 'Breakbeat Machine', status: 'ready',
+    role: null, engine: 'ruff', pattern: 'break', defaultLength: 16,
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, breaks: true },
     visual: { color: '#C6EB88', dark: '#8BC940', darker: '#5B8F22', headphones: '#F07BB3', css: 'ruff', character: 'ruff' },
     ui: { tools: [], audition: null },
-    defaultParams: { vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .15 },
-    paramRanges: { vol: [0, 1], pan: [-1, 1], drive: [0, 1], delay: [0, 1], reverb: [0, 1] },
+    defaultParams: {
+      vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .15,
+      fitMode: 'stretch',
+      volA: .85, volB: .85, volC: .85,
+      muteA: false, muteB: false, muteC: false,
+    },
+    paramRanges: {
+      vol: [0, 1], pan: [-1, 1], drive: [0, 1], delay: [0, 1], reverb: [0, 1],
+      volA: [0, 1], volB: [0, 1], volC: [0, 1],
+    },
+    paramChoices: { fitMode: ['stretch', 'tape'] },
     keepUnknownParams: true,
   },
 };

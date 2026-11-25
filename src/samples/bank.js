@@ -19,6 +19,7 @@ import { createSampleStore, SampleError } from './store.js';
 import { computePeaks } from './peaks.js';
 import { anchorsFromSlices } from './stretch.js';
 import { createStretchRunner } from './stretch-runner.js';
+import { isBuiltinBreakId, getBuiltinBreak } from '../core/breaks.js';
 
 export const DEFAULT_BUDGET = 96 * 1024 * 1024;
 export const STRETCH_KEEP = 2;
@@ -35,12 +36,20 @@ export function decodeWith(ctx) {
   });
 }
 
+async function defaultFetchAsset(url) {
+  if (typeof fetch !== 'function') throw new SampleError('missing', 'Built-in audio fetch is unavailable.');
+  const res = await fetch(url);
+  if (!res.ok) throw new SampleError('missing', `Built-in break asset could not be loaded (HTTP ${res.status}).`);
+  return res.arrayBuffer();
+}
+
 /**
  * @param store        createSampleStore(...) (durable assets)
  * @param budgetBytes  soft limit for decoded audio kept in memory
  * @param decode       optional decoder; by default the bank decodes with the AudioContext given to attach()
+ * @param fetchAsset   optional fetcher for built-in break assets (defaults to browser fetch)
  */
-export function createSampleBank({ store = createSampleStore(), budgetBytes = DEFAULT_BUDGET, decode = null, runner = null, stretchDelayMs = 60 } = {}) {
+export function createSampleBank({ store = createSampleStore(), budgetBytes = DEFAULT_BUDGET, decode = null, runner = null, stretchDelayMs = 60, fetchAsset = defaultFetchAsset } = {}) {
   const stretcher = runner || createStretchRunner();
   const stretchJobs = new Map(); // id → { timer, want: { factor, slices }, running: Promise | null }
   let ctx = null, decoder = decode;
@@ -132,7 +141,14 @@ export function createSampleBank({ store = createSampleStore(), budgetBytes = DE
       e.status = 'loading'; e.error = null; notify(id);
       e.promise = (async () => {
         try {
-          const bytes = await store.getBytes(id);
+          let bytes;
+          if (isBuiltinBreakId(id)) {
+            const brk = getBuiltinBreak(id);
+            if (!brk) throw new SampleError('missing', 'Unknown built-in break.');
+            bytes = await fetchAsset(brk.url, id);
+          } else {
+            bytes = await store.getBytes(id);
+          }
           const buf = await decodeBytes(bytes);
           if (!buf || !buf.length) throw new SampleError('corrupt', 'The stored sample could not be decoded.');
           Object.assign(e, { status: 'ready', buffer: buf, reversed: null, peaks: null, error: null, used: ++clock, stretch: [] });

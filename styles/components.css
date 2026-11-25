@@ -313,7 +313,7 @@ body.coarse .seg button { min-height: 40px; }
 .start-sub { font-size: 13px; color: var(--muted); }
 .linkbtn { border: 0; background: none; color: var(--lav-dd); font-weight: 900; text-decoration: underline; cursor: pointer; padding: 10px 4px; }
 
-/* ---------- RUFF PR1 foundation placeholder ---------- */
+/* ---------- RUFF JAM summary & PR2 Break Pool SOUND workspace ---------- */
 .ruff-placeholder { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; border-radius: var(--r-l); background: linear-gradient(180deg, #2d2c46, #242338); color: #f6ebdc; }
 .ruff-ph-card { display: flex; align-items: center; gap: 18px; max-width: 620px; width: 100%; padding: 18px 20px; border-radius: var(--r-l); background: #33314f; border: 2px solid color-mix(in srgb, var(--lime-d) 45%, transparent); }
 .ruff-ph-card.compact { max-width: none; padding: 12px 14px; background: var(--cream-2); color: var(--ink); border-color: color-mix(in srgb, var(--lime-d) 55%, transparent); }
@@ -327,8 +327,65 @@ body.coarse .seg button { min-height: 40px; }
 .ruff-ph-tag { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 900; letter-spacing: .6px; text-transform: uppercase; background: color-mix(in srgb, var(--lime) 75%, #fff); color: var(--lime-dd); }
 .ruff-lanes { display: flex; gap: 8px; flex-wrap: wrap; }
 .ruff-lane-pill { display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-radius: 12px; background: #ffffff14; font-size: 11px; min-width: 110px; }
+.ruff-lane-pill.muted { opacity: .62; }
 .ruff-ph-card.compact .ruff-lane-pill { background: var(--cream-3); color: var(--ink); }
 .ruff-lane-pill b { font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--lime); }
 .ruff-ph-card.compact .ruff-lane-pill b { color: var(--lime-dd); }
 .ruff-ph-actions { display: flex; gap: 8px; margin-top: 2px; }
+
+.ruff-head-ctls { gap: 8px; flex-wrap: wrap; }
+.ruff-status { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 12px; border-radius: 999px; background: var(--cream-2); color: var(--navy); font-size: 12px; font-weight: 900; letter-spacing: .2px; box-shadow: 0 1px 2px #0000000d inset; }
+.ruff-status.active { background: color-mix(in srgb, var(--lime) 45%, #fff); color: var(--lime-dd); }
+.ruff-led { width: 9px; height: 9px; border-radius: 50%; background: #c5b6a6; flex: none; }
+.ruff-status.active .ruff-led, .ruff-lane.playing .ruff-led { background: var(--lime-d); box-shadow: 0 0 8px var(--lime-d); }
+.ruff-lane.auditioning .ruff-led { background: var(--pink-d); box-shadow: 0 0 8px var(--pink-d); }
+.ruff-fit-seg button { min-height: 36px; padding: 0 12px; }
+
+.ruff-deck { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; flex: none; }
+.ruff-lane { --lc: var(--lime-d); --lbg: var(--lime); --ldd: var(--lime-dd); display: flex; flex-direction: column; gap: 8px; padding: 10px 11px; border-radius: 18px; background: var(--cream-2); border: 2px solid transparent; box-shadow: 0 1px 3px #0000000d inset; min-width: 0; transition: border-color .15s, opacity .15s; }
+.ruff-lane[data-lane=b] { --lc: var(--pink-d); --lbg: var(--pink); --ldd: var(--pink-dd); }
+.ruff-lane[data-lane=c] { --lc: var(--lav-d); --lbg: var(--lav); --ldd: var(--lav-dd); }
+.ruff-lane.loaded { border-color: color-mix(in srgb, var(--lc) 45%, transparent); }
+.ruff-lane.playing { border-color: var(--lc); background: color-mix(in srgb, var(--lbg) 16%, var(--cream-2)); }
+.ruff-lane.auditioning { border-color: var(--pink-d); }
+.ruff-lane.muted { opacity: .72; }
+
+.ruff-lane-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.ruff-lane-id { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: var(--lbg); color: var(--ldd); font-weight: 900; font-size: 13px; flex: none; }
+.ruff-lane-name { font-family: var(--font-brand); font-size: 15px; line-height: 1.1; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.ruff-lane-meta { font-size: 11px; font-weight: 800; color: var(--muted); white-space: nowrap; flex: none; }
+
+.ruff-src-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.ruff-src { border: 0; cursor: pointer; min-height: 36px; padding: 0 6px; border-radius: 11px; background: #fff; color: var(--navy); font-weight: 900; font-size: 11.5px; letter-spacing: .2px; box-shadow: 0 2px 0 #dcc6ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ruff-src:active { transform: translateY(1px); }
+.ruff-src.on { background: var(--lbg); color: var(--ldd); box-shadow: 0 2px 0 var(--lc); }
+.ruff-src[data-break=""].on { background: var(--cream-3); color: #5d5468; box-shadow: 0 1px 2px #00000014 inset; }
+
+.ruff-lane-ctl { display: flex; align-items: center; gap: 6px; margin-top: auto; --ks: 44px; }
+.ruff-aud { flex: 1 1 auto; min-width: 0; border: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 40px; padding: 0 10px; border-radius: 12px; background: #fff; color: var(--navy); font-weight: 900; font-size: 12px; box-shadow: 0 2px 0 #dcc6ad; }
+.ruff-aud:disabled { opacity: .45; cursor: default; box-shadow: none; }
+.ruff-aud.on { background: var(--pink); color: var(--pink-dd); box-shadow: 0 2px 0 var(--pink-d); }
+.ruff-aud-i { display: inline-flex; }
+.ruff-aud-i .ico { width: 14px; height: 14px; }
+.ruff-mute { flex: none; border: 0; cursor: pointer; min-width: 40px; min-height: 40px; padding: 0 8px; border-radius: 12px; background: var(--cream-3); color: #5d5468; font-weight: 900; font-size: 12px; box-shadow: 0 2px 0 #d5c1aa; }
+.ruff-mute.on { background: #ff7e92; color: #fff; box-shadow: 0 2px 0 #c94860; }
+
+.ruff-sound-bottom { --ks: 44px; }
+.ruff-sound-bottom > .sgroup { padding: 8px 10px 8px; }
+.ruff-sound-bottom > .sgroup.wide { flex: 1 1 280px; }
+
+body.coarse .ruff-src { min-height: 38px; }
+body.coarse .ruff-aud, body.coarse .ruff-mute { min-height: 40px; }
+@media (max-height: 780px) and (orientation: landscape) {
+  .ruff-deck { gap: 8px; }
+  .ruff-lane { gap: 6px; padding: 8px 9px; }
+  .ruff-src { min-height: 34px; font-size: 11px; }
+  .ruff-lane-ctl { --ks: 40px; }
+  .ruff-aud, .ruff-mute { min-height: 38px; }
+  .ruff-sound-bottom { --ks: 40px; }
+}
+@media (max-width: 720px) {
+  .ruff-deck { grid-template-columns: 1fr; }
+}
+
 

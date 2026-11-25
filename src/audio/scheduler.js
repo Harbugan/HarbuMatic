@@ -14,6 +14,8 @@
 // hands each hit to engine.trigger(slotId, …). Event hits are keyed by slot id.
 
 import { DRUMS } from '../core/constants.js';
+import { BREAK_LANES } from '../core/instruments.js';
+import { getBuiltinBreak, laneAudibleLevel } from '../core/breaks.js';
 import { playableSlots, slotById, typeOfSlot, sceneIdAt } from '../core/project.js';
 import { clamp } from '../core/util.js';
 import { startPosition, advance, isLoopBoundary } from './position.js';
@@ -69,6 +71,41 @@ export function createTransport(engine, getProject, hooks = {}) {
               if (suppressed.length && consumeSuppressed(slot.id, sceneId, ls, `d:${d.id}`, t)) continue;
               hits.push({ d: d.id, v: c.v });
               if (on) engine.trigger(slot.id, t + sw + (c.o || 0) * sd, { d: d.id, v: c.v });
+            }
+          }
+        } else if (def.pattern === 'break') {
+          const brks = slot.breaks || {};
+          for (const l of BREAK_LANES) {
+            const breakId = brks[l];
+            if (!breakId) continue;
+            const row = p.lanes && p.lanes[l];
+            const hasCells = Array.isArray(row) && row.some(Boolean);
+            const laneLvl = laneAudibleLevel(slot.params, l);
+            if (hasCells) {
+              const c = row[ls];
+              if (c && Math.random() <= c.p) {
+                const slice = c.slice != null ? c.slice : (Math.floor(ls / 2) % 16);
+                const hit = { lane: l, breakId, slice, v: c.v, rev: !!c.rev, dur: sd * 2 };
+                if (laneLvl > 0) hits.push({ lane: l, v: c.v * laneLvl, slice });
+                if (on) engine.trigger(slot.id, t + sw + (c.o || 0) * sd, hit);
+              }
+            } else {
+              // Deterministic PR2 loop playback: trigger phase-locked beat segments (and immediate resume on fresh)
+              const desc = getBuiltinBreak(breakId);
+              const bars = desc ? desc.bars : 2;
+              const loopSteps = Math.max(4, Math.round(bars * 16));
+              const phaseStep = T.pos.step % loopSteps;
+              if (phaseStep % 4 === 0 || T.pos.fresh) {
+                const steps = 4 - (phaseStep % 4);
+                const hit = {
+                  lane: l, breakId, loop: true, loopBars: bars,
+                  startFrac: phaseStep / loopSteps,
+                  endFrac: (phaseStep + steps) / loopSteps,
+                  dur: steps * sd, v: 1,
+                };
+                if (laneLvl > 0) hits.push({ lane: l, v: laneLvl });
+                if (on) engine.trigger(slot.id, t, hit);
+              }
             }
           }
         } else {

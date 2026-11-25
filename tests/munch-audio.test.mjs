@@ -154,7 +154,7 @@ test('audition plays immediately, and can target a single slice', () => rig(asyn
 }));
 
 test('MUNCH has its own channel with volume, pan and sends like every other slot', () => rig(async ({ engine, p }) => {
-  assert.deepEqual([...engine.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
+  assert.deepEqual([...engine.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
   const ch = engine.E.ch.get(M).channel;
   assert.ok(ch.pan.out.includes(engine.E.master) && ch.sd.out.includes(engine.E.dIn) && ch.sr.out.includes(engine.E.revIn));
   assert.equal(engine.E.ch.get(M).voice.input, ch.bus);

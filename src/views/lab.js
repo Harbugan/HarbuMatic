@@ -33,10 +33,10 @@ export function renderLab() {
   if (m.capabilities.samples) { renderSamplerLab(host, p); host.scrollTop = scroll; return; }
   if (m.capabilities.breaks) {
     host.append(h('div', { class: 'lab-munch' },
-      h('p', { class: 'mini-hint' }, `${m.name} is a v0.7 foundation slot. CHOP IT! groove generation arrives in a later PR.`),
+      h('p', { class: 'mini-hint' }, `${m.name} plays built-in A/B/C breaks in SOUND. CHOP IT! groove generation arrives in a later PR.`),
       h('button', { type: 'button', class: 'lbtn big', onclick: () => { A.setDrawer(false); A.setMode('sound'); } },
         h('span', { class: 'lbtn-i', html: ico('spark') }),
-        h('span', { class: 'lbtn-t' }, `Open ${m.name}`, h('small', {}, 'view foundation workspace in SOUND')))));
+        h('span', { class: 'lbtn-t' }, `Open ${m.name}`, h('small', {}, 'pick, audition & mix breaks in SOUND')))));
     keyAndSnaps(host, p);
     host.scrollTop = scroll;
     return;

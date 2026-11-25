@@ -4,6 +4,7 @@ import { store, P, typeOf, visibleSlots, slot, MAX_VISIBLE_CARDS } from '../app/
 import * as A from '../app/actions.js';
 import { DRUM_IDS, sceneLabel } from '../core/constants.js';
 import { getInstrumentType, isPlayableType, BREAK_LANES } from '../core/instruments.js';
+import { laneAudibleLevel } from '../core/breaks.js';
 import { patternAt, anySolo } from '../core/project.js';
 import { $, h } from '../ui/dom.js';
 import { Knob } from '../ui/controls.js';
@@ -204,8 +205,13 @@ export function occupancy(id, sc, cells) {
   if (!s || !p) return out;
   const k = cells / p.len, kind = getInstrumentType(s.type).pattern;
   if (kind === 'drum') DRUM_IDS.forEach(d => p.steps[d].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));
-  else if (kind === 'break') BREAK_LANES.forEach(l => p.lanes[l].forEach((c, i) => { if (c) out[Math.floor(i * k)] = true; }));
-  else p.notes.forEach(n => { for (let i = n.s; i < n.s + n.l && i < p.len; i++) out[Math.floor(i * k)] = true; });
+  else if (kind === 'break') {
+    let any = false;
+    BREAK_LANES.forEach(l => p.lanes[l].forEach((c, i) => { if (c) { out[Math.floor(i * k)] = true; any = true; } }));
+    if (!any && s.breaks && BREAK_LANES.some(l => s.breaks[l] && laneAudibleLevel(s.params, l) > 0)) {
+      for (let i = 0; i < cells; i += Math.max(1, Math.round(cells / 4))) out[i] = true;
+    }
+  } else p.notes.forEach(n => { for (let i = n.s; i < n.s + n.l && i < p.len; i++) out[Math.floor(i * k)] = true; });
   return out;
 }
 export function updateCards() {
