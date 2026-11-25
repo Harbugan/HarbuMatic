@@ -4,15 +4,13 @@
 import { store, pat, slot, P, typeOf, isDrumSlot, isBreakSlot, isPlaceholderSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { sceneLabel } from '../core/constants.js';
-import { BREAK_LANES } from '../core/instruments.js';
-import { getBuiltinBreak, laneMuteKey } from '../core/breaks.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg } from '../ui/controls.js';
-import { catSVG } from '../ui/characters.js';
 import * as Seq from '../ui/sequencer.js';
 import { occupancy } from './strip.js';
 import { playhead } from '../ui/sequencer.js';
+import { renderRuffSequencer } from './ruff-seq.js';
 
 // which tools an instrument offers comes from the registry (ui.tools); labels live here
 const TOOL_LABEL = { draw: 'Draw', erase: 'Erase', vel: 'Velocity', prob: 'Chance', slide: 'Slide', lock: 'Lock' };
@@ -26,7 +24,12 @@ const HINTS = {
   lock: 'Locked notes and rows survive Generate, Mutate & friends',
 };
 export const hintFor = () => {
-  if (isBreakSlot()) return `${typeOf().name} plays your A/B/C breaks in sync with the tempo — assign, audition & mix them in SOUND`;
+  if (isBreakSlot()) {
+    if (store.ui.tool === 'erase') return 'Erase: tap any step to clear it (first edit converts that lane while keeping the rest of the groove)';
+    return store.ui.ruff.view === 'expanded'
+      ? 'Tap an empty step to add · tap an active step to inspect/reassign its slice · tap a selected step again to remove'
+      : '2-bar groove overview (16 slices) · tap any step to inspect A/B/C hits and reassign slices below';
+  }
   if (isPlaceholderSlot()) return `${typeOf().name} is a non-playing foundation slot`;
   const t = store.ui.tool, x = HINTS[t] || '';
   return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel'];
@@ -34,53 +37,58 @@ export const hintFor = () => {
 
 const COMMON_TOOLS = new Set(['draw', 'erase', 'vel', 'prob', 'lock']);
 
-function renderBreakJamSummary(m) {
-  const host = $('#ruffPlaceholder');
-  if (!host) return;
-  const sl = slot(), p = P();
-  host.innerHTML = '';
-  const lanes = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l => {
-    const id = sl && sl.breaks && sl.breaks[l];
-    const desc = id ? getBuiltinBreak(id) : null;
-    const muted = !!(p && p[laneMuteKey(l)]);
-    return h('div', { class: 'ruff-lane-pill' + (id ? ' loaded' : '') + (muted ? ' muted' : '') },
-      h('b', {}, `Break ${l.toUpperCase()}${muted ? ' · Muted' : ''}`),
-      h('span', {}, desc ? `${desc.name} (${desc.bpm} BPM)` : (id || 'Empty')));
-  }));
-  const activeCount = BREAK_LANES.filter(l => sl && sl.breaks && sl.breaks[l] && !(p && p[laneMuteKey(l)])).length;
-  const tag = A.transport.playing && A.engine.audible(sl.id) && activeCount
-    ? `Playing · ${activeCount} break${activeCount === 1 ? '' : 's'}`
-    : `${p && p.fitMode === 'tape' ? 'Tape' : 'Stretch'} · ${store.project.bpm} BPM`;
-  host.append(
-    h('div', { class: 'ruff-ph-card' },
-      h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
-      h('div', { class: 'ruff-ph-body' },
-        h('div', { class: 'ruff-ph-head' },
-          h('h3', {}, `${m.name} · ${m.description}`),
-          h('span', { class: 'ruff-ph-tag' }, tag)),
-        h('p', {}, 'Assign built-in breaks to A, B and C, audition them, balance lane levels, and switch Stretch / Tape in SOUND. Break slicing & hybrid sequencer arrive next.'),
-        lanes,
-        h('div', { class: 'ruff-ph-actions' },
-          h('button', { type: 'button', class: 'tool on', onclick: () => A.setMode('sound') }, `Open ${m.name} Break Pool`)))));
-}
-
 export function renderJamBar() {
-  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', noRoll = isPlaceholderSlot() || isBreakSlot(), TOOLS = toolsFor(m);
+  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', isBreak = isBreakSlot(), noRoll = isPlaceholderSlot() || isBreak, TOOLS = toolsFor(m);
   const bar = $('#jamBar'); bar.innerHTML = '';
   bar.classList.toggle('deep', !!u.expanded && !noRoll);
   const sc = store.project.scene;
-  const rollWrap = $('#rollWrap'), ph = $('#ruffPlaceholder'), leds = $('#leds');
+  const rollWrap = $('#rollWrap'), ruffSeq = $('#ruffSeq'), leds = $('#leds');
   if (rollWrap) rollWrap.hidden = noRoll;
-  if (ph) ph.hidden = !noRoll;
+  if (ruffSeq) ruffSeq.hidden = !isBreak;
   if (leds) leds.hidden = noRoll;
 
   const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
+  if (isBreak) {
+    if (!['draw', 'erase'].includes(u.tool)) u.tool = 'draw';
+    const viewSeg = Seg(
+      [['compact', 'Compact'], ['expanded', 'A/B/C Lanes']],
+      u.ruff.view === 'expanded' ? 'expanded' : 'compact',
+      v => A.setRuffView(v),
+      { label: 'RUFF sequencer view: Compact groove overview or Expanded A/B/C lanes' },
+    );
+    viewSeg.classList.add('ruff-view-seg');
+    viewSeg.dataset.testid = 'ruff-view-toggle';
+    Array.from(viewSeg.children).forEach((b, idx) => { b.dataset.ruffView = idx === 0 ? 'compact' : 'expanded'; });
+
+    const tools = h('div', { class: 'tgroup tb-tools' },
+      [['draw', 'Edit'], ['erase', 'Erase']].map(([k, label]) => {
+        const b = btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) });
+        b.dataset.tool = k;
+        return b;
+      }));
+
+    const poolBtn = btn({ label: 'Pool', cls: 'tool', title: 'Assign & mix breaks in SOUND Break Pool', onClick: () => A.setMode('sound') });
+    poolBtn.dataset.action = 'pool';
+    const actions = h('div', { class: 'tgroup tb-actions' },
+      poolBtn,
+      btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }),
+      btn({ icon: ico('clear'), label: 'Clear', cls: 'tool', title: 'Silence all unlocked RUFF lanes in this scene', onClick: A.clearPattern }),
+      btn({ icon: ico(u.expanded ? 'collapse' : 'expand'), label: u.expanded ? 'Done' : 'Wide', cls: 'tool expand' + (u.expanded ? ' on' : ''), title: u.expanded ? 'Back to standard width (F)' : 'Expand sequencer to full width (F)', onClick: () => A.setExpanded(!u.expanded) }));
+    actions.children[1].dataset.action = 'lab';
+    actions.children[2].dataset.action = 'clear';
+    actions.children[3].dataset.action = 'expand';
+
+    bar.append(chip, viewSeg, tools, h('span', { class: 'spacer' }), actions);
+    $('#edHint').textContent = hintFor();
+    renderRuffSequencer();
+    return;
+  }
+
   if (noRoll) {
     const actions = h('div', { class: 'tgroup tb-actions' },
       btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }));
     bar.append(chip, h('span', { class: 'spacer' }), actions);
     $('#edHint').textContent = hintFor();
-    renderBreakJamSummary(m);
     return;
   }
 

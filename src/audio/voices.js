@@ -21,7 +21,7 @@
 // buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
 
 import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback, defaultSlices } from '../core/samples.js';
-import { getBuiltinBreak, breakFitPlayback, laneAudibleLevel, laneVolKey } from '../core/breaks.js';
+import { getBuiltinBreak, breakFitPlayback, breakSlicesOf, clampBreakSlice, laneAudibleLevel, laneVolKey } from '../core/breaks.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -369,7 +369,7 @@ function createMunchVoice({ ctx, shared, channel, params, sample, tempo }) {
 //   - Each voice routes src → env → laneGain → dest (session gate), so per-lane volume/mute react
 //     instantly mid-bar via apply() while Pause/Stop gates & silence() cut every voice click-free.
 export const RUFF_POLY = 12;
-const RUFF_EDGE = .003;
+const RUFF_EDGE = .002;
 const RUFF_LANE_HEADROOM = .72;
 
 function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
@@ -415,7 +415,7 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
 
     const desc = getBuiltinBreak(breakId);
     const bars = hit.loopBars || (desc && desc.bars) || 2;
-    const slices = (desc && desc.slices) || defaultSlices(16);
+    const slices = breakSlicesOf(breakId);
     const bpm = tempo ? tempo() : 120;
     const fp = breakFitPlayback(p, base.duration, bars, bpm);
 
@@ -431,19 +431,29 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
     const isLoopSeg = !!hit.loop;
     let offset = 0, playDur = 0, loopBuffer = false;
     if (isAudition) {
-      offset = 0;
-      playDur = buf.duration / rate;
+      if (hit.slice != null) {
+        const reg = sliceRegion(slices, clampBreakSlice(breakId, hit.slice));
+        if (!reg || !(reg[1] > reg[0])) return null;
+        const br = bufferRegion(reg, buf.duration, rev);
+        offset = br.offset;
+        const natural = br.length / rate;
+        playDur = hit.dur ? Math.min(natural, Math.max(.02, hit.dur)) : natural;
+      } else {
+        offset = 0;
+        playDur = buf.duration / rate;
+      }
     } else if (isLoopSeg) {
       const startFrac = Math.max(0, Math.min(1, hit.startFrac || 0));
       offset = (startFrac * buf.duration) % buf.duration;
       playDur = Math.max(.01, hit.dur || (buf.duration / rate / 8));
       loopBuffer = true;
     } else {
-      const reg = hit.slice != null ? sliceRegion(slices, hit.slice) : [0, 1];
+      const reg = hit.slice != null ? sliceRegion(slices, clampBreakSlice(breakId, hit.slice)) : [0, 1];
       if (!reg || !(reg[1] > reg[0])) return null;
       const br = bufferRegion(reg, buf.duration, rev);
-      offset = br.offset;
-      const natural = br.length / rate;
+      const startFrac = Math.max(0, Math.min(.95, hit.sliceStartFrac || 0));
+      offset = br.offset + startFrac * br.length;
+      const natural = (br.length * (1 - startFrac)) / rate;
       playDur = hit.dur ? Math.min(natural, Math.max(.02, hit.dur)) : natural;
     }
     if (!(playDur > 0)) return null;

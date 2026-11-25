@@ -30,7 +30,7 @@ import {
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
-import { hasAssignedBreak } from './breaks.js';
+import { breakSlotHasContent } from './breaks.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
@@ -316,16 +316,17 @@ export function validatePattern(type, p, defLen = 16) {
     return { len, steps, locked };
   }
   if (kind === 'break') {
-    const lanes = {}, locked = {};
+    const lanes = {}, locked = {}, edited = {};
     BREAK_LANES.forEach(id => {
       const row = Array.isArray(p.lanes && p.lanes[id]) ? p.lanes[id] : [];
       lanes[id] = Array.from({ length: len }, (_, i) => cleanBreakCell(row[i]));
       if (p.locked && p.locked[id]) locked[id] = true;
+      if (p.edited && p.edited[id]) edited[id] = true;
     });
     if (isObj(p.locked)) {
       for (let i = 0; i < len; i++) if (p.locked[String(i)]) locked[String(i)] = true;
     }
-    return { len, lanes, locked };
+    return { len, lanes, locked, edited };
   }
   const notes = (Array.isArray(p.notes) ? p.notes : []).map(n => cleanNote(n, len, slices)).filter(Boolean);
   return { len, notes };
@@ -464,7 +465,8 @@ export function maxLen(project, sc) {
   return lens.length ? Math.max(...lens) : 16;
 }
 export const sceneHasContent = (project, sc) => playableSlots(project).some(s => (
-  !patternIsEmpty(s.type, patternAt(project, s.id, sc))
-  || (typeOfSlot(s).capabilities.breaks && hasAssignedBreak(s))
+  typeOfSlot(s).capabilities.breaks
+    ? breakSlotHasContent(s, patternAt(project, s.id, sc))
+    : !patternIsEmpty(s.type, patternAt(project, s.id, sc))
 ));
 export const clampReps = r => clamp(Math.round(r), 1, MAX_REPS);

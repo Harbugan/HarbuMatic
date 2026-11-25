@@ -91,7 +91,7 @@ const TYPES = {
     role: null, engine: 'ruff', pattern: 'break', defaultLength: 16,
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, breaks: true },
     visual: { color: '#C6EB88', dark: '#8BC940', darker: '#5B8F22', headphones: '#F07BB3', css: 'ruff', character: 'ruff' },
-    ui: { tools: [], audition: null },
+    ui: { tools: ['draw', 'erase'], audition: null },
     defaultParams: {
       vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .15,
       fitMode: 'stretch',
@@ -161,7 +161,7 @@ export function emptyPatternOfKind(kind, len) {
   if (kind === 'break') {
     const lanes = {};
     BREAK_LANES.forEach(l => { lanes[l] = Array(len).fill(null); });
-    return { len, lanes, locked: {} };
+    return { len, lanes, locked: {}, edited: {} };
   }
   return { len, notes: [] };
 }
