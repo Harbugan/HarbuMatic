@@ -241,6 +241,16 @@ A **purpose-built jungle and breakbeat creation environment**, potentially integ
 
 **Owner decision 2026-11-24:** schedule as the last focused product-quality milestone after v0.9 and before v1.0; not a v0.6.1 release gate. Improve preset discovery, selected-state feedback and fast audition across instruments. Review the musical usefulness of Generate, Mutate, Evolve, Remix, Surprise, Lab and MAGIC CHOP while protecting user intent, locked material and Undo. Keep scope evidence-based and split into focused tasks if necessary. Complete essential regression and physical iPad acceptance before v1.0. Compact Top remains optional Nice to Have, not a required part of this milestone.
 
+## Final pre-v1.0 polish — JAM Scene Awareness & Playback Navigation (2026-11-25)
+
+**Owner-observed while composing a real track; planned UX improvement, not implemented.** Schedule alongside the final pre-v1.0 polish, after v0.9, without expanding Ruff v0.7 scope.
+
+- **Persistent active edit-scene indicator:** clearly show which scene is being edited across JAM, SOUND and ARRANGE, without opening Happy Accident Lab. Prefer the existing top/transport area and preserve iPad landscape workspace. Example: SCENE 03 / 08.
+- **Direct JAM playback-mode switch:** expose LOOP (repeat the active scene) and WHOLE SONG (play the arrangement) on the main JAM surface, near transport. Make the selected mode unambiguous; no trip into ARRANGE or Happy Accident Lab required.
+- **Scene navigation:** explore compact previous/next scene controls next to the indicator, subject to iPad usability and space; not yet a locked requirement.
+- **Transport semantics to specify before implementation:** distinguish edit scene from currently playing scene, define behavior when switching playback mode or edit scene during playback, and avoid timing glitches or accidental jumps.
+- **Acceptance:** physical iPad landscape, touch target and no-scroll checks; scene selection, loop/song playback, transport, recording, arrangement, save/reopen and .hbn regression checks.
+
 ## v1.0 — The Little Music Machine
 
 A cohesive, reliable, installable tablet-first groovebox:
@@ -303,6 +313,7 @@ These are **forward-looking constraints**, not requests to build every future fe
 | Exact versions for other future features | **Provisional** |
 | Sampling shared across instruments vs. sampler slot | **Resolved: shared engine with standalone MUNCH instrument** |
 | Ruff integrated into BOP vs. separate engine/tool | **Open** |
+| Persistent edit-scene indicator and JAM LOOP / WHOLE SONG switch | **Decided UX goals 2026-11-25; planned final pre-v1.0 polish, not implemented** |
 | Final instrument names | **Open** |
 | PWA-only vs. native wrapper for external sync | **Open** |
 
