@@ -1,10 +1,11 @@
 // JAM toolbar. Standard = Play & Create (draw/erase + expand). Expanded = Deep Edit
 // (every editing tool, length, zoom, scale fold, octave). Both drive the same sequencer.
 
-import { store, pat, typeOf, isDrumSlot, isPlaceholderSlot } from '../app/store.js';
+import { store, pat, slot, P, typeOf, isDrumSlot, isBreakSlot, isPlaceholderSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { sceneLabel } from '../core/constants.js';
 import { BREAK_LANES } from '../core/instruments.js';
+import { getBuiltinBreak, laneMuteKey } from '../core/breaks.js';
 import { $, h, btn } from '../ui/dom.js';
 import { ico } from '../ui/icons.js';
 import { Seg } from '../ui/controls.js';
@@ -25,52 +26,61 @@ const HINTS = {
   lock: 'Locked notes and rows survive Generate, Mutate & friends',
 };
 export const hintFor = () => {
-  if (isPlaceholderSlot()) return `${typeOf().name} is a non-playing v0.7 foundation slot — break audio and sequencer arrive in the next PRs`;
+  if (isBreakSlot()) return `${typeOf().name} plays your A/B/C breaks in sync with the tempo — assign, audition & mix them in SOUND`;
+  if (isPlaceholderSlot()) return `${typeOf().name} is a non-playing foundation slot`;
   const t = store.ui.tool, x = HINTS[t] || '';
   return typeof x === 'string' ? x : x[isDrumSlot() ? 'drums' : 'mel'];
 };
 
 const COMMON_TOOLS = new Set(['draw', 'erase', 'vel', 'prob', 'lock']);
 
-function renderPlaceholderJam(m, sc) {
+function renderBreakJamSummary(m) {
   const host = $('#ruffPlaceholder');
   if (!host) return;
-  const p = pat();
+  const sl = slot(), p = P();
   host.innerHTML = '';
-  const lanes = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l =>
-    h('div', { class: 'ruff-lane-pill' },
-      h('b', {}, `Break ${l.toUpperCase()}`),
-      h('span', {}, `${p && p.lanes && p.lanes[l] ? p.lanes[l].filter(Boolean).length : 0} / ${p ? p.len : 16} steps`))));
+  const lanes = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l => {
+    const id = sl && sl.breaks && sl.breaks[l];
+    const desc = id ? getBuiltinBreak(id) : null;
+    const muted = !!(p && p[laneMuteKey(l)]);
+    return h('div', { class: 'ruff-lane-pill' + (id ? ' loaded' : '') + (muted ? ' muted' : '') },
+      h('b', {}, `Break ${l.toUpperCase()}${muted ? ' · Muted' : ''}`),
+      h('span', {}, desc ? `${desc.name} (${desc.bpm} BPM)` : (id || 'Empty')));
+  }));
+  const activeCount = BREAK_LANES.filter(l => sl && sl.breaks && sl.breaks[l] && !(p && p[laneMuteKey(l)])).length;
+  const tag = A.transport.playing && A.engine.audible(sl.id) && activeCount
+    ? `Playing · ${activeCount} break${activeCount === 1 ? '' : 's'}`
+    : `${p && p.fitMode === 'tape' ? 'Tape' : 'Stretch'} · ${store.project.bpm} BPM`;
   host.append(
     h('div', { class: 'ruff-ph-card' },
       h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
       h('div', { class: 'ruff-ph-body' },
         h('div', { class: 'ruff-ph-head' },
           h('h3', {}, `${m.name} · ${m.description}`),
-          h('span', { class: 'ruff-ph-tag' }, 'Foundation · Non-playing')),
-        h('p', {}, `Scene ${sceneLabel(sc)} holds an independent 16-step A/B/C break pattern for ${m.name}. Playback, break pool, slicing and CHOP IT! are not active yet.`),
+          h('span', { class: 'ruff-ph-tag' }, tag)),
+        h('p', {}, 'Assign built-in breaks to A, B and C, audition them, balance lane levels, and switch Stretch / Tape in SOUND. Break slicing & hybrid sequencer arrive next.'),
         lanes,
         h('div', { class: 'ruff-ph-actions' },
-          h('button', { type: 'button', class: 'tool on', onclick: () => A.setMode('sound') }, `Open ${m.name} in SOUND`)))));
+          h('button', { type: 'button', class: 'tool on', onclick: () => A.setMode('sound') }, `Open ${m.name} Break Pool`)))));
 }
 
 export function renderJamBar() {
-  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', placeholder = isPlaceholderSlot(), TOOLS = toolsFor(m);
+  const u = store.ui, m = typeOf(), p = pat(), drums = m.pattern === 'drum', noRoll = isPlaceholderSlot() || isBreakSlot(), TOOLS = toolsFor(m);
   const bar = $('#jamBar'); bar.innerHTML = '';
-  bar.classList.toggle('deep', !!u.expanded && !placeholder);
+  bar.classList.toggle('deep', !!u.expanded && !noRoll);
   const sc = store.project.scene;
   const rollWrap = $('#rollWrap'), ph = $('#ruffPlaceholder'), leds = $('#leds');
-  if (rollWrap) rollWrap.hidden = placeholder;
-  if (ph) ph.hidden = !placeholder;
-  if (leds) leds.hidden = placeholder;
+  if (rollWrap) rollWrap.hidden = noRoll;
+  if (ph) ph.hidden = !noRoll;
+  if (leds) leds.hidden = noRoll;
 
   const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
-  if (placeholder) {
+  if (noRoll) {
     const actions = h('div', { class: 'tgroup tb-actions' },
       btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }));
     bar.append(chip, h('span', { class: 'spacer' }), actions);
     $('#edHint').textContent = hintFor();
-    renderPlaceholderJam(m, sc);
+    renderBreakJamSummary(m);
     return;
   }
 
@@ -125,7 +135,7 @@ export function renderJamBar() {
 }
 
 export function updateLeds() {
-  const leds = $('#leds'); if (!leds || isPlaceholderSlot()) return;
+  const leds = $('#leds'); if (!leds || isPlaceholderSlot() || isBreakSlot()) return;
   if (leds.children.length !== 16) { leds.innerHTML = ''; for (let i = 0; i < 16; i++) leds.append(h('i', { class: i % 4 === 0 ? 'beat' : '' })); }
   const p = pat(), sc = store.project.scene, occ = occupancy(store.ui.sel, sc, p.len);
   const live = A.transport.playing && playhead.scene === sc && playhead.step >= 0;

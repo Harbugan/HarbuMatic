@@ -74,7 +74,13 @@ export function createEngine(getProject, { samples = null } = {}) {
     ch.bus.connect(ch.color); ch.color.connect(ch.drive); ch.drive.connect(ch.out); ch.out.connect(ch.pan); ch.pan.connect(E.master);
     ch.out.connect(ch.sd); ch.sd.connect(E.dIn); ch.out.connect(ch.sr); ch.sr.connect(E.revIn);
     const def = getInstrumentType(slot.type), id = slot.id;
-    const voice = VOICE_FACTORIES[def.engine]({ ctx, shared: E.shared, channel: ch, params: () => slotParams(id), tempo: () => getProject().bpm, sample: () => { const s = slotById(getProject(), id); return (s && s.sample) || null; } });
+    const voice = VOICE_FACTORIES[def.engine]({
+      ctx, shared: E.shared, channel: ch,
+      params: () => slotParams(id),
+      tempo: () => getProject().bpm,
+      sample: () => { const s = slotById(getProject(), id); return (s && s.sample) || null; },
+      breaks: () => { const s = slotById(getProject(), id); return (s && s.breaks) || null; },
+    });
     return { type: slot.type, channel: ch, voice };
   }
   function disposeChannel(entry) {
@@ -180,13 +186,19 @@ export function createEngine(getProject, { samples = null } = {}) {
     const entry = E.ch.get(id); if (!entry) return null;
     return entry.voice.trigger(t, hit, voiceOut(id, live));
   }
-  /** immediate preview (tapping a key, drawing a note) — bypasses the play-session gate. `extra` adds hit fields (e.g. { slice: 3 }) */
+  /** immediate preview (tapping a key, drawing a note, auditioning a break) — bypasses the play-session gate. */
   function audition(id, pitch, v = .8, extra = null) {
     init();
-    const s = slotById(getProject(), id); if (!s || !E.ch.has(id)) return;
+    const s = slotById(getProject(), id); if (!s || !E.ch.has(id)) return null;
     const def = getInstrumentType(s.type), t = E.ctx.currentTime + .01;
     if (def.pattern === 'drum') return trigger(id, t, { d: pitch, v }, false);
+    if (def.pattern === 'break') return trigger(id, t, { audition: true, v, ...extra }, false);
     return trigger(id, t, { p: pitch, v, dur: def.ui.audition.length, slideIn: false, slideOut: false, ...extra }, false);
+  }
+  function stopAudition(id) {
+    if (!E.ctx) return false;
+    const entry = E.ch.get(id);
+    return !!(entry && entry.voice.stopAudition && entry.voice.stopAudition(E.ctx.currentTime));
   }
 
   /**
@@ -207,7 +219,7 @@ export function createEngine(getProject, { samples = null } = {}) {
 
   return {
     E, init, applyParams, applyAll, applyGlobalFx, openGates, closeGates, openPreviewGate, closePreviewGate, silenceSustained, syncSlots,
-    trigger, audition, noteOn, noteOff, audible, stepDur,
+    trigger, audition, stopAudition, noteOn, noteOff, audible, stepDur,
     get ctx() { return E.ctx; }, get analyser() { return E.analyser; },
     set onInterrupt(fn) { E.onInterrupt = fn; },
   };

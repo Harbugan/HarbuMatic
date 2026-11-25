@@ -190,22 +190,22 @@ function withFakeAudio(fn) {
   globalThis.window = { AudioContext: fakeAudio() };
   try { return fn(); } finally { if (had) globalThis.window = old; else delete globalThis.window; }
 }
-/** six playable instances: the five defaults + a second BLIP */
-function sixPlayable() {
+/** seven playable instances: the six defaults + a second BLIP */
+function sevenPlayable() {
   const p = createEmptyProject();
   p.slots.push(createSlot('blip', nextSlotId(p), p.scenes.map(s => s.id)));
   return p;
 }
 
-test('the engine builds one channel per playable slot (five by default) and wires extra channels identically', () => {
+test('the engine builds one channel per playable slot (six by default) and wires extra channels identically', () => {
   withFakeAudio(() => {
-    const five = createEmptyProject(), e5 = createEngine(() => five);
-    e5.init();
-    assert.deepEqual([...e5.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05'], 'first five playable slots get a channel; RUFF placeholder gets none');
-    const six = sixPlayable(), e6 = createEngine(() => six);
+    const base = createEmptyProject(), e6 = createEngine(() => base);
     e6.init();
-    assert.deepEqual([...e6.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-07']);
-    const { E } = e6;
+    assert.deepEqual([...e6.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06'], 'all six default playable slots get a channel');
+    const extra = sevenPlayable(), e7 = createEngine(() => extra);
+    e7.init();
+    assert.deepEqual([...e7.E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06', 'slot-07']);
+    const { E } = e7;
     for (const [id, { channel: ch, voice }] of E.ch) {
       assert.ok(ch.pan.out.includes(E.master), `${id}: own pan → master`);
       assert.ok(ch.out.out.includes(ch.sd) && ch.sd.out.includes(E.dIn), `${id}: delay send`);
@@ -213,22 +213,24 @@ test('the engine builds one channel per playable slot (five by default) and wire
       assert.ok(voice.input, `${id}: voice input`);
     }
     const chans = [...E.ch.values()].map(x => x.channel);
-    assert.equal(new Set(chans.map(c => c.bus)).size, 6, 'independent mixer channels');
+    assert.equal(new Set(chans.map(c => c.bus)).size, 7, 'independent mixer channels');
     // volume and pan of the extra instance are its own
-    slotById(six, 'slot-07').params.pan = -.5; e6.applyParams('slot-07'); e6.applyParams('slot-03');
-    e6.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-07'], 'transport gates per slot');
-    e6.closeGates();
+    slotById(extra, 'slot-07').params.pan = -.5; e7.applyParams('slot-07'); e7.applyParams('slot-03');
+    e7.openGates(); assert.deepEqual(Object.keys(E.gates), ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06', 'slot-07'], 'transport gates per slot');
+    e7.closeGates();
     // removing the extra slot releases its channel
-    six.slots.pop(); e6.syncSlots();
-    assert.deepEqual([...E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05']);
+    extra.slots.pop(); e7.syncSlots();
+    assert.deepEqual([...E.ch.keys()], ['slot-01', 'slot-02', 'slot-03', 'slot-04', 'slot-05', 'slot-06']);
   });
 });
 
 test('the scheduler dispatches all playable instances and keys UI hits by slot id', () => {
-  const p = sixPlayable();
+  const p = sevenPlayable();
   const ids = playableSlots(p).map(s => s.id);
   ids.forEach((id, k) => {
-    if (getInstrumentType(slotById(p, id).type).pattern === 'drum') patternAt(p, id, 0).steps.kick[k] = { v: 1, p: 1 };
+    const sl = slotById(p, id), kind = getInstrumentType(sl.type).pattern;
+    if (kind === 'drum') patternAt(p, id, 0).steps.kick[k] = { v: 1, p: 1 };
+    else if (kind === 'break') { sl.breaks.a = 'brk-builtin-tight'; patternAt(p, id, 0).lanes.a[k] = { slice: 0, v: .9, p: 1 }; }
     else setPatternAt(p, id, 0, { len: 16, notes: [{ s: k, p: 60 + k, l: 1, v: .8 }] });
   });
   const { calls, events } = dispatch(p, { steps: 16 });

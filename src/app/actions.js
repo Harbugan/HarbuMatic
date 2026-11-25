@@ -15,11 +15,12 @@ import {
   exportPackage, parsePackage, restorePackage, isZipBytes, PackageError,
   PACKAGE_EXTENSION, PACKAGE_MIME, PACKAGE_LIMITS,
 } from '../core/package.js';
-import { createPatternFor, isPlayableType, isSelectableType } from '../core/instruments.js';
+import { createPatternFor, isPlayableType, isSelectableType, BREAK_LANES } from '../core/instruments.js';
 import {
   sampleRefFor, sampleRefsOf, defaultSlices, moveSliceBoundary, SLICE_REF_PITCH, insertSliceBoundary, splitSlice,
   removeSliceBoundary, remapSlotSlices, sliceAt, sliceCount, fitInfo, fitRate, fitPlayback, FIT_BARS, FIT_MODES, MAX_SLICES, MIN_SLICE,
 } from '../core/samples.js';
+import { getBuiltinBreak, breakRefsOf, breakFitPlayback, laneVolKey, laneMuteKey, isBuiltinBreakId } from '../core/breaks.js';
 import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
 import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
 import { createSampleBank } from '../samples/bank.js';
@@ -140,6 +141,7 @@ function reconcileTransport(prev, next) {
 
 function restoreSnapshot(json) {
   finalizeRecording();
+  stopBreakAudition();
   const prev = store.project;
   const keepId = prev.id;
   store.project = JSON.parse(json);
@@ -165,6 +167,7 @@ export function patternEdited() { save(); emit('pattern'); }
 function adopt(project, msg, { saved = false } = {}) {
   finalizeRecording();
   stopMunchPreview();
+  stopBreakAudition();
   transport.stop();
   if (!saved) flushSave();
   store.project = project;
@@ -335,6 +338,7 @@ export function selectSlot(id) {
   if (store.ui.sel === id || !slot(id) || !isSelectableType(slot(id).type)) return; // planned-hidden instruments cannot be selected
   finalizeHeldRecNotes();
   stopMunchPreview();
+  stopBreakAudition();
   const u = store.ui, wasSampler = isSamplerSlot(), nav = u.munchNav;
   u.sel = id; u.scrollX = 0; u.zoom = 1;
   const tools = typeOf(id).ui.tools;
@@ -382,18 +386,21 @@ export function setTool(k) { store.ui.tool = k; emit('tool'); }
 /* ---------- transport ---------- */
 export function togglePlay() {
   stopMunchPreview();
+  stopBreakAudition();
   engine.init(); engine.applyAll();
-  // a sample still decoding (e.g. right after opening a song) gets a moment, so the first notes are not silent
+  // a sample or break still decoding (e.g. right after opening a song) gets a moment, so the first beat is not silent
   const ids = playingSampleIds();
   if (transport.state !== 'playing' && ids.length && samples.isLoading(ids)) { samples.whenSettled(ids, 2000).then(() => { if (transport.state !== 'playing') transport.toggle(); }); return; }
   transport.toggle();
 }
-export function stop() { finalizeRecording(); stopMunchPreview(); transport.stop(); }
+export function stop() { finalizeRecording(); stopMunchPreview(); stopBreakAudition(); transport.stop(); }
 const drumSlots = () => store.project.slots.filter(s => typeOfSlot(s).role === 'drums');
 export function setBpm(v) {
   const b = clamp(Math.round(v), 50, 200); if (b === store.project.bpm) return;
   checkpoint('bpm'); store.project.bpm = b;
-  const first = playableSlots(store.project)[0]; if (first) engine.applyParams(first.id); // re-times the echo
+  const playable = playableSlots(store.project);
+  if (playable[0]) engine.applyParams(playable[0].id); // re-times the echo
+  playable.forEach(s => { if (isBreakSlot(s.id)) engine.applyParams(s.id); }); // live Tape rate update for RUFF
   prepareStretch(); // Stretch: a new tempo needs a new stretched copy (until then the closest one plays at exact timing)
   save(); emit('tempo');
 }
@@ -639,9 +646,9 @@ export function liveNoteOff(handle, audioTime) {
 /* ---------- sound ---------- */
 export function setParam(t, k, v, coalesce = true) {
   if (coalesce) checkpoint(`p:${t}:${k}`);
-  P(t)[k] = v; engine.applyParams(t); if (isSamplerSlot(t)) prepareStretch(); save(); emit('params', t);
+  P(t)[k] = v; engine.applyParams(t); if (isSamplerSlot(t) || isBreakSlot(t)) prepareStretch(); save(); emit('params', t);
 }
-export function toggleParam(t, k) { checkpoint(); P(t)[k] = !P(t)[k]; engine.init(); engine.applyParams(t); if (isSamplerSlot(t)) prepareStretch(); save(); emit('params', t); }
+export function toggleParam(t, k) { checkpoint(); P(t)[k] = !P(t)[k]; engine.init(); engine.applyParams(t); if (isSamplerSlot(t) || isBreakSlot(t)) prepareStretch(); save(); emit('params', t); }
 export function applyPreset(t, vals) { checkpoint(); Object.assign(P(t), vals); engine.applyParams(t); save(); emit('params', t); }
 export function setMacro(t, k, v) {
   checkpoint(`m:${t}:${k}`);
@@ -930,37 +937,68 @@ export const emitTool = () => emit('tool');
 // the sample store. Only playable sampler slots load samples, so a normal session (MUNCH preview off) never opens
 // IndexedDB.
 const warnedMissing = new Set();
-/** sample ids used by playable slots of the current song */
-export const playingSampleIds = () => sampleRefsOf({ slots: playableSlots(store.project) });
-/** pin + load the current song's samples; warn once per missing sample */
+/** sample & built-in break ids used by playable slots of the current song */
+export function playingSampleIds() {
+  const slots = playableSlots(store.project);
+  const out = sampleRefsOf({ slots });
+  for (const id of breakRefsOf({ slots })) if (!out.includes(id)) out.push(id);
+  return out;
+}
+/** pin + load the current song's samples and assigned built-in breaks; warn once per missing asset */
 export function syncSamples() {
   const ids = playingSampleIds();
   if (!ids.length && !samples.pinnedIds().length) return Promise.resolve();
   return samples.pin(ids).then(() => {
     for (const s of playableSlots(store.project)) {
-      if (!s.sample) continue;
-      const st = samples.state(s.sample.id);
-      if ((st.status === 'missing' || st.status === 'error') && !warnedMissing.has(s.sample.id)) {
-        warnedMissing.add(s.sample.id);
-        emit('toast', st.status === 'missing'
-          ? `MUNCH sample “${s.sample.name}” is missing on this device. The song keeps its reference: import the same file again to bring it back.`
-          : `MUNCH sample “${s.sample.name}” could not be loaded (${st.error}). The song keeps its reference.`);
+      if (s.sample) {
+        const st = samples.state(s.sample.id);
+        if ((st.status === 'missing' || st.status === 'error') && !warnedMissing.has(s.sample.id)) {
+          warnedMissing.add(s.sample.id);
+          emit('toast', st.status === 'missing'
+            ? `MUNCH sample “${s.sample.name}” is missing on this device. The song keeps its reference: import the same file again to bring it back.`
+            : `MUNCH sample “${s.sample.name}” could not be loaded (${st.error}). The song keeps its reference.`);
+        }
+      }
+      if (s.breaks) {
+        for (const l of BREAK_LANES) {
+          const bid = s.breaks[l];
+          if (!bid) continue;
+          const st = samples.state(bid);
+          if ((st.status === 'missing' || st.status === 'error') && !warnedMissing.has(bid)) {
+            warnedMissing.add(bid);
+            const desc = getBuiltinBreak(bid);
+            emit('toast', `RUFF break “${desc ? desc.name : bid}” could not be loaded (${st.error || 'missing'}).`);
+          }
+        }
       }
     }
     emit('samples');
+    emit('ruff');
   });
 }
-samples.on(() => { prepareStretch(); emit('samples'); });
+samples.on(() => { prepareStretch(); emit('samples'); emit('ruff'); });
 /**
- * Stretch fit mode: queue the time-stretched copy every playable sampler needs at the current tempo, slices and fit,
- * so it is usually ready before the next note. Cheap and idempotent (the bank skips copies it has).
+ * Stretch fit mode: queue the time-stretched copy every playable sampler or break slot needs at the current tempo,
+ * so it is usually ready before the next beat/note. Cheap and idempotent (the bank skips copies it has).
  */
 export function prepareStretch() {
   if (!store.project) return;
   for (const s of playableSlots(store.project)) {
-    if (!s.sample || !isSamplerSlot(s.id)) continue;
-    const fp = fitPlayback(s.params, s.sample.duration, store.project.bpm);
-    if (fp.stretch !== 1) samples.requestStretch(s.sample.id, fp.stretch, s.sample.slices, !!s.params.reverse);
+    if (s.sample && isSamplerSlot(s.id)) {
+      const fp = fitPlayback(s.params, s.sample.duration, store.project.bpm);
+      if (fp.stretch !== 1) samples.requestStretch(s.sample.id, fp.stretch, s.sample.slices, !!s.params.reverse);
+    } else if (s.breaks && isBreakSlot(s.id)) {
+      for (const l of BREAK_LANES) {
+        const id = s.breaks[l];
+        if (!id) continue;
+        const buf = samples.buffer(id);
+        const desc = getBuiltinBreak(id);
+        const dur = buf ? buf.duration : (desc ? desc.duration : 0);
+        const bars = desc ? desc.bars : 2;
+        const fp = breakFitPlayback(s.params, dur, bars, store.project.bpm);
+        if (fp.stretch !== 1) samples.requestStretch(id, fp.stretch, desc ? desc.slices : undefined, false);
+      }
+    }
   }
 }
 /** state of a slot's sample for the UI: { ref, status, error } (status 'none' when no sample is loaded) */
@@ -1281,3 +1319,126 @@ export function magicUndo() {
   checkpoint(); setPatternAt(store.project, m.slot, m.scene, JSON.parse(m.before)); save(); emit('pattern'); emit('toast', 'Back to your pattern');
   return true;
 }
+
+/* ---------- RUFF Break Pool (v0.7 PR2) ---------- */
+let ruffAudReq = 0;
+
+/** Stop any active RUFF break audition cleanly without affecting transport playback. */
+export function stopBreakAudition(slotId = null) {
+  ruffAudReq++;
+  const cur = store.ui.ruff && store.ui.ruff.audition;
+  const target = slotId || (cur && cur.slotId) || null;
+  if (target && engine.ctx && engine.stopAudition) engine.stopAudition(target);
+  if (cur && (!slotId || cur.slotId === slotId)) {
+    store.ui.ruff.audition = null;
+    emit('ruff');
+  }
+}
+
+/** Assign (or clear with null) a break source on RUFF lane 'a' | 'b' | 'c'. Preserves existing patterns untouched. */
+export function assignBreak(lane, breakId, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return false;
+  const s = slot(slotId);
+  if (!s || !isBreakSlot(slotId)) return false;
+  const next = typeof breakId === 'string' && breakId.trim() ? breakId.trim().slice(0, 64) : null;
+  if (next && isBuiltinBreakId(next) && !getBuiltinBreak(next)) return false;
+  if (!s.breaks) s.breaks = { a: null, b: null, c: null };
+  if (s.breaks[lane] === next) return false;
+  const curAud = store.ui.ruff && store.ui.ruff.audition;
+  if (curAud && curAud.slotId === slotId && curAud.lane === lane) stopBreakAudition(slotId);
+  checkpoint();
+  s.breaks[lane] = next;
+  if (next) warnedMissing.delete(next);
+  save();
+  if (canSound() && engine.ctx) engine.applyParams(slotId);
+  syncSamples();
+  prepareStretch();
+  emit('ruff');
+  emit('pattern');
+  return true;
+}
+
+export function setBreakLaneVol(lane, value, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return;
+  setParam(slotId, laneVolKey(lane), clamp(value, 0, 1));
+}
+
+export function toggleBreakLaneMute(lane, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return;
+  const key = laneMuteKey(lane);
+  checkpoint();
+  setParam(slotId, key, !P(slotId)[key], false);
+}
+
+/** Audition a RUFF lane's assigned break independently (toggles off if already auditioning that lane). */
+export function auditionBreak(lane, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return false;
+  const s = slot(slotId);
+  const breakId = s && s.breaks && s.breaks[lane];
+  if (!s || !isBreakSlot(slotId) || !breakId) return false;
+  const cur = store.ui.ruff && store.ui.ruff.audition;
+  if (cur && cur.slotId === slotId && cur.lane === lane) {
+    stopBreakAudition(slotId);
+    return false;
+  }
+  stopBreakAudition();
+  const req = ++ruffAudReq;
+  store.ui.ruff.audition = { slotId, lane, breakId };
+  emit('ruff');
+  if (!canSound()) return true;
+
+  engine.init();
+  engine.applyParams(slotId);
+  const fire = () => {
+    if (req !== ruffAudReq) return;
+    const handle = hear(() => engine.audition(slotId, null, .95, {
+      lane,
+      breakId,
+      onEnded: () => {
+        if (req !== ruffAudReq) return;
+        if (store.ui.ruff.audition && store.ui.ruff.audition.slotId === slotId && store.ui.ruff.audition.lane === lane) {
+          store.ui.ruff.audition = null;
+          emit('ruff');
+        }
+      },
+    }));
+    if (!handle && req === ruffAudReq) {
+      store.ui.ruff.audition = null;
+      emit('ruff');
+    }
+  };
+  if (samples.buffer(breakId)) {
+    prepareStretch();
+    fire();
+  } else {
+    samples.load(breakId).then(buf => {
+      if (req !== ruffAudReq) return;
+      if (!buf) {
+        store.ui.ruff.audition = null;
+        emit('ruff');
+        return;
+      }
+      prepareStretch();
+      fire();
+    });
+  }
+  return true;
+}
+
+/** UI status snapshot for one RUFF break lane */
+export function breakLaneState(lane, slotId = store.ui.sel) {
+  const s = slot(slotId);
+  const id = (s && s.breaks && s.breaks[lane]) || null;
+  const desc = id ? getBuiltinBreak(id) : null;
+  const bankState = id ? samples.state(id) : { status: 'none', error: null };
+  const aud = store.ui.ruff && store.ui.ruff.audition;
+  return {
+    lane,
+    id,
+    desc,
+    status: bankState.status,
+    error: bankState.error,
+    auditioning: !!(aud && aud.slotId === slotId && aud.lane === lane),
+  };
+}
+

@@ -1,11 +1,13 @@
 // Sound Shapers bar (macros + FX toggles) and the SOUND view (deep parameters).
 
-import { store, P, typeOf, slot, isSamplerSlot, isPlaceholderSlot } from '../app/store.js';
+import { store, P, typeOf, slot, isSamplerSlot, isBreakSlot, isPlaceholderSlot } from '../app/store.js';
 import * as A from '../app/actions.js';
 import { BREAK_LANES } from '../core/instruments.js';
+import { BUILTIN_BREAKS, laneVolKey, laneMuteKey, laneAudibleLevel } from '../core/breaks.js';
 import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
 import { Knob, Seg } from '../ui/controls.js';
+import { ico } from '../ui/icons.js';
 import { catSVG } from '../ui/characters.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
 import { renderMunch, setMunchRerender } from './munch.js';
@@ -18,8 +20,9 @@ export function renderBottom() {
   shaperKnobs = {};
   if (!def.capabilities.macros) {
     const msg = def.capabilities.samples ? `Shape ${def.name} in SOUND → TWIST`
-      : isPlaceholderSlot(sel) ? `${def.name} is a non-playing foundation slot — break engine coming next`
-        : `${def.name} has no sound shapers yet: shape it in SOUND`;
+      : def.capabilities.breaks ? `Assign & mix ${def.name} A/B/C breaks in SOUND`
+        : isPlaceholderSlot(sel) ? `${def.name} is a non-playing foundation slot`
+          : `${def.name} has no sound shapers yet: shape it in SOUND`;
     host.append(h('span', { class: 'mini-hint' }, msg));
   } else MACRO_KEYS.forEach(k => {
     const kn = Knob({ label: k, value: m[k], def: .5, title: `${k[0].toUpperCase() + k.slice(1)} → ${hints[k]}`, onChange: v => A.setMacro(sel, k, v), onEnd: A.sealHistory });
@@ -68,34 +71,179 @@ const FX_TOGGLE_KEYS = new Set(['drive', 'delay', 'reverb']);
 
 let soundKnobs = [];
 let soundSwitches = [];
+let ruffLaneRefs = [];
+let ruffStatusEl = null;
+
+function ruffStatusSummary(sel) {
+  const sl = slot(sel), p = P(sel), bpm = store.project.bpm;
+  const aud = store.ui.ruff && store.ui.ruff.audition;
+  if (aud && aud.slotId === sel) {
+    const st = A.breakLaneState(aud.lane, sel);
+    return { active: true, text: `Audition ${aud.lane.toUpperCase()} · ${st.desc ? st.desc.name : 'Break'}` };
+  }
+  const assigned = BREAK_LANES.filter(l => sl && sl.breaks && sl.breaks[l]);
+  const audibleLanes = assigned.filter(l => laneAudibleLevel(p, l) > 0);
+  const slotOn = A.engine.audible(sel);
+  if (A.transport.playing) {
+    if (!assigned.length) return { active: false, text: `Playing · No breaks assigned` };
+    if (!slotOn || !audibleLanes.length) return { active: false, text: `Muted · ${bpm} BPM` };
+    return { active: true, text: `Playing · ${audibleLanes.length} break${audibleLanes.length === 1 ? '' : 's'} · ${bpm} BPM` };
+  }
+  if (A.transport.state === 'paused') {
+    return { active: false, text: `Paused · ${assigned.length} loaded · ${bpm} BPM` };
+  }
+  if (assigned.length) return { active: false, text: `Ready · ${assigned.length} loaded · ${bpm} BPM` };
+  return { active: false, text: `Assign a break to A, B or C` };
+}
+
+function buildRuffDeck(sel, p) {
+  const deck = h('div', { class: 'ruff-deck', 'data-testid': 'ruff-deck' });
+  const playing = A.transport.playing && A.engine.audible(sel);
+  BREAK_LANES.forEach(l => {
+    const L = l.toUpperCase();
+    const st = A.breakLaneState(l, sel);
+    const muteKey = laneMuteKey(l), volKey = laneVolKey(l);
+    const muted = !!p[muteKey], vol = p[volKey] ?? .85;
+    const isLive = playing && !!st.id && !muted && vol > 0;
+    const card = h('div', {
+      class: 'ruff-lane' + (st.id ? ' loaded' : '') + (muted ? ' muted' : '') + (isLive ? ' playing' : '') + (st.auditioning ? ' auditioning' : ''),
+      'data-lane': l,
+    });
+    const metaText = st.status === 'loading' ? 'Loading…' : st.status === 'error' || st.status === 'missing' ? 'Error' : st.desc ? `${st.desc.bpm} BPM` : 'Off';
+    const head = h('div', { class: 'ruff-lane-head' },
+      h('span', { class: 'ruff-lane-id' }, L),
+      h('b', { class: 'ruff-lane-name' }, st.desc ? st.desc.name : (st.id || 'Empty')),
+      h('span', { class: 'ruff-lane-meta' }, metaText),
+      h('i', { class: 'ruff-led', 'aria-hidden': 'true' }));
+
+    const srcGrid = h('div', { class: 'ruff-src-grid', role: 'group', 'aria-label': `Break ${L} source` });
+    const offBtn = h('button', {
+      type: 'button',
+      class: 'ruff-src' + (!st.id ? ' on' : ''),
+      'data-break': '',
+      'aria-pressed': String(!st.id),
+      title: `Clear Break ${L}`,
+    }, 'Off');
+    offBtn.onclick = () => A.assignBreak(l, null, sel);
+    srcGrid.append(offBtn);
+    BUILTIN_BREAKS.forEach(b => {
+      const on = st.id === b.id;
+      const btnEl = h('button', {
+        type: 'button',
+        class: 'ruff-src' + (on ? ' on' : ''),
+        'data-break': b.id,
+        'aria-pressed': String(on),
+        title: `${b.name} — ${b.subtitle} (${b.bpm} BPM, ${b.bars} bars)`,
+      }, b.name);
+      btnEl.onclick = () => A.assignBreak(l, b.id, sel);
+      srcGrid.append(btnEl);
+    });
+
+    const audBtn = h('button', {
+      type: 'button',
+      class: 'ruff-aud' + (st.auditioning ? ' on' : ''),
+      'data-action': 'audition',
+      disabled: !st.id,
+      'aria-pressed': String(st.auditioning),
+      title: st.id ? (st.auditioning ? `Stop Break ${L} audition` : `Audition Break ${L}`) : `Assign a break to ${L} first`,
+    }, h('span', { class: 'ruff-aud-i', html: ico(st.auditioning ? 'stop' : 'play') }), h('span', {}, st.auditioning ? 'Stop' : 'Audition'));
+    audBtn.onclick = () => A.auditionBreak(l, sel);
+
+    const muteBtn = h('button', {
+      type: 'button',
+      class: 'ruff-mute' + (muted ? ' on' : ''),
+      'data-action': 'mute',
+      'aria-pressed': String(muted),
+      title: `Mute Break ${L}`,
+    }, 'M');
+    muteBtn.onclick = () => A.toggleBreakLaneMute(l, sel);
+
+    const volKnob = Knob({
+      label: 'Vol',
+      min: 0, max: 1,
+      value: vol,
+      def: .85,
+      fmt: pct,
+      title: `Break ${L} volume`,
+      onChange: v => A.setBreakLaneVol(l, v, sel),
+      onEnd: A.sealHistory,
+    });
+    volKnob.k = volKey;
+    soundKnobs.push(volKnob);
+
+    const ctls = h('div', { class: 'ruff-lane-ctl' }, audBtn, muteBtn, volKnob.el);
+    card.append(head, srcGrid, ctls);
+    deck.append(card);
+    ruffLaneRefs.push({ lane: l, card, muteKey, volKey, muteBtn });
+  });
+  return deck;
+}
+
+export function refreshRuffState() {
+  const sel = store.ui.sel;
+  if (!isBreakSlot(sel)) return;
+  const p = P(sel), playing = A.transport.playing && A.engine.audible(sel);
+  if (ruffStatusEl) {
+    const sum = ruffStatusSummary(sel);
+    ruffStatusEl.classList.toggle('active', sum.active);
+    const txt = ruffStatusEl.querySelector('.ruff-status-txt');
+    if (txt) txt.textContent = sum.text;
+  }
+  ruffLaneRefs.forEach(r => {
+    const st = A.breakLaneState(r.lane, sel);
+    const muted = !!p[r.muteKey], vol = p[r.volKey] ?? .85;
+    const isLive = playing && !!st.id && !muted && vol > 0;
+    r.card.classList.toggle('muted', muted);
+    r.card.classList.toggle('playing', isLive);
+    r.card.classList.toggle('auditioning', st.auditioning);
+    r.muteBtn.classList.toggle('on', muted);
+    r.muteBtn.setAttribute('aria-pressed', String(muted));
+  });
+}
+
 export function renderSound() {
-  const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = ''; soundKnobs = []; soundSwitches = [];
+  const host = $('#viewSound'); const scroll = host.scrollTop; host.innerHTML = '';
+  soundKnobs = []; soundSwitches = []; ruffLaneRefs = []; ruffStatusEl = null;
   if (isSamplerSlot()) { renderMunch(host); host.scrollTop = scroll; return; } // MUNCH has its own workspace
-  const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type, placeholder = isPlaceholderSlot(sel);
-  const hear = () => { if (!placeholder) A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch')); };
-  const pr = h('div', { class: 'presets' });
-  if (placeholder) {
+  const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type, placeholder = isPlaceholderSlot(sel), isBreak = isBreakSlot(sel);
+  const hear = () => { if (!placeholder && !isBreak) A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch')); };
+  const pr = h('div', { class: 'presets' + (isBreak ? ' ruff-head-ctls' : '') });
+  if (isBreak) {
+    const sum = ruffStatusSummary(sel);
+    ruffStatusEl = h('span', { class: 'ruff-status' + (sum.active ? ' active' : ''), 'data-testid': 'ruff-status' },
+      h('i', { class: 'ruff-led', 'aria-hidden': 'true' }),
+      h('span', { class: 'ruff-status-txt' }, sum.text));
+    const fitSeg = Seg(
+      [['stretch', 'Stretch'], ['tape', 'Tape']],
+      p.fitMode === 'tape' ? 'tape' : 'stretch',
+      v => { A.setFitMode(v, sel); renderSound(); },
+      { label: 'Tempo sync mode: Stretch keeps pitch, Tape follows speed' },
+    );
+    fitSeg.classList.add('ruff-fit-seg');
+    pr.append(ruffStatusEl, fitSeg);
+  } else if (placeholder) {
     pr.append(h('span', { class: 'ruff-ph-tag' }, 'Foundation · Non-playing'));
   } else {
     pr.append(h('span', { class: 'sect' }, 'Presets'));
     Object.entries(PRESETS[type] || {}).forEach(([n, vals]) => { const b = h('button', { type: 'button', class: 'preset' }, n); b.onclick = () => { A.applyPreset(sel, vals); hear(); }; pr.append(b); });
   }
   host.append(h('div', { class: 'view-head sound-head' },
-    h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, placeholder ? 'Breakbeat Machine' : 'Sound design')),
+    h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, isBreak ? 'Break Pool · A/B/C' : placeholder ? 'Breakbeat Machine' : 'Sound design')),
     pr));
-  const groups = h('div', { class: 'sgroups sound-grid', 'data-inst': type });
+  if (isBreak) host.append(buildRuffDeck(sel, p));
+  const groups = h('div', { class: 'sgroups sound-grid' + (isBreak ? ' ruff-sound-bottom' : ''), 'data-inst': type });
   if (placeholder) {
     const sl = slot(sel);
     const sources = h('div', { class: 'ruff-lanes' }, BREAK_LANES.map(l =>
       h('div', { class: 'ruff-lane-pill' },
         h('b', {}, `Break ${l.toUpperCase()}`),
-        h('span', {}, sl && sl.breaks && sl.breaks[l] ? sl.breaks[l] : 'Empty (Break Pool coming next)'))));
+        h('span', {}, sl && sl.breaks && sl.breaks[l] ? sl.breaks[l] : 'Empty'))));
     groups.append(h('div', { class: 'sgroup wide ruff-sound-ph', 'data-group': 'ruff-foundation' },
       h('div', { class: 'ruff-ph-card compact' },
         h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
         h('div', { class: 'ruff-ph-body' },
           h('h4', {}, `${m.name} workspace foundation`),
-          h('p', {}, 'Audio engine, break pool, slicing, pads and CHOP IT! are staged for the next v0.7 PRs. Channel settings below persist in your song without producing sound yet.'),
+          h('p', {}, 'Channel settings below persist in your song.'),
           sources))));
   }
   [...(SOUNDDEF[type] || []), ...COMMON].forEach(([title, defs]) => {
@@ -129,5 +277,6 @@ export function refreshSoundKnobs() {
   const p = P(store.ui.sel);
   soundKnobs.forEach(k => k.set(k.k === '__swing' ? store.project.swing : p[k.k]));
   soundSwitches.forEach(s => { const on = !!p[s.k]; s.el.classList.toggle('on', on); s.el.setAttribute('aria-pressed', String(on)); });
+  refreshRuffState();
 }
 setMunchRerender(() => renderSound());

@@ -3,7 +3,10 @@
 // once loaded, the app shell and modules keep working offline.
 // The page registers sw.js?v=<APP_VERSION> (src/core/constants.js), so each release gets its own cache.
 const CACHE = 'harbumatic-v' + (new URL(self.location.href).searchParams.get('v') || 'dev');
-const SHELL = ['./', './index.html', './manifest.json', './icons/icon.svg'];
+const SHELL = [
+  './', './index.html', './manifest.json', './icons/icon.svg',
+  './assets/breaks/tight.wav', './assets/breaks/funky.wav', './assets/breaks/jungle.wav',
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}));

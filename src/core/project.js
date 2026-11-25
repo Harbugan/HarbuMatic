@@ -30,6 +30,7 @@ import {
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
+import { hasAssignedBreak } from './breaks.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
@@ -462,5 +463,8 @@ export function maxLen(project, sc) {
   const lens = playableSlots(project).map(s => patternAt(project, s.id, sc).len);
   return lens.length ? Math.max(...lens) : 16;
 }
-export const sceneHasContent = (project, sc) => playableSlots(project).some(s => !patternIsEmpty(s.type, patternAt(project, s.id, sc)));
+export const sceneHasContent = (project, sc) => playableSlots(project).some(s => (
+  !patternIsEmpty(s.type, patternAt(project, s.id, sc))
+  || (typeOfSlot(s).capabilities.breaks && hasAssignedBreak(s))
+));
 export const clampReps = r => clamp(Math.round(r), 1, MAX_REPS);

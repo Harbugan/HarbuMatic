@@ -23,32 +23,32 @@ import * as A from '../src/app/actions.js';
 
 const cloneJson = obj => JSON.parse(JSON.stringify(obj));
 
-test('RUFF registry definition is registered, immutable, selectable and non-playable', () => {
+test('RUFF registry definition is registered, immutable, selectable and playable', () => {
   assert.equal(hasInstrumentType('ruff'), true);
   const r = getInstrumentType('ruff');
   assert.equal(r.type, 'ruff');
   assert.equal(r.name, 'RUFF');
-  assert.equal(r.status, 'placeholder');
-  assert.equal(r.engine, null);
+  assert.equal(r.status, 'ready');
+  assert.equal(r.engine, 'ruff');
   assert.equal(r.pattern, 'break');
   assert.equal(r.defaultLength, 16);
   assert.equal(r.capabilities.breaks, true);
   assert.equal(r.capabilities.generate, false);
-  assert.equal(isPlayableType('ruff'), false, 'must not be playable until engine integration exists');
-  assert.equal(isSelectableType('ruff'), true, 'must be selectable as a UI placeholder');
-  assert.equal(listInstrumentTypes().some(t => t.type === 'ruff'), false, 'default playable list excludes RUFF');
+  assert.equal(isPlayableType('ruff'), true, 'RUFF is playable with the ruff voice factory');
+  assert.equal(isSelectableType('ruff'), true);
+  assert.equal(listInstrumentTypes().some(t => t.type === 'ruff'), true);
   assert.equal(listInstrumentTypes({ includePlanned: true }).some(t => t.type === 'ruff'), true);
   assert.deepEqual(BREAK_LANES, ['a', 'b', 'c']);
   assert.deepEqual(DEFAULT_SLOT_TYPES, ['bop', 'goo', 'blip', 'fuzz', 'munch', 'ruff']);
   assert.ok(Object.isFrozen(r) && Object.isFrozen(r.defaultParams));
 });
 
-test('new songs establish six slots with independent per-scene A/B/C break patterns', () => {
+test('new songs establish six playable slots with independent per-scene A/B/C break patterns', () => {
   for (const p of [createEmptyProject(), createDemoProject()]) {
     assert.deepEqual(p.slots.map(s => `${s.id}:${s.type}`), [
       'slot-01:bop', 'slot-02:goo', 'slot-03:blip', 'slot-04:fuzz', 'slot-05:munch', 'slot-06:ruff',
     ]);
-    assert.equal(playableSlots(p).length, 5);
+    assert.equal(playableSlots(p).length, 6);
     assert.equal(selectableSlots(p).length, 6);
     const ruff = slotById(p, 'slot-06');
     assert.deepEqual(ruff.breaks, { a: null, b: null, c: null });
@@ -86,18 +86,18 @@ test('A/B/C break pattern validation cleans cells, locks and source references c
   assert.deepEqual(vp.locked, { a: true, 4: true });
 });
 
-test('non-playing RUFF never affects audio scheduling, solo, maxLen or sceneHasContent', () => {
+test('empty RUFF never fires spurious triggers, while soloing RUFF silences other slots', () => {
   const p = createEmptyProject();
   const ruff = slotById(p, 'slot-06');
+  assert.equal(sceneHasContent(p, 0), false, 'unassigned empty RUFF does not mark scene as having content');
+  assert.equal(maxLen(p, 0), 32);
+
   ruff.solo = true;
-  ruff.patterns['scene-01'].lanes.a[0] = { slice: 0, v: 1, p: 1 };
+  assert.equal(anySolo(p), true, 'solo on playable RUFF activates solo');
+  assert.equal(slotAudible(p, slotById(p, 'slot-01')), false);
+  assert.equal(slotAudible(p, ruff), true);
 
-  assert.equal(anySolo(p), false, 'solo on non-playing RUFF must not silence playable slots');
-  assert.equal(sceneHasContent(p, 0), false, 'non-playing RUFF does not mark scene as having playable content');
-  assert.equal(maxLen(p, 0), 32, 'maxLen ignores non-playing slots');
-  assert.equal(slotAudible(p, slotById(p, 'slot-01')), true);
-
-  // Scheduler dispatch ignores RUFF completely
+  // Scheduler dispatch skips RUFF when no breaks are assigned
   const calls = [];
   const ctx = { currentTime: 0 };
   const engine = {
@@ -114,10 +114,10 @@ test('non-playing RUFF never affects audio scheduling, solo, maxLen or sceneHasC
     for (let i = 0; i < 32; i++) { ctx.currentTime += .05; tick(); }
     tr.stop();
   } finally { globalThis.setInterval = si; globalThis.clearInterval = ci; }
-  assert.equal(calls.some(c => c.id === 'slot-06'), false, 'RUFF must never be triggered by scheduler');
+  assert.equal(calls.some(c => c.id === 'slot-06'), false, 'unassigned RUFF triggers nothing');
 });
 
-test('RUFF selection, 5-visible strip paging, volume/mute and guarded actions stay valid', () => {
+test('RUFF selection, 5-visible strip paging, volume/mute/solo and guarded actions stay valid', () => {
   store.project = createEmptyProject();
   store.ui.sel = 'slot-01';
   store.ui.stripOffset = 0;
@@ -139,15 +139,15 @@ test('RUFF selection, 5-visible strip paging, volume/mute and guarded actions st
   assert.equal(store.ui.sel, 'slot-06');
   assert.equal(store.ui.stripOffset, 1);
   assert.equal(isBreakSlot(), true);
-  assert.equal(isPlaceholderSlot(), true);
+  assert.equal(isPlaceholderSlot(), false);
 
-  // Volume and mute persist cleanly; solo is safely ignored while non-playing
+  // Volume, mute and solo persist cleanly
   A.setParam('slot-06', 'vol', .65);
   assert.equal(slotById(store.project, 'slot-06').params.vol, .65);
   A.toggleMute('slot-06');
   assert.equal(slotById(store.project, 'slot-06').mute, true);
   A.toggleSolo('slot-06');
-  assert.equal(slotById(store.project, 'slot-06').solo, false, 'toggleSolo is a no-op for non-playing placeholder');
+  assert.equal(slotById(store.project, 'slot-06').solo, true, 'toggleSolo works for playable RUFF');
 
   // Pattern-level toolbar guards do not crash on RUFF
   assert.doesNotThrow(() => A.setLength(32));
