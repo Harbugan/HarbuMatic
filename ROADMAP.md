@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-26 (RUFF PR31–33 merged; PR33 owner iPad QA 22/22 PASS; BLIP/FUZZ P1 fix owner-verified; PR34 CHOP IT! next)  
+> Last updated: 2026-11-26 (RUFF PR31–33 merged; PR34 CHOP IT! unified UX and genre-based behavior approved for specification, not implemented)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -195,14 +195,14 @@ Owner completed the focused physical iPad final QA: **7/7 PASS** (MUNCH micropho
 - **PR32 — First Breaks: merged; owner-verified.** Original built-in TIGHT, FUNKY and RUFF JUNGLE loops, simultaneous A/B/C playback, independent lane volume/mute and audition, Stretch/Tape, transport, save/reopen and .hbn.
 - **PR33 — Break-aware Slicing & Hybrid Sequencer: merged** (merge commit `99cab751`); **owner physical iPad QA 22/22 PASS**. Original groove preserved on first edit; compact and expanded A/B/C views share the pattern; auto-suggested/manual slices, explicit silent edited lanes, two-bar playback, Undo/Redo, scene independence, .hbn and existing instruments verified. Owner also retested the BLIP/FUZZ audio fix successfully. AntiGravity reported `npm test` 306/306 PASS (including four targeted audio tests); `npm run test:ui` NOT RUN in its VM; no full UI/baseline sign-off claimed.
 - **PR33 associated P1 fix:** BLIP/FUZZ synth voice-pool exhaustion after repeated MUNCH CHOP scene switching and Stop/Play. Root cause reported as pre-existing on main; fix in `src/audio/voices.js` (commit `9d9a2a0`) merged with PR33; owner verified restored manual audition and loop playback on physical iPad. See BUGS.md.
-- **PR34 — CHOP IT!: NEXT, planning only.** New Groove/Evolve, TIGHT/FUNKY/RUFF/CHAOS, Subtle–Wild intensity, lock-aware editable variation and Undo. Before handoff, clarify Compact vs Lanes UX: owner found the two views functionally redundant. Preserve one shared pattern; avoid adding a second competing sequencer or expanding PR34 into full live performance. Scope requires review against current main.
+- **PR34 — CHOP IT!: NEXT, product/UX direction decided; not implemented.** Consolidate redundant Compact/Lanes views into one RUFF sequencer with contextual slice editing and integrated CHOP IT!. New Groove/Evolve, genre-grounded OLD SKOOL JUNGLE / DARKSIDE / ATMOSPHERIC / ROLLING-TWO-STEP profiles, Subtle–Wild, intelligent complementary A/B/C roles, per-hit/column/lane locks (including locked silence), atomic Undo and immediate generation. Preserve PR33 16-step/two-bar timing and source edits. No live pads, audio-rate rolls, import or DIRT in this task. See docs/RUFF-07-SPEC.md. Implementation awaits reviewed Task Contract.
 
 **Musical identity:** a playful, immediate Breakbeat Performance Machine with the energy of 90s jungle, breakbeat and rave. Play first; tweak forever. Generated and manually edited events share one non-destructive pattern.
 
 **Approved scope:**
 - **Hybrid Break Pool:** original distributable built-in jungle breaks plus user-imported audio; future licensed recordings may be added only after rights clearance. Ten historical breaks are musical references, **not bundled audio**. Choose up to three active sources A/B/C from an extensible pool; each has audition, volume and mute. Replacing a source must not silently destroy edits.
-- **16-step hybrid sequencer:** compact combined groove view and expanded A/B/C lanes editing the same pattern. Multiple break slices may play on the same step; contextual slice/step editor and individual/whole-column locks.
-- **Break-aware slicing; CHOP IT!:** TIGHT, FUNKY, RUFF and CHAOS styles; New Groove and Evolve; Subtle–Wild intensity; musical variation respects locks and Undo. No separate variation slots/history in v0.7.
+- **16-step RUFF sequencer:** PR33 implemented compact and expanded A/B/C views sharing one pattern; PR34 approved UX direction consolidates these into a single editor with contextual slice/step controls and integrated CHOP IT!. Multiple break slices may play on the same step; per-hit, column and lane locks are planned.
+- **Break-aware slicing; CHOP IT!:** PR33 slicing implemented; PR34 plans genre-based OLD SKOOL JUNGLE, DARKSIDE, ATMOSPHERIC and ROLLING/TWO-STEP break-programming profiles; New Groove and Evolve, Subtle–Wild, intelligent A/B/C interplay, lock-aware immediate variation and Undo. No separate variation slots/history in v0.7.
 - **Eight dynamic performance pads:** automatic slice mapping with manual overrides; HOLD, ROLL, momentary live CHAOS, retrigger, ghost notes and reverse. Releasing CHAOS returns to the original groove without destructive pattern mutation unless intentionally recorded.
 - **Recording:** reuse Live Pattern Recording with Quantize On/Off; capture pad slices and representable discrete effects in the shared pattern. Do not assume continuous parameter automation.
 - **Audio:** Stretch (pitch-preserving tempo fit) by default; Tape alternative; pitch/reverse and DIRT character; three active breaks with individual volume/mute plus Ruff instrument volume.
