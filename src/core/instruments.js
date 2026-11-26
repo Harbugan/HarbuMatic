@@ -91,7 +91,7 @@ const TYPES = {
     role: null, engine: 'ruff', pattern: 'break', defaultLength: 16,
     capabilities: { generate: false, macros: false, presets: false, mono: false, slide: false, accent: false, breaks: true },
     visual: { color: '#C6EB88', dark: '#8BC940', darker: '#5B8F22', headphones: '#F07BB3', css: 'ruff', character: 'ruff' },
-    ui: { tools: ['draw', 'erase'], audition: null },
+    ui: { tools: ['draw', 'erase', 'lock'], audition: null },
     defaultParams: {
       vol: .8, pan: 0, drive: .3, driveOn: false, delayOn: false, reverbOn: false, delay: .2, reverb: .15,
       fitMode: 'stretch',

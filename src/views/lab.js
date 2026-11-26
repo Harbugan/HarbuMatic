@@ -33,7 +33,7 @@ export function renderLab() {
   if (m.capabilities.samples) { renderSamplerLab(host, p); host.scrollTop = scroll; return; }
   if (m.capabilities.breaks) {
     host.append(h('div', { class: 'lab-munch' },
-      h('p', { class: 'mini-hint' }, `${m.name} plays built-in A/B/C breaks in SOUND. CHOP IT! groove generation arrives in a later PR.`),
+      h('p', { class: 'mini-hint' }, `${m.name} has CHOP IT! and A/B/C locks right in the JAM sequencer. Pick, audition & mix breaks in SOUND.`),
       h('button', { type: 'button', class: 'lbtn big', onclick: () => { A.setDrawer(false); A.setMode('sound'); } },
         h('span', { class: 'lbtn-i', html: ico('spark') }),
         h('span', { class: 'lbtn-t' }, `Open ${m.name}`, h('small', {}, 'pick, audition & mix breaks in SOUND')))));

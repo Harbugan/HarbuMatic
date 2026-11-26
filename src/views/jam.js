@@ -25,10 +25,9 @@ const HINTS = {
 };
 export const hintFor = () => {
   if (isBreakSlot()) {
-    if (store.ui.tool === 'erase') return 'Erase: tap any step to clear it (first edit converts that lane while keeping the rest of the groove)';
-    return store.ui.ruff.view === 'expanded'
-      ? 'Tap an empty step to add · tap an active step to inspect/reassign its slice · tap a selected step again to remove'
-      : '2-bar groove overview (16 slices) · tap any step to inspect A/B/C hits and reassign slices below';
+    if (store.ui.tool === 'erase') return 'Erase: tap any unlocked step to clear it (first edit converts that lane while keeping the rest of the groove)';
+    if (store.ui.tool === 'lock') return 'Lock: tap any cell (hit or empty) to lock it · tap a step header to lock the whole A/B/C column · tap a lane lock to freeze the lane';
+    return 'Unified A/B/C sequencer (2 bars · 16 slices) · tap to add/inspect/reassign · dial CHOP IT! above to generate or evolve';
   }
   if (isPlaceholderSlot()) return `${typeOf().name} is a non-playing foundation slot`;
   const t = store.ui.tool, x = HINTS[t] || '';
@@ -49,19 +48,9 @@ export function renderJamBar() {
 
   const chip = h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, `${sceneLabel(sc)} · ${store.project.scenes[sc].name}`));
   if (isBreak) {
-    if (!['draw', 'erase'].includes(u.tool)) u.tool = 'draw';
-    const viewSeg = Seg(
-      [['compact', 'Compact'], ['expanded', 'A/B/C Lanes']],
-      u.ruff.view === 'expanded' ? 'expanded' : 'compact',
-      v => A.setRuffView(v),
-      { label: 'RUFF sequencer view: Compact groove overview or Expanded A/B/C lanes' },
-    );
-    viewSeg.classList.add('ruff-view-seg');
-    viewSeg.dataset.testid = 'ruff-view-toggle';
-    Array.from(viewSeg.children).forEach((b, idx) => { b.dataset.ruffView = idx === 0 ? 'compact' : 'expanded'; });
-
+    if (!['draw', 'erase', 'lock'].includes(u.tool)) u.tool = 'draw';
     const tools = h('div', { class: 'tgroup tb-tools' },
-      [['draw', 'Edit'], ['erase', 'Erase']].map(([k, label]) => {
+      [['draw', 'Edit'], ['erase', 'Erase'], ['lock', 'Lock']].map(([k, label]) => {
         const b = btn({ icon: ico(k), label, cls: 'tool' + (u.tool === k ? ' on' : ''), pressed: u.tool === k, onClick: () => A.setTool(k) });
         b.dataset.tool = k;
         return b;
@@ -72,13 +61,13 @@ export function renderJamBar() {
     const actions = h('div', { class: 'tgroup tb-actions' },
       poolBtn,
       btn({ icon: ico('lab'), label: 'Lab', cls: 'tool lab-toggle', title: 'Open the Happy Accident Lab', onClick: () => A.setDrawer(!store.ui.drawer) }),
-      btn({ icon: ico('clear'), label: 'Clear', cls: 'tool', title: 'Silence all unlocked RUFF lanes in this scene', onClick: A.clearPattern }),
+      btn({ icon: ico('clear'), label: 'Clear', cls: 'tool', title: 'Silence all unlocked RUFF lanes in this scene (locked steps kept)', onClick: A.clearPattern }),
       btn({ icon: ico(u.expanded ? 'collapse' : 'expand'), label: u.expanded ? 'Done' : 'Wide', cls: 'tool expand' + (u.expanded ? ' on' : ''), title: u.expanded ? 'Back to standard width (F)' : 'Expand sequencer to full width (F)', onClick: () => A.setExpanded(!u.expanded) }));
     actions.children[1].dataset.action = 'lab';
     actions.children[2].dataset.action = 'clear';
     actions.children[3].dataset.action = 'expand';
 
-    bar.append(chip, viewSeg, tools, h('span', { class: 'spacer' }), actions);
+    bar.append(chip, tools, h('span', { class: 'spacer' }), actions);
     $('#edHint').textContent = hintFor();
     renderRuffSequencer();
     return;

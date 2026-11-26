@@ -271,3 +271,42 @@ export function breakSlotHasContent(slot, pattern) {
     return true;
   });
 }
+
+/* ---------- Break-pattern lock & silence helpers (v0.7 PR34) ---------- */
+
+/** Persistent key inside `pattern.locked` for an individual per-lane step cell (populated or empty). */
+export const breakCellLockKey = (lane, step) => `${lane}:${step}`;
+
+/** True when an entire RUFF lane (A/B/C) is locked. */
+export function isBreakLaneLocked(pattern, lane) {
+  return !!(pattern && BREAK_LANES.includes(lane) && pattern.locked && pattern.locked[lane]);
+}
+
+/** True when a full step column across A/B/C is locked. */
+export function isBreakStepColumnLocked(pattern, step) {
+  return !!(pattern && Number.isInteger(step) && step >= 0 && pattern.locked && pattern.locked[String(step)]);
+}
+
+/** True when a specific (lane, step) cell is directly locked (via `pattern.locked['a:4']` or legacy `cell.locked`). */
+export function isBreakCellDirectlyLocked(pattern, lane, step) {
+  if (!pattern || !BREAK_LANES.includes(lane) || !Number.isInteger(step) || step < 0) return false;
+  if (pattern.locked && pattern.locked[breakCellLockKey(lane, step)]) return true;
+  const cell = pattern.lanes && pattern.lanes[lane] && pattern.lanes[lane][step];
+  return !!(cell && cell.locked);
+}
+
+/** True when (lane, step) is protected by a lane lock, column lock, or direct cell lock (including locked empty cells). */
+export function isBreakCellLocked(pattern, lane, step) {
+  return isBreakLaneLocked(pattern, lane)
+    || isBreakStepColumnLocked(pattern, step)
+    || isBreakCellDirectlyLocked(pattern, lane, step);
+}
+
+/** True when a lane was explicitly edited to complete silence (edited flag set, zero populated steps). */
+export function isBreakLaneExplicitlySilent(pattern, lane) {
+  if (!pattern || !BREAK_LANES.includes(lane)) return false;
+  if (!isBreakLaneEdited(pattern, lane)) return false;
+  const row = pattern.lanes && pattern.lanes[lane];
+  return !Array.isArray(row) || !row.some(Boolean);
+}
+

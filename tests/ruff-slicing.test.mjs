@@ -91,10 +91,11 @@ test('opening and inspecting the RUFF sequencer never mutates project data; firs
   const before = JSON.stringify(store.project);
   const p = patternAt(store.project, R, 0);
 
-  // Inspecting: switching Compact <-> Expanded, selecting steps/lanes, reading effectiveBreakRow
-  A.setRuffView('compact');
+  // Inspecting: selecting steps/lanes, dialing CHOP IT! UI controls, reading effectiveBreakRow
   A.selectRuffStep(4, 'a');
-  A.setRuffView('expanded');
+  A.setRuffChopMode('evolve');
+  A.setRuffChopProfile('darkside');
+  A.setRuffChopIntensity(0.75);
   A.selectRuffStep(12, 'b');
   const previewA = effectiveBreakRow(p, 'a', 'brk-builtin-tight');
   assert.equal(previewA.length, 16);
