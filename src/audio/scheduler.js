@@ -15,7 +15,9 @@
 
 import { DRUMS } from '../core/constants.js';
 import { BREAK_LANES } from '../core/instruments.js';
-import { getBuiltinBreak, laneAudibleLevel } from '../core/breaks.js';
+import {
+  laneAudibleLevel, isBreakLaneEdited, breakStepTiming, suggestedSliceForStep, clampBreakSlice,
+} from '../core/breaks.js';
 import { playableSlots, slotById, typeOfSlot, sceneIdAt } from '../core/project.js';
 import { clamp } from '../core/util.js';
 import { startPosition, advance, isLoopBoundary } from './position.js';
@@ -79,33 +81,42 @@ export function createTransport(engine, getProject, hooks = {}) {
             const breakId = brks[l];
             if (!breakId) continue;
             const row = p.lanes && p.lanes[l];
-            const hasCells = Array.isArray(row) && row.some(Boolean);
+            const edited = isBreakLaneEdited(p, l);
             const laneLvl = laneAudibleLevel(slot.params, l);
-            if (hasCells) {
-              const c = row[ls];
-              if (c && Math.random() <= c.p) {
-                const slice = c.slice != null ? c.slice : (Math.floor(ls / 2) % 16);
-                const hit = { lane: l, breakId, slice, v: c.v, rev: !!c.rev, dur: sd * 2 };
-                if (laneLvl > 0) hits.push({ lane: l, v: c.v * laneLvl, slice });
-                if (on) engine.trigger(slot.id, t + sw + (c.o || 0) * sd, hit);
+            const timing = breakStepTiming(breakId, p.len);
+            const phaseStep = T.pos.step % timing.loopSteps;
+            if (edited) {
+              const subStep = phaseStep % timing.stepSpan;
+              if (subStep === 0 || T.pos.fresh) {
+                const stepIdx = Math.floor(phaseStep / timing.stepSpan) % timing.len;
+                const c = row && row[stepIdx];
+                if (c && Math.random() <= c.p) {
+                  const slice = clampBreakSlice(breakId, c.slice != null ? c.slice : suggestedSliceForStep(breakId, stepIdx, timing.len));
+                  const remSteps = timing.stepSpan - subStep;
+                  const hit = {
+                    lane: l,
+                    breakId,
+                    slice,
+                    sliceStartFrac: subStep > 0 ? subStep / timing.stepSpan : 0,
+                    v: c.v,
+                    rev: !!c.rev,
+                    dur: remSteps * sd,
+                  };
+                  if (laneLvl > 0) hits.push({ lane: l, v: c.v * laneLvl, slice });
+                  if (on) engine.trigger(slot.id, t + (subStep === 0 ? (c.o || 0) * sd : 0), hit);
+                }
               }
-            } else {
-              // Deterministic PR2 loop playback: trigger phase-locked beat segments (and immediate resume on fresh)
-              const desc = getBuiltinBreak(breakId);
-              const bars = desc ? desc.bars : 2;
-              const loopSteps = Math.max(4, Math.round(bars * 16));
-              const phaseStep = T.pos.step % loopSteps;
-              if (phaseStep % 4 === 0 || T.pos.fresh) {
-                const steps = 4 - (phaseStep % 4);
-                const hit = {
-                  lane: l, breakId, loop: true, loopBars: bars,
-                  startFrac: phaseStep / loopSteps,
-                  endFrac: (phaseStep + steps) / loopSteps,
-                  dur: steps * sd, v: 1,
-                };
-                if (laneLvl > 0) hits.push({ lane: l, v: laneLvl });
-                if (on) engine.trigger(slot.id, t, hit);
-              }
+            } else if (phaseStep % 4 === 0 || T.pos.fresh) {
+              // Deterministic unedited loop playback: phase-locked beat segments (and immediate resume on fresh)
+              const steps = 4 - (phaseStep % 4);
+              const hit = {
+                lane: l, breakId, loop: true, loopBars: timing.bars,
+                startFrac: phaseStep / timing.loopSteps,
+                endFrac: (phaseStep + steps) / timing.loopSteps,
+                dur: steps * sd, v: 1,
+              };
+              if (laneLvl > 0) hits.push({ lane: l, v: laneLvl });
+              if (on) engine.trigger(slot.id, t, hit);
             }
           }
         } else {

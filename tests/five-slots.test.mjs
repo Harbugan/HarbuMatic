@@ -230,7 +230,7 @@ test('the scheduler dispatches all playable instances and keys UI hits by slot i
   ids.forEach((id, k) => {
     const sl = slotById(p, id), kind = getInstrumentType(sl.type).pattern;
     if (kind === 'drum') patternAt(p, id, 0).steps.kick[k] = { v: 1, p: 1 };
-    else if (kind === 'break') { sl.breaks.a = 'brk-builtin-tight'; patternAt(p, id, 0).lanes.a[k] = { slice: 0, v: .9, p: 1 }; }
+    else if (kind === 'break') { sl.breaks.a = 'brk-builtin-tight'; patternAt(p, id, 0).lanes.a[Math.ceil(k / 2)] = { slice: 0, v: .9, p: 1 }; }
     else setPatternAt(p, id, 0, { len: 16, notes: [{ s: k, p: 60 + k, l: 1, v: .8 }] });
   });
   const { calls, events } = dispatch(p, { steps: 16 });

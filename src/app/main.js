@@ -12,6 +12,7 @@ import { catSVG, catReact, uniReact, setCatsIdle, startIdleLife, CAT } from '../
 import * as Seq from '../ui/sequencer.js';
 import { buildTransport, renderTransport, buildCards, updateCards, syncCardVolume, drawScreen, updateWiggle } from '../views/strip.js';
 import { renderJamBar, updateLeds } from '../views/jam.js';
+import { updateRuffPlayhead } from '../views/ruff-seq.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs, refreshRuffState } from '../views/sound.js';
 import { renderArrange, markPlayingBlock } from '../views/arrange.js';
@@ -63,10 +64,11 @@ function wire() {
   on('selection', () => { Seq.releaseLive(); setAccent(); Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderBottom(); renderLab(); if (store.ui.mode === 'sound') applyLayout(); });
   on('scene', () => { Seq.fitView(); updateCards(); renderJamBar(); Seq.render(); renderScenes(); renderLab(); if (store.ui.mode === 'arrange') renderArrange(); });
   on('pattern', () => { updateCards(); renderJamBar(); Seq.render(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); });
-  on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); renderBottomFx(); } updateWiggle(); });
+  on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); else if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); renderBottomFx(); } updateWiggle(); });
   on('mix', () => { updateCards(); if (store.ui.mode === 'sound' && isBreakSlot()) refreshRuffState(); if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
   on('strip', updateCards);
   on('ruff', () => { updateCards(); if (store.ui.mode === 'sound' && isBreakSlot()) renderSound(); if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
+  on('ruffui', () => { if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
   // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
   // is being dragged or live keys/pads are recording, update in place so gestures and multi-touch holds never break.
   const munchUpdate = () => { if (!munchOpen()) return; if (waveDragging()) refreshMunchSel(); else renderSound(); };
@@ -93,7 +95,7 @@ function wire() {
     renderTransport(); renderScenes(); if (store.ui.mode === 'arrange') renderArrange();
     if (store.ui.mode === 'sound' && isBreakSlot()) refreshRuffState();
     if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar();
-    if (!A.transport.playing) { Seq.releaseLive(); setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); if (munchOpen() && !A.munchPreview.playing) munchStep(-1); }
+    if (!A.transport.playing) { Seq.releaseLive(); setCatsIdle(); Seq.playhead.step = -1; Seq.render(); updateLeds(); updateRuffPlayhead(true); if (munchOpen() && !A.munchPreview.playing) munchStep(-1); }
   });
   on('transformed', ({ intensity, info }) => { uniReact(intensity); if (info) toast(info); if (!A.transport.playing) auditionPattern(); });
   on('evolved', () => { /* UI catches up in the next frame via 'pattern' */ });
@@ -129,7 +131,7 @@ function frame() {
     }
     if (changedScene) { renderScenes(); if (store.ui.mode === 'arrange') renderArrange(); }
     if (store.ui.mode === 'arrange') markPlayingBlock();
-    if (store.ui.mode === 'jam') { Seq.render(); updateLeds(); }
+    if (store.ui.mode === 'jam') { Seq.render(); updateLeds(); updateRuffPlayhead(); }
     updateWiggle();
   }
   if (E.ctx && mp.playing) {
