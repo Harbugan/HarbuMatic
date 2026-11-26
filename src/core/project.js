@@ -30,7 +30,7 @@ import {
 } from './instruments.js';
 import { clamp, clone, uid, isObj, num } from './util.js';
 import { cleanSampleRef, extraKeys, MAX_SLICES } from './samples.js';
-import { breakSlotHasContent } from './breaks.js';
+import { breakSlotHasContent, cleanBreakMetaMap } from './breaks.js';
 
 export const FORMAT = 'harbumatic-project';
 export const SCHEMA_VERSION = 6;
@@ -297,7 +297,7 @@ function cleanBreakSources(b) {
   const out = {};
   BREAK_LANES.forEach(l => {
     const v = src[l];
-    out[l] = typeof v === 'string' && v.trim() ? v.trim().slice(0, 64) : null;
+    out[l] = typeof v === 'string' && v.trim() ? v.trim().slice(0, 80) : null;
   });
   return out;
 }
@@ -396,8 +396,12 @@ function cleanSlots(input, sceneIds) {
     };
     // a sampler keeps its sample reference even when the asset is missing on this device (never dropped silently)
     if (def.capabilities.samples) out.sample = cleanSampleRef(s.sample);
-    // RUFF keeps its A/B/C break source references (PR2+ Break Pool)
-    if (def.capabilities.breaks) out.breaks = cleanBreakSources(s.breaks);
+    // RUFF keeps its A/B/C break source references and imported break metadata (never dropped silently)
+    if (def.capabilities.breaks) {
+      out.breaks = cleanBreakSources(s.breaks);
+      const meta = cleanBreakMetaMap(s.breakMeta, out.breaks);
+      if (Object.keys(meta).length) out.breakMeta = meta;
+    }
     return out;
   });
 }

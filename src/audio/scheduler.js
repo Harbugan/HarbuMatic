@@ -16,7 +16,8 @@
 import { DRUMS } from '../core/constants.js';
 import { BREAK_LANES } from '../core/instruments.js';
 import {
-  laneAudibleLevel, isBreakLaneEdited, breakStepTiming, suggestedSliceForStep, clampBreakSlice,
+  laneAudibleLevel, isBreakLaneEdited, breakBarsOf, breakSourceLoopSteps,
+  suggestedSliceForStep, clampBreakSlice, BREAK_PATTERN_STEPS, BREAK_STEP_SPAN, BREAK_LOOP_STEPS,
 } from '../core/breaks.js';
 import { playableSlots, slotById, typeOfSlot, sceneIdAt } from '../core/project.js';
 import { clamp } from '../core/util.js';
@@ -77,27 +78,38 @@ export function createTransport(engine, getProject, hooks = {}) {
           }
         } else if (def.pattern === 'break') {
           const brks = slot.breaks || {};
+          const bMeta = slot.breakMeta || null;
+          const patLen = Math.max(1, p.len || BREAK_PATTERN_STEPS);
+          const patLoopSteps = BREAK_LOOP_STEPS;
+          const stepSpan = BREAK_STEP_SPAN;
           for (const l of BREAK_LANES) {
             const breakId = brks[l];
             if (!breakId) continue;
             const row = p.lanes && p.lanes[l];
             const edited = isBreakLaneEdited(p, l);
             const laneLvl = laneAudibleLevel(slot.params, l);
-            const timing = breakStepTiming(breakId, p.len);
-            const phaseStep = T.pos.step % timing.loopSteps;
             if (edited) {
-              const subStep = phaseStep % timing.stepSpan;
+              const phaseStep = T.pos.step % patLoopSteps;
+              const subStep = phaseStep % stepSpan;
               if (subStep === 0 || T.pos.fresh) {
-                const stepIdx = Math.floor(phaseStep / timing.stepSpan) % timing.len;
+                const stepIdx = Math.floor(phaseStep / stepSpan) % patLen;
                 const c = row && row[stepIdx];
                 if (c && Math.random() <= c.p) {
-                  const slice = clampBreakSlice(breakId, c.slice != null ? c.slice : suggestedSliceForStep(breakId, stepIdx, timing.len));
-                  const remSteps = timing.stepSpan - subStep;
+                  const slice = clampBreakSlice(breakId, c.slice != null ? c.slice : suggestedSliceForStep(breakId, stepIdx, patLen, bMeta), 0, bMeta);
+                  // Let uneven/longer slices ring across following empty steps up to their natural slice length
+                  let gapSteps = 1;
+                  if (Array.isArray(row)) {
+                    for (let g = 1; g < patLen; g++) {
+                      if (row[(stepIdx + g) % patLen]) break;
+                      gapSteps++;
+                    }
+                  }
+                  const remSteps = Math.max(1, gapSteps * stepSpan - subStep);
                   const hit = {
                     lane: l,
                     breakId,
                     slice,
-                    sliceStartFrac: subStep > 0 ? subStep / timing.stepSpan : 0,
+                    sliceStartFrac: subStep > 0 ? subStep / stepSpan : 0,
                     v: c.v,
                     rev: !!c.rev,
                     dur: remSteps * sd,
@@ -106,17 +118,22 @@ export function createTransport(engine, getProject, hooks = {}) {
                   if (on) engine.trigger(slot.id, t + (subStep === 0 ? (c.o || 0) * sd : 0), hit);
                 }
               }
-            } else if (phaseStep % 4 === 0 || T.pos.fresh) {
-              // Deterministic unedited loop playback: phase-locked beat segments (and immediate resume on fresh)
-              const steps = 4 - (phaseStep % 4);
-              const hit = {
-                lane: l, breakId, loop: true, loopBars: timing.bars,
-                startFrac: phaseStep / timing.loopSteps,
-                endFrac: (phaseStep + steps) / timing.loopSteps,
-                dur: steps * sd, v: 1,
-              };
-              if (laneLvl > 0) hits.push({ lane: l, v: laneLvl });
-              if (on) engine.trigger(slot.id, t, hit);
+            } else {
+              // Deterministic unedited loop playback: full 1-, 2- or 4-bar source loop (16 / 32 / 64 transport steps)
+              const sourceBars = breakBarsOf(breakId, bMeta);
+              const sourceLoopSteps = breakSourceLoopSteps(breakId, bMeta);
+              const phaseStep = T.pos.step % sourceLoopSteps;
+              if (phaseStep % 4 === 0 || T.pos.fresh) {
+                const steps = 4 - (phaseStep % 4);
+                const hit = {
+                  lane: l, breakId, loop: true, loopBars: sourceBars,
+                  startFrac: phaseStep / sourceLoopSteps,
+                  endFrac: (phaseStep + steps) / sourceLoopSteps,
+                  dur: steps * sd, v: 1,
+                };
+                if (laneLvl > 0) hits.push({ lane: l, v: laneLvl });
+                if (on) engine.trigger(slot.id, t, hit);
+              }
             }
           }
         } else {

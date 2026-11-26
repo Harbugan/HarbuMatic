@@ -12,10 +12,9 @@
 import { createRng, hashString } from '../core/rng.js';
 import { BREAK_LANES } from '../core/instruments.js';
 import {
-  BREAK_PATTERN_STEPS, getBuiltinBreak, breakSliceCount, breakSliceInfo,
-  suggestedSliceForStep, clampBreakSlice, isBreakLaneEdited,
-  effectiveBreakRow, isBreakLaneLocked, isBreakCellLocked,
-  isBreakLaneExplicitlySilent,
+  BREAK_PATTERN_STEPS, isBuiltinBreakId, resolveBreakDesc, breakBarsOf, breakSlicesOf,
+  breakSliceCount, breakSliceInfo, suggestedSliceForStep, clampBreakSlice, isBreakLaneEdited,
+  effectiveBreakRow, isBreakLaneLocked, isBreakCellLocked, isBreakLaneExplicitlySilent,
 } from '../core/breaks.js';
 import { clamp, clone } from '../core/util.js';
 
@@ -65,22 +64,71 @@ function positionalFallbackRole(posStep) {
 }
 
 /**
- * Analyze one assigned break source using its metadata (slice roles, slice count, native BPM).
- * Falls back cleanly to rhythmic-position inference when a source lacks rich `sliceMeta`.
+ * Derive honest rhythmic/energy slice role cues for an unknown imported WAV break using ONLY
+ * transient position, bar placement, and low/high/overall energy (never claiming reliable drum class).
  */
-export function analyzeBreakSource(breakId) {
-  const desc = getBuiltinBreak(breakId);
-  const count = breakSliceCount(breakId);
+function inferImportedSliceRole(k, count, pos, bars, feat) {
+  const barFrac = ((pos * bars) % 1 + 1) % 1; // position within a 4/4 bar [0, 1)
+  const near = (target, tol = 0.085) => Math.min(Math.abs(barFrac - target), 1 - Math.abs(barFrac - target)) <= tol;
+  const energy = feat && Number.isFinite(feat.energy) ? feat.energy : 0.5;
+  const transient = feat && Number.isFinite(feat.transient) ? feat.transient : 0.5;
+  const lowE = feat && Number.isFinite(feat.lowEnergy) ? feat.lowEnergy : 0.5;
+  const highE = feat && Number.isFinite(feat.highEnergy) ? feat.highEnergy : 0.5;
+
+  // Late turnaround slice (near end of phrase/loop)
+  if (k === count - 1 || pos >= 0.87) return 'fill';
+  // Downbeat or syncopated anchor with heavier low/overall weight
+  if (near(0, 0.08) || (near(0.625, 0.075) && (lowE >= 0.48 || energy >= 0.55))) return 'kick';
+  // Backbeat positions (beat 2 / beat 4) with solid transient/energy
+  if ((near(0.25, 0.085) || near(0.75, 0.085)) && (transient >= 0.35 || energy >= 0.45)) return 'snare';
+  // Brighter / higher-band offbeat hits
+  if (highE >= 0.58 && energy >= 0.25) return 'hat';
+  // Lower-energy supporting hits
+  if (energy < 0.45) return 'ghost';
+  // Rhythmic fallback by quantized 16-step position
+  const posStep = Math.floor(((pos * bars) % 2) * 8) % BREAK_PATTERN_STEPS;
+  return positionalFallbackRole(posStep);
+}
+
+/**
+ * Analyze one assigned break source using its metadata (slice roles, slice count, native BPM).
+ * Built-in breaks use authored slice roles; imported breaks use factual transient position,
+ * rhythmic placement and energy features without pretending to have drum classification.
+ */
+export function analyzeBreakSource(breakId, breakMeta = null) {
+  const desc = resolveBreakDesc(breakId, breakMeta);
+  const count = breakSliceCount(breakId, breakMeta);
+  const bars = breakBarsOf(breakId, breakMeta);
+  const slices = breakSlicesOf(breakId, breakMeta);
   const bpm = desc && Number.isFinite(desc.bpm) ? desc.bpm : 120;
-  const hasRichMeta = !!(desc && Array.isArray(desc.sliceMeta) && desc.sliceMeta.length > 0);
+  const isBuiltin = isBuiltinBreakId(breakId);
+  const hasRichMeta = !!(isBuiltin && desc && Array.isArray(desc.sliceMeta) && desc.sliceMeta.length > 0);
+  const usesAudioFeatures = !!(!isBuiltin && desc && Array.isArray(desc.sliceMeta) && desc.sliceMeta.length > 0);
 
   const roleOf = [];
   const raw = { kick: [], snare: [], hat: [], ghost: [], perc: [], fill: [] };
+  let energyVariance = 0;
+  let avgTransient = 0.5;
+
+  if (usesAudioFeatures) {
+    const energies = desc.sliceMeta.map(m => (m && Number.isFinite(m.energy) ? m.energy : 0.5));
+    const meanE = energies.reduce((a, b) => a + b, 0) / Math.max(1, energies.length);
+    energyVariance = energies.reduce((a, e) => a + (e - meanE) * (e - meanE), 0) / Math.max(1, energies.length);
+    avgTransient = desc.sliceMeta.reduce((a, m) => a + (m && Number.isFinite(m.transient) ? m.transient : 0.5), 0) / Math.max(1, desc.sliceMeta.length);
+  }
 
   for (let k = 0; k < count; k++) {
-    const posStep = Math.floor((k * BREAK_PATTERN_STEPS) / count);
-    const info = breakSliceInfo(breakId, k);
-    const role = hasRichMeta ? info.role : positionalFallbackRole(posStep);
+    let role;
+    if (hasRichMeta) {
+      const info = breakSliceInfo(breakId, k, breakMeta);
+      role = info.role;
+    } else if (usesAudioFeatures) {
+      const pos = slices[k] ?? (k / count);
+      role = inferImportedSliceRole(k, count, pos, bars, desc.sliceMeta[k]);
+    } else {
+      const posStep = Math.floor((k * BREAK_PATTERN_STEPS) / count);
+      role = positionalFallbackRole(posStep);
+    }
     roleOf.push(role);
     if (raw[role]) raw[role].push(k);
     else raw.perc.push(k);
@@ -95,23 +143,28 @@ export function analyzeBreakSource(breakId) {
   const perc = raw.perc.length ? raw.perc : ghost;
 
   const bpmNorm = clamp((bpm - 95) / 80, 0, 1);
-  // Foundation suitability: balanced kick/snare/hat clarity, moderate anchor tempo, lower fill excess
+  // Foundation suitability: balanced anchor/accent/texture clarity, moderate tempo, lower fill excess
   const anchorScore = (raw.kick.length > 0 ? 1 : 0)
     + (raw.snare.length > 0 ? 1 : 0)
     + raw.hat.length * 0.6
     + (1 - Math.abs(bpm - 118) / 80) * 1.5
     - raw.fill.length * 0.45
-    + (roleOf[0] === 'kick' ? 0.35 : 0);
-  // Chop/energy suitability: rich fills, ghosts, and faster native jungle tempo
-  const chopScore = raw.fill.length * 1.6 + raw.ghost.length * 0.9 + bpmNorm * 2.2;
+    + (roleOf[0] === 'kick' ? 0.35 : 0)
+    + (usesAudioFeatures ? Math.sqrt(energyVariance) * 0.6 : 0);
+  // Chop/energy suitability: rich fills, ghosts, transient sharpness, and faster native tempo
+  const chopScore = raw.fill.length * 1.6 + raw.ghost.length * 0.9 + bpmNorm * 2.2
+    + (usesAudioFeatures ? avgTransient * 0.8 : 0);
   // Texture/support suitability: hats, ghosts, perc, and looser pocket
   const textureScore = raw.hat.length * 1.2 + raw.ghost.length * 1.1 + raw.perc.length * 1.2 + (1 - bpmNorm) * 0.8;
 
   return {
     breakId,
+    breakMeta,
     count,
+    bars,
     bpm,
     hasRichMeta,
+    usesAudioFeatures,
     roleOf,
     slicesByRole: { kick, snare, hat: hat.length ? hat : all, ghost, perc, fill, any: all },
     scores: { anchor: anchorScore, chop: chopScore, texture: textureScore },
@@ -259,8 +312,9 @@ function velForToken(cfg, ch, rng, intensity) {
 
 /** Pick a musically coherent slice index for `(src, role, step)` according to profile and intensity. */
 function pickSlice(src, role, step, len, { cfg, profile, intensity, rng, prevSlice, voices }) {
-  const home = suggestedSliceForStep(src.breakId, step, len);
+  const home = suggestedSliceForStep(src.breakId, step, len, src.breakMeta);
   const pool = src.slicesByRole[role] || src.slicesByRole.any;
+  const mid = Math.max(1, Math.floor(src.count / 2));
 
   // Rolling: lock a consistent primary kick/snare voice for solid two-step propulsion
   if (profile === 'rolling' && (role === 'kick' || role === 'snare') && voices && voices[role] != null) {
@@ -283,15 +337,15 @@ function pickSlice(src, role, step, len, { cfg, profile, intensity, rng, prevSli
   const nativeChance = clamp(cfg.preferNative * (1 - intensity * 0.65), 0.08, 0.92);
   if (src.roleOf[home] === role && rng.chance(nativeChance)) return home;
 
-  // Jungle & wild intensity: encourage cross-bar swaps (pull Bar 2 snare/fill into Bar 1 or vice versa)
+  // Jungle & wild intensity: encourage cross-bar swaps (pull second half into first or vice versa)
   if ((profile === 'jungle' || intensity > 0.65) && pool.length > 1) {
-    const otherBar = pool.filter(k => (step < 8 ? k >= 8 : k < 8));
+    const otherBar = pool.filter(k => (step < 8 ? k >= mid : k < mid));
     if (otherBar.length && rng.chance(0.35 + intensity * 0.45)) return rng.pick(otherBar);
   }
 
   // Subtle / Atmospheric: prefer a matching-role slice close to the current step's bar/beat position
   if (intensity < 0.4 || profile === 'atmospheric') {
-    const sameBar = pool.filter(k => (step < 8 ? k < 8 : k >= 8));
+    const sameBar = pool.filter(k => (step < 8 ? k < mid : k >= mid));
     if (sameBar.length && rng.chance(0.72)) {
       sameBar.sort((a, b) => Math.abs(a - home) - Math.abs(b - home));
       return sameBar[0];
@@ -302,10 +356,11 @@ function pickSlice(src, role, step, len, { cfg, profile, intensity, rng, prevSli
 }
 
 function buildVoiceAnchors(src, rng) {
-  const bar1K = src.slicesByRole.kick.filter(k => k < 8);
-  const bar2K = src.slicesByRole.kick.filter(k => k >= 8);
-  const bar1S = src.slicesByRole.snare.filter(k => k < 8);
-  const bar2S = src.slicesByRole.snare.filter(k => k >= 8);
+  const mid = Math.max(1, Math.floor(src.count / 2));
+  const bar1K = src.slicesByRole.kick.filter(k => k < mid);
+  const bar2K = src.slicesByRole.kick.filter(k => k >= mid);
+  const bar1S = src.slicesByRole.snare.filter(k => k < mid);
+  const bar2S = src.slicesByRole.snare.filter(k => k >= mid);
   return {
     kick: bar1K.length ? bar1K[0] : rng.pick(src.slicesByRole.kick),
     kick2: bar2K.length ? bar2K[0] : rng.pick(src.slicesByRole.kick),
@@ -412,7 +467,7 @@ function generateLaneNew(entry, role, len, { cfg, profile, intensity, rng, locke
       slice = pickSlice(src, r, s, len, { cfg, profile, intensity, rng, prevSlice, voices });
     }
     const v = velForToken(cfg, ch, rng, intensity);
-    row[s] = { slice: clampBreakSlice(src.breakId, slice), v, p: 1 };
+    row[s] = { slice: clampBreakSlice(src.breakId, slice, 0, src.breakMeta), v, p: 1 };
     prevSlice = row[s].slice;
   }
 
@@ -423,7 +478,7 @@ function generateLaneNew(entry, role, len, { cfg, profile, intensity, rng, locke
       if (!row[s] && profile !== 'darkside') {
         const r = DOWNBEATS.has(s) ? 'kick' : 'snare';
         row[s] = {
-          slice: clampBreakSlice(src.breakId, pickSlice(src, r, s, len, { cfg, profile, intensity, rng, prevSlice: null, voices })),
+          slice: clampBreakSlice(src.breakId, pickSlice(src, r, s, len, { cfg, profile, intensity, rng, prevSlice: null, voices }), 0, src.breakMeta),
           v: velForToken(cfg, DOWNBEATS.has(s) ? 'K' : 'S', rng, intensity),
           p: 1,
         };
@@ -448,7 +503,7 @@ function stepTargetRole(s, profile) {
 function evolveLane(entry, role, len, { cfg, profile, intensity, rng, lockedMask, baseAudible }) {
   const { src } = entry;
   const voices = buildVoiceAnchors(src, rng);
-  const row = baseAudible.map(c => (c ? { slice: clampBreakSlice(src.breakId, c.slice), v: c.v, p: c.p ?? 1, ...(c.o ? { o: c.o } : {}), ...(c.rev ? { rev: true } : {}), ...(c.locked ? { locked: true } : {}) } : null));
+  const row = baseAudible.map(c => (c ? { slice: clampBreakSlice(src.breakId, c.slice, 0, src.breakMeta), v: c.v, p: c.p ?? 1, ...(c.o ? { o: c.o } : {}), ...(c.rev ? { rev: true } : {}), ...(c.locked ? { locked: true } : {}) } : null));
 
   const unlockedSteps = [];
   for (let s = 0; s < len; s++) if (!lockedMask[s]) unlockedSteps.push(s);
@@ -532,7 +587,7 @@ function evolveLane(entry, role, len, { cfg, profile, intensity, rng, lockedMask
         if (alts.length) nextSlice = rng.pick(alts);
       }
       const tok = targetRole === 'kick' ? (isDown ? 'K' : 'k') : targetRole === 'snare' ? 'S' : targetRole === 'fill' ? 'F' : targetRole === 'hat' ? 'H' : 'G';
-      row[s] = { slice: clampBreakSlice(src.breakId, nextSlice), v: velForToken(cfg, tok, rng, intensity), p: cur.p ?? 1 };
+      row[s] = { slice: clampBreakSlice(src.breakId, nextSlice, 0, src.breakMeta), v: velForToken(cfg, tok, rng, intensity), p: cur.p ?? 1 };
       prevSlice = row[s].slice;
       mutations++;
     } else {
@@ -549,7 +604,7 @@ function evolveLane(entry, role, len, { cfg, profile, intensity, rng, lockedMask
         const targetRole = stepTargetRole(s, profile);
         const slice = pickSlice(src, targetRole, s, len, { cfg, profile, intensity, rng, prevSlice, voices });
         const tok = targetRole === 'kick' ? 'k' : targetRole === 'snare' ? 's' : targetRole === 'fill' ? 'F' : targetRole === 'hat' ? 'H' : 'G';
-        row[s] = { slice: clampBreakSlice(src.breakId, slice), v: velForToken(cfg, tok, rng, intensity), p: 1 };
+        row[s] = { slice: clampBreakSlice(src.breakId, slice, 0, src.breakMeta), v: velForToken(cfg, tok, rng, intensity), p: 1 };
         prevSlice = slice;
         mutations++;
       }
@@ -596,7 +651,7 @@ function evolveLane(entry, role, len, { cfg, profile, intensity, rng, lockedMask
       const targetRole = stepTargetRole(s, profile);
       const alts = (src.slicesByRole[targetRole] || src.slicesByRole.any).filter(k => k !== cur.slice);
       const nextSlice = alts.length ? rng.pick(alts) : ((cur.slice + 1) % src.count);
-      row[s] = { slice: clampBreakSlice(src.breakId, nextSlice), v: cur.v, p: cur.p ?? 1 };
+      row[s] = { slice: clampBreakSlice(src.breakId, nextSlice, 0, src.breakMeta), v: cur.v, p: cur.p ?? 1 };
     } else {
       const targetRole = stepTargetRole(s, profile);
       const slice = pickSlice(src, targetRole, s, len, { cfg, profile, intensity, rng, prevSlice: null, voices });
@@ -723,6 +778,7 @@ function balanceMultiLane(rows, activeEntries, roles, { len, cfg, profile, inten
 export function chopBreakPattern({
   pattern,
   breaks,
+  breakMeta = null,
   mode = 'new',
   profile = 'jungle',
   intensity = 0.5,
@@ -751,7 +807,7 @@ export function chopBreakPattern({
     const wasEdited = isBreakLaneEdited(pattern, lane);
     const laneLocked = isBreakLaneLocked(pattern, lane);
     const explicitSilent = isBreakLaneExplicitlySilent(pattern, lane);
-    const eff = effectiveBreakRow(pattern, lane, breakId);
+    const eff = effectiveBreakRow(pattern, lane, breakId, breakMeta);
 
     // Strip `virtual` from audible snapshot so materialized locked cells are clean persisted objects
     allAudible[lane] = eff.map((c, s) => {
@@ -773,7 +829,7 @@ export function chopBreakPattern({
     // Eligibility: assigned break, NOT lane-locked, NOT explicitly silenced, and has at least 1 unlocked step
     const hasUnlockedStep = lockedMasks[lane].some(locked => !locked);
     if (breakId && !laneLocked && !explicitSilent && hasUnlockedStep) {
-      activeEntries.push({ lane, breakId, src: analyzeBreakSource(breakId), wasEdited });
+      activeEntries.push({ lane, breakId, src: analyzeBreakSource(breakId, breakMeta), wasEdited });
     }
   }
 
@@ -832,7 +888,7 @@ export function chopBreakPattern({
         return allAudible[lane][s] ? clone(allAudible[lane][s]) : null;
       }
       const cell = workRows[lane][s];
-      return cell ? { slice: clampBreakSlice(entry.breakId, cell.slice), v: roundVel(cell.v ?? 1), p: cell.p ?? 1 } : null;
+      return cell ? { slice: clampBreakSlice(entry.breakId, cell.slice, 0, breakMeta), v: roundVel(cell.v ?? 1), p: cell.p ?? 1 } : null;
     });
   }
 

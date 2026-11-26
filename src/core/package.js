@@ -28,10 +28,11 @@ export const PACKAGE_VERSION = 1;
 export const PACKAGE_EXTENSION = '.hbn';
 export const PACKAGE_MIME = 'application/octet-stream';
 
+const MAX_PACKAGE_SAMPLES = MAX_SLOTS * 3;
 export const PACKAGE_LIMITS = Object.freeze({
   maxArchiveBytes: 128 * 1024 * 1024,
   maxUncompressedBytes: 128 * 1024 * 1024,
-  maxEntries: MAX_SLOTS + 2,
+  maxEntries: MAX_PACKAGE_SAMPLES + 2,
   maxManifestBytes: 256 * 1024,
   maxProjectBytes: 4 * 1024 * 1024,
   maxSampleBytes: SAMPLE_LIMITS.maxBytes,
@@ -126,8 +127,24 @@ function sampleNameMap(project) {
   const names = new Map();
   for (const s of (project && project.slots) || []) {
     if (s.sample && s.sample.id && !names.has(s.sample.id)) names.set(s.sample.id, s.sample.name || s.sample.id);
+    if (isObj(s.breakMeta)) {
+      for (const [id, m] of Object.entries(s.breakMeta)) {
+        if (id && !names.has(id) && isObj(m)) names.set(id, m.name || id);
+      }
+    }
   }
   return names;
+}
+
+function projectBreakMetaById(project) {
+  const out = new Map();
+  for (const s of (project && project.slots) || []) {
+    if (!isObj(s.breakMeta)) continue;
+    for (const [id, m] of Object.entries(s.breakMeta)) {
+      if (id && isObj(m) && !out.has(id)) out.set(id, m);
+    }
+  }
+  return out;
 }
 
 /* ---------------------------------------------------------
@@ -250,8 +267,8 @@ function validateManifest(raw, lim) {
   if (!Array.isArray(raw.samples)) {
     throw new PackageError('invalid-manifest', 'Package manifest has an invalid samples list.');
   }
-  if (raw.samples.length > MAX_SLOTS) {
-    throw new PackageError('invalid-manifest', `Package lists too many samples (${raw.samples.length}; max ${MAX_SLOTS}).`);
+  if (raw.samples.length > MAX_PACKAGE_SAMPLES) {
+    throw new PackageError('invalid-manifest', `Package lists too many samples (${raw.samples.length}; max ${MAX_PACKAGE_SAMPLES}).`);
   }
 
   const samples = [];
@@ -445,6 +462,7 @@ export async function restorePackage(parsed, { sampleStore = null, decode = unde
     throw new PackageError('storage-error', 'Sample storage is unavailable on this device.');
   }
 
+  const breakMetaMap = projectBreakMetaById(project);
   const preStored = new Set();
   const preUnsaved = new Set();
   for (const s of samples) {
@@ -492,6 +510,14 @@ export async function restorePackage(parsed, { sampleStore = null, decode = unde
       const persisted = await sampleStore.has(s.id);
       if (!persisted) {
         throw new PackageError('storage-error', `Could not confirm storage persistence for sample “${s.name}”.`);
+      }
+
+      const bMeta = breakMetaMap.get(s.id);
+      if (bMeta && typeof sampleStore.updateMeta === 'function') {
+        const curMeta = await sampleStore.getMeta(s.id).catch(() => null);
+        if (!curMeta || !curMeta.ruff) {
+          await sampleStore.updateMeta(s.id, { ruff: clone(bMeta) });
+        }
       }
 
       if (res.duplicate || preStored.has(s.id)) reused.push(s.id);

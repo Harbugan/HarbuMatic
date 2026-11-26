@@ -214,6 +214,29 @@ export function createSampleStore({ backend = indexedDbBackend(), decode, limits
       return { kept: saved.length, lost: ids.filter(id => !rescued.has(id)).length, saved, failed, error };
     },
     async getMeta(id) { if (pending.has(id)) return pending.get(id).meta; try { return await backend.get('meta', id); } catch (e) { throw wrap(e, 'read'); } },
+    /**
+     * Update non-audio metadata fields (e.g. RUFF break analysis/slices) on an existing sample without touching
+     * original bytes or its content-addressed ID. Returns { meta, stored, error }.
+     */
+    async updateMeta(id, patch) {
+      if (!id || !patch || typeof patch !== 'object') return { meta: null, stored: false, error: null };
+      if (pending.has(id)) {
+        const cur = pending.get(id);
+        const next = { ...cur.meta, ...patch, id: cur.meta.id };
+        pending.set(id, { ...cur, meta: next });
+        return { meta: next, stored: false, error: null };
+      }
+      let cur;
+      try { cur = await backend.get('meta', id); } catch (e) { return { meta: null, stored: false, error: wrap(e, 'read') }; }
+      if (!cur) return { meta: null, stored: false, error: new SampleError('missing', 'This sample is not stored on this device.') };
+      const next = { ...cur, ...patch, id: cur.id };
+      try {
+        await backend.put([['meta', next]]);
+        return { meta: next, stored: true, error: null };
+      } catch (e) {
+        return { meta: next, stored: false, error: wrap(e, 'write') };
+      }
+    },
     /** original bytes (a fresh copy) or throws SampleError('missing' | 'corrupt' | 'storage') */
     async getBytes(id) {
       if (pending.has(id)) return pending.get(id).bytes.slice(0);

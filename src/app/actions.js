@@ -22,10 +22,13 @@ import {
 } from '../core/samples.js';
 import {
   getBuiltinBreak, breakRefsOf, breakFitPlayback, laneVolKey, laneMuteKey, isBuiltinBreakId,
+  isImportedBreakId, resolveBreakDesc, cleanImportedBreakMeta, cleanBreakMetaMap, bpmForBars,
+  breakBarsOf, breakSlicesOf, breakPosBeatLabel, remapBreakSlotSlices, IMPORTED_BREAK_BARS, BREAK_BPM_RANGE,
   hasAssignedBreak, isBreakLaneEdited, originalGrooveRow, effectiveBreakRow, suggestedSliceForStep,
   clampBreakSlice, BREAK_PATTERN_STEPS, breakCellLockKey, isBreakLaneLocked,
   isBreakCellDirectlyLocked, isBreakCellLocked,
 } from '../core/breaks.js';
+import { isWavBytes, analyzeBreakBuffer, extractSliceFeatures } from '../samples/break-analysis.js';
 import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
 import {
   chopBreakPattern, RUFF_CHOP_MODES, RUFF_CHOP_PROFILES, RUFF_PROFILE_META,
@@ -161,6 +164,15 @@ function restoreSnapshot(json) {
   if (munchPreview.playing) {
     const s = munchPreview.slotId ? slot(munchPreview.slotId) : null;
     if (!s || !s.sample || store.project.scene !== munchPreview.scene) stopMunchPreview();
+  }
+  if (store.project && Array.isArray(store.project.slots)) {
+    for (const s of store.project.slots) {
+      if (s.breakMeta) {
+        for (const [id, m] of Object.entries(s.breakMeta)) {
+          if (isImportedBreakId(id) && m) localBreakPool.set(id, clone(m));
+        }
+      }
+    }
   }
   engine.applyAll(); syncSamples(); prepareStretch();
   save(); emit('project');
@@ -308,7 +320,10 @@ export async function importFile(file, { sampleStore = samples.store, decode, li
         await restored.cleanup();
         throw new PackageError('storage-error', 'Could not save the imported song to this browser’s storage.');
       }
-      if (parsed.samples.length > 0) askPersist();
+      if (parsed.samples.length > 0) {
+        askPersist();
+        refreshLocalBreakPool({ sampleStore });
+      }
       const n = parsed.samples.length;
       adopt(p, n ? `Imported “${p.name}” with ${n} sample${n === 1 ? '' : 's'}` : `Imported “${p.name}”`, { saved: true });
       return p;
@@ -769,7 +784,7 @@ export function clearPattern() {
       const breakId = (sl && sl.breaks && sl.breaks[id]) || null;
       const wasEdited = isBreakLaneEdited(p, id);
       if (!breakId && !wasEdited) return;
-      const eff = effectiveBreakRow(p, id, breakId);
+      const eff = effectiveBreakRow(p, id, breakId, sl && sl.breakMeta);
       p.edited[id] = true;
       p.lanes[id] = Array.from({ length: p.len }, (_, i) => {
         if (!isBreakCellLocked(p, id, i)) return null;
@@ -968,7 +983,7 @@ export function playingSampleIds() {
   for (const id of breakRefsOf({ slots })) if (!out.includes(id)) out.push(id);
   return out;
 }
-/** pin + load the current song's samples and assigned built-in breaks; warn once per missing asset */
+/** pin + load the current song's samples and assigned built-in/imported breaks; warn once per missing asset */
 export function syncSamples() {
   const ids = playingSampleIds();
   if (!ids.length && !samples.pinnedIds().length) return Promise.resolve();
@@ -990,8 +1005,11 @@ export function syncSamples() {
           const st = samples.state(bid);
           if ((st.status === 'missing' || st.status === 'error') && !warnedMissing.has(bid)) {
             warnedMissing.add(bid);
-            const desc = getBuiltinBreak(bid);
-            emit('toast', `RUFF break “${desc ? desc.name : bid}” could not be loaded (${st.error || 'missing'}).`);
+            const desc = resolveBreakDesc(bid, s.breakMeta);
+            const label = desc ? desc.name : bid;
+            emit('toast', st.status === 'missing' && isImportedBreakId(bid)
+              ? `RUFF break “${label}” is missing on this device. Its reference and slices are kept: re-import the same WAV to restore it.`
+              : `RUFF break “${label}” could not be loaded (${st.error || 'missing'}).`);
           }
         }
       }
@@ -1016,10 +1034,11 @@ export function prepareStretch() {
         const id = s.breaks[l];
         if (!id) continue;
         const buf = samples.buffer(id);
-        const desc = getBuiltinBreak(id);
+        const desc = resolveBreakDesc(id, s.breakMeta);
         const dur = buf ? buf.duration : (desc ? desc.duration : 0);
         const bars = desc ? desc.bars : 2;
-        const fp = breakFitPlayback(s.params, dur, bars, store.project.bpm);
+        const sourceBpm = (desc && isImportedBreakId(id) && desc.bpm > 0) ? desc.bpm : null;
+        const fp = breakFitPlayback(s.params, dur, bars, store.project.bpm, sourceBpm);
         if (fp.stretch !== 1) samples.requestStretch(id, fp.stretch, desc ? desc.slices : undefined, false);
       }
     }
@@ -1344,8 +1363,112 @@ export function magicUndo() {
   return true;
 }
 
-/* ---------- RUFF Break Pool (v0.7 PR2) ---------- */
+/* ---------- RUFF Break Pool & Imported WAV Breaks (v0.7 PR2, PR35) ---------- */
 let ruffAudReq = 0;
+const localBreakPool = new Map(); // id → clean ImportedBreakMeta (cached from samples.store meta.ruff)
+let localPoolLoaded = false;
+
+/** Clean a filename into a compact break display label (strip .wav extension). */
+function cleanBreakDisplayName(name) {
+  const raw = String(name || '').trim().replace(/\.wav$/i, '').trim();
+  return (raw || 'Imported Break').slice(0, 64);
+}
+
+/** Resolve metadata for any break ID (built-in, current slot's breakMeta, or local Break Pool). */
+export function getBreakDesc(breakId, slotId = store.ui.sel) {
+  if (!breakId) return null;
+  const s = slot(slotId);
+  return resolveBreakDesc(breakId, s && s.breakMeta) || localBreakPool.get(breakId) || null;
+}
+
+/**
+ * Load locally persisted imported RUFF breaks from the existing sampleStore (meta.ruff).
+ * Safe in Node tests and offline Safari/iPad; never opens a parallel storage database.
+ */
+export async function refreshLocalBreakPool({ sampleStore = samples.store } = {}) {
+  try {
+    const items = await sampleStore.list();
+    for (const rec of items) {
+      if (!rec || !rec.id || !rec.ruff) continue;
+      const clean = cleanImportedBreakMeta({ ...rec.ruff, id: rec.id, name: rec.ruff.name || cleanBreakDisplayName(rec.name) });
+      if (clean) localBreakPool.set(clean.id, clean);
+    }
+    localPoolLoaded = true;
+    emit('ruff');
+  } catch (e) {
+    /* storage unavailable or not ready — keep whatever is in memory */
+  }
+  return [...localBreakPool.values()];
+}
+
+/** Ensure the local Break Pool has been read from sampleStore at least once (fire-and-forget safe for UI render). */
+export function ensureLocalBreakPool() {
+  if (!localPoolLoaded) {
+    localPoolLoaded = true;
+    refreshLocalBreakPool();
+  }
+}
+
+/**
+ * All imported WAV breaks available in the RUFF Break Pool for `slotId`:
+ * merges the project's assigned `slot.breakMeta` (including missing-on-device references, never silently dropped)
+ * with locally stored breaks from `samples.store`.
+ */
+export function listImportedBreaks(slotId = store.ui.sel) {
+  const s = slot(slotId);
+  const byId = new Map();
+  if (s && s.breakMeta) {
+    for (const [id, m] of Object.entries(s.breakMeta)) {
+      if (isImportedBreakId(id) && m) byId.set(id, m);
+    }
+  }
+  if (s && s.breaks) {
+    for (const l of BREAK_LANES) {
+      const id = s.breaks[l];
+      if (isImportedBreakId(id) && !byId.has(id)) {
+        const cached = localBreakPool.get(id);
+        byId.set(id, cached || cleanImportedBreakMeta({ id, name: 'Imported Break', duration: 0, bars: 2, bpm: 120 }));
+      }
+    }
+  }
+  for (const [id, m] of localBreakPool) {
+    if (!byId.has(id)) byId.set(id, m);
+  }
+  return [...byId.values()].map(meta => {
+    const st = samples.state(meta.id);
+    return {
+      ...meta,
+      status: st.status,
+      error: st.error,
+      unsaved: !!(samples.store.isUnsaved && samples.store.isUnsaved(meta.id)),
+      assignedLanes: s && s.breaks ? BREAK_LANES.filter(l => s.breaks[l] === meta.id) : [],
+    };
+  });
+}
+
+/** Imported break IDs used by `slotId` (or in local pool) that are only in memory (failed durable storage). */
+export function unsavedBreakIds(slotId = store.ui.sel) {
+  const ids = new Set();
+  const s = slot(slotId);
+  if (s && s.breaks) {
+    for (const l of BREAK_LANES) {
+      const id = s.breaks[l];
+      if (isImportedBreakId(id) && samples.store.isUnsaved(id)) ids.add(id);
+    }
+  }
+  for (const id of localBreakPool.keys()) {
+    if (samples.store.isUnsaved(id)) ids.add(id);
+  }
+  return [...ids];
+}
+
+/** Keep `slot.breakMeta` clean: store entries for assigned imported breaks and omit when empty. */
+function syncSlotBreakMeta(s) {
+  if (!s || !s.breaks) return;
+  const cleaned = cleanBreakMetaMap(s.breakMeta, s.breaks);
+  if (Object.keys(cleaned).length) s.breakMeta = cleaned;
+  else delete s.breakMeta;
+}
 
 /** Stop any active RUFF break audition cleanly without affecting transport playback. */
 export function stopBreakAudition(slotId = null) {
@@ -1359,12 +1482,158 @@ export function stopBreakAudition(slotId = null) {
   }
 }
 
-/** Assign (or clear with null) a break source on RUFF lane 'a' | 'b' | 'c'. Preserves existing patterns untouched. */
-export function assignBreak(lane, breakId, slotId = store.ui.sel) {
+/**
+ * Import a user WAV drum break into RUFF:
+ * - Validates WAV container + safe size/duration limits via the existing sample store & bank (zero parallel storage).
+ * - Deduplicates repeated imports by SHA-256 while preserving original bytes untouched.
+ * - Runs deterministic local analysis (BPM, 1/2/4 bars, ambiguity, transients, objective slice features).
+ * - Makes the break available in the local Break Pool and assigns it to `lane` (or first empty lane A/B/C)
+ *   without overwriting other lanes.
+ * - Clearly discloses durable storage failures and never claims offline persistence when storage fails.
+ */
+export async function importBreakFile(file, {
+  lane = null,
+  slotId = store.ui.sel,
+  bank = samples,
+  autoAssign = true,
+} = {}) {
+  const s = slot(slotId);
+  if (!s || !isBreakSlot(slotId)) return { ok: false, error: new SampleError('unsupported', 'Select RUFF first to import a drum break.') };
+  if (!file) return { ok: false, error: new SampleError('empty', 'No file selected.') };
+  if (canSound() && bank === samples) engine.init();
+
+  let bytes;
+  try {
+    bytes = file instanceof ArrayBuffer ? file.slice(0) : ArrayBuffer.isView(file)
+      ? file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength)
+      : await file.arrayBuffer();
+  } catch (e) {
+    const err = new SampleError('corrupt', `That file could not be read. [${(e && e.name) || 'Error'}]`, e);
+    emit('toast', err.message);
+    return { ok: false, error: err };
+  }
+
+  if (!bytes || !bytes.byteLength) {
+    const err = new SampleError('empty', 'That WAV file is empty.');
+    emit('toast', err.message);
+    return { ok: false, error: err };
+  }
+  if (!isWavBytes(bytes)) {
+    const err = new SampleError('unsupported', `“${file.name || 'File'}” is not a valid WAV (.wav) file. RUFF break import supports uncompressed WAV loops.`);
+    emit('toast', err.message);
+    return { ok: false, error: err };
+  }
+
+  try {
+    const res = await bank.importBytes({
+      bytes,
+      name: file.name || 'Break.wav',
+      type: file.type || 'audio/wav',
+    });
+    const { meta, buffer, duplicate, stored, error } = res;
+    const displayName = cleanBreakDisplayName(meta.name || file.name);
+
+    // Reuse previously saved RUFF metadata on duplicate re-import so prior edits survive; otherwise analyze locally
+    let breakMeta = null;
+    if (meta.ruff) {
+      breakMeta = cleanImportedBreakMeta({
+        ...meta.ruff,
+        id: meta.id,
+        name: meta.ruff.name || displayName,
+        duration: buffer.duration,
+        sampleRate: buffer.sampleRate,
+        channels: buffer.numberOfChannels,
+      });
+    }
+    if (!breakMeta) {
+      const analyzed = analyzeBreakBuffer(buffer);
+      breakMeta = cleanImportedBreakMeta({
+        id: meta.id,
+        name: displayName,
+        duration: buffer.duration,
+        sampleRate: buffer.sampleRate,
+        channels: buffer.numberOfChannels,
+        bpm: analyzed.bpm,
+        bars: analyzed.bars,
+        slices: analyzed.slices,
+        sliceMeta: analyzed.sliceMeta,
+        analysis: analyzed.analysis,
+      });
+    }
+
+    // Persist RUFF metadata into the existing sample store meta record (never modifies original bytes)
+    let metaStored = stored;
+    let metaError = error;
+    if (bank.store && typeof bank.store.updateMeta === 'function') {
+      const upd = await bank.store.updateMeta(meta.id, { ruff: clone(breakMeta) });
+      if (stored && !upd.stored && upd.error) {
+        metaStored = false;
+        metaError = upd.error;
+      }
+    }
+
+    localBreakPool.set(breakMeta.id, clone(breakMeta));
+    warnedMissing.delete(breakMeta.id);
+
+    // Decide lane assignment without overwriting other lanes
+    let targetLane = null;
+    if (lane && BREAK_LANES.includes(lane)) {
+      targetLane = lane;
+    } else if (autoAssign) {
+      const curBreaks = s.breaks || { a: null, b: null, c: null };
+      const alreadyOn = BREAK_LANES.find(l => curBreaks[l] === breakMeta.id);
+      if (alreadyOn) targetLane = alreadyOn;
+      else targetLane = BREAK_LANES.find(l => !curBreaks[l]) || null;
+    }
+
+    let assignedLane = null;
+    if (targetLane) {
+      const alreadySame = s.breaks && s.breaks[targetLane] === breakMeta.id;
+      if (!alreadySame) {
+        assignBreak(targetLane, breakMeta.id, slotId, { meta: breakMeta });
+      } else {
+        if (!s.breakMeta) s.breakMeta = {};
+        s.breakMeta[breakMeta.id] = clone(breakMeta);
+        save();
+        if (canSound() && engine.ctx) engine.applyParams(slotId);
+        prepareStretch();
+      }
+      assignedLane = targetLane;
+    }
+
+    // Focus Break Editor on the imported break immediately
+    store.ui.ruff.editBreakId = breakMeta.id;
+    store.ui.ruff.editSlice = 0;
+    store.ui.ruff.editMarker = 0;
+    store.ui.ruff.editCursor = 0;
+
+    if (!stored || !metaStored) {
+      console.warn('[HarbuMatic] RUFF break storage failure', bank.store && bank.store.lastError && bank.store.lastError());
+      emit('toast', `Imported “${breakMeta.name}” (${breakMeta.bpm} BPM, ${breakMeta.bars}B), but it could NOT be saved offline on this device. ${metaError ? metaError.message : ''}`);
+    } else {
+      askPersist();
+      const where = assignedLane ? ` → Break ${assignedLane.toUpperCase()}` : ' · ready in Break Pool';
+      const dupTag = duplicate ? ' (reused stored WAV)' : '';
+      emit('toast', `Imported “${breakMeta.name}” · ${breakMeta.bpm} BPM · ${breakMeta.bars}B${where}${dupTag}`);
+    }
+
+    emit('samples');
+    emit('ruff');
+    return { ok: true, id: breakMeta.id, meta: breakMeta, duplicate, stored: stored && metaStored, error: metaError, assignedLane };
+  } catch (e) {
+    const msg = sampleErrorText(e);
+    emit('toast', msg);
+    emit('ruff');
+    return { ok: false, error: e };
+  }
+}
+
+/** Assign (or clear with null) a break source on RUFF lane 'a' | 'b' | 'c'. Preserves existing patterns and other lanes untouched. */
+export function assignBreak(lane, breakId, slotId = store.ui.sel, { meta = null } = {}) {
   if (!BREAK_LANES.includes(lane)) return false;
   const s = slot(slotId);
   if (!s || !isBreakSlot(slotId)) return false;
-  const next = typeof breakId === 'string' && breakId.trim() ? breakId.trim().slice(0, 64) : null;
+  const next = typeof breakId === 'string' && breakId.trim() ? breakId.trim().slice(0, 80) : null;
   if (next && isBuiltinBreakId(next) && !getBuiltinBreak(next)) return false;
   if (!s.breaks) s.breaks = { a: null, b: null, c: null };
   if (s.breaks[lane] === next) return false;
@@ -1372,6 +1641,16 @@ export function assignBreak(lane, breakId, slotId = store.ui.sel) {
   if (curAud && curAud.slotId === slotId && curAud.lane === lane) stopBreakAudition(slotId);
   checkpoint();
   s.breaks[lane] = next;
+  if (next && isImportedBreakId(next)) {
+    const resolved = meta || (s.breakMeta && s.breakMeta[next]) || localBreakPool.get(next) || null;
+    if (resolved) {
+      if (!s.breakMeta) s.breakMeta = {};
+      s.breakMeta[next] = cleanImportedBreakMeta({ ...resolved, id: next });
+      localBreakPool.set(next, clone(s.breakMeta[next]));
+    }
+    store.ui.ruff.editBreakId = next;
+  }
+  syncSlotBreakMeta(s);
   if (next) warnedMissing.delete(next);
   save();
   if (canSound() && engine.ctx) engine.applyParams(slotId);
@@ -1415,9 +1694,12 @@ export function auditionBreak(lane, slotId = store.ui.sel) {
   engine.applyParams(slotId);
   const fire = () => {
     if (req !== ruffAudReq) return;
+    const desc = getBreakDesc(breakId, slotId);
+    const bMeta = desc && isImportedBreakId(breakId) ? { [breakId]: desc } : null;
     const handle = hear(() => engine.audition(slotId, null, .95, {
       lane,
       breakId,
+      breakMeta: bMeta,
       onEnded: () => {
         if (req !== ruffAudReq) return;
         if (store.ui.ruff.audition && store.ui.ruff.audition.slotId === slotId && store.ui.ruff.audition.lane === lane) {
@@ -1449,24 +1731,336 @@ export function auditionBreak(lane, slotId = store.ui.sel) {
   return true;
 }
 
+/** Audition an imported break (whole loop or single slice) directly from the Break Editor, even before lane assignment. */
+export function auditionImportedBreak(breakId, { slice = null, slotId = store.ui.sel } = {}) {
+  const s = slot(slotId);
+  if (!s || !isBreakSlot(slotId) || !isImportedBreakId(breakId)) return false;
+  const desc = getBreakDesc(breakId, slotId);
+  if (!desc) return false;
+  const cur = store.ui.ruff && store.ui.ruff.audition;
+  if (slice == null && cur && cur.slotId === slotId && cur.breakId === breakId && cur.lane === 'edit') {
+    stopBreakAudition(slotId);
+    return false;
+  }
+  stopBreakAudition();
+  const req = ++ruffAudReq;
+  const bMeta = { [breakId]: desc };
+  const clampedSlice = slice != null ? clampBreakSlice(breakId, slice, 0, bMeta) : null;
+  if (clampedSlice == null) {
+    store.ui.ruff.audition = { slotId, lane: 'edit', breakId };
+    emit('ruff');
+  }
+  if (!canSound()) return true;
+
+  engine.init();
+  engine.applyParams(slotId);
+  const fire = () => {
+    if (req !== ruffAudReq) return;
+    const handle = hear(() => engine.audition(slotId, null, .95, {
+      lane: 'a',
+      breakId,
+      breakMeta: bMeta,
+      ...(clampedSlice != null ? { slice: clampedSlice } : {}),
+      onEnded: () => {
+        if (req !== ruffAudReq) return;
+        if (store.ui.ruff.audition && store.ui.ruff.audition.slotId === slotId && store.ui.ruff.audition.breakId === breakId) {
+          store.ui.ruff.audition = null;
+          emit('ruff');
+        }
+      },
+    }));
+    if (!handle && req === ruffAudReq && clampedSlice == null) {
+      store.ui.ruff.audition = null;
+      emit('ruff');
+    }
+  };
+  if (samples.buffer(breakId)) {
+    fire();
+  } else {
+    samples.load(breakId).then(buf => {
+      if (req !== ruffAudReq) return;
+      if (!buf) {
+        if (clampedSlice == null) { store.ui.ruff.audition = null; emit('ruff'); }
+        return;
+      }
+      fire();
+    });
+  }
+  return true;
+}
+
+/* ---------- RUFF Break Editor non-destructive editing (v0.7 PR35) ---------- */
+
+/** Select an imported break to inspect/edit in the RUFF Break Editor (UI-only). */
+export function selectRuffEditBreak(breakId) {
+  const next = breakId && isImportedBreakId(breakId) ? breakId : null;
+  if (store.ui.ruff.editBreakId === next) return;
+  store.ui.ruff.editBreakId = next;
+  store.ui.ruff.editSlice = 0;
+  store.ui.ruff.editMarker = 0;
+  store.ui.ruff.editCursor = 0;
+  if (next && samples.state(next).status === 'idle') samples.load(next);
+  emit('ruff');
+}
+
+export function selectRuffEditSlice(k, breakId = store.ui.ruff.editBreakId, slotId = store.ui.sel) {
+  const desc = getBreakDesc(breakId, slotId);
+  if (!desc) return;
+  const n = Math.max(1, sliceCount(desc.slices));
+  const idx = clamp(Math.trunc(Number(k) || 0), 0, n - 1);
+  store.ui.ruff.editSlice = idx;
+  store.ui.ruff.editMarker = idx;
+  emit('ruffedit');
+}
+
+export function selectRuffEditMarker(i, breakId = store.ui.ruff.editBreakId, slotId = store.ui.sel) {
+  const desc = getBreakDesc(breakId, slotId);
+  if (!desc) return;
+  const idx = clamp(Math.trunc(Number(i) || 0), 0, desc.slices.length - 1);
+  store.ui.ruff.editMarker = idx;
+  const n = Math.max(1, sliceCount(desc.slices));
+  if (idx < n) store.ui.ruff.editSlice = idx;
+  emit('ruffedit');
+}
+
+export function setRuffEditCursor(pos, breakId = store.ui.ruff.editBreakId, slotId = store.ui.sel) {
+  const c = clamp(Number(pos) || 0, 0, 1);
+  store.ui.ruff.editCursor = c;
+  const desc = getBreakDesc(breakId, slotId);
+  if (desc && Array.isArray(desc.slices)) {
+    const k = sliceAt(desc.slices, c);
+    store.ui.ruff.editSlice = k;
+    store.ui.ruff.editMarker = k;
+  }
+  emit('ruffedit');
+}
+
+/** Commit an updated `ImportedBreakMeta` non-destructively to project (if assigned, Undoable) + local Break Pool. */
+function commitImportedBreakMeta(breakId, nextMeta, { slotId = store.ui.sel, coalesce = null, structural = false, oldSlices = null, quiet = false } = {}) {
+  const clean = cleanImportedBreakMeta({ ...nextMeta, id: breakId });
+  if (!clean) return null;
+  const s = slot(slotId);
+  const assigned = !!(s && s.breaks && BREAK_LANES.some(l => s.breaks[l] === breakId));
+
+  if (assigned) {
+    checkpoint(coalesce);
+    if (!s.breakMeta) s.breakMeta = {};
+    s.breakMeta[breakId] = clean;
+    if (structural && Array.isArray(oldSlices)) {
+      remapBreakSlotSlices(store.project, slotId, breakId, oldSlices, clean.slices);
+    }
+    save();
+    if (canSound() && engine.ctx) engine.applyParams(slotId);
+    prepareStretch();
+  }
+
+  localBreakPool.set(breakId, clone(clean));
+  if (samples.store && typeof samples.store.updateMeta === 'function') {
+    samples.store.updateMeta(breakId, { ruff: clone(clean) }).catch(() => {});
+  }
+
+  if (quiet) emit('ruffedit');
+  else {
+    emit('ruff');
+    if (assigned) emit('pattern');
+  }
+  return clean;
+}
+
+/** Update an imported break's interpreted BPM non-destructively (updates timing & Stretch/Tape without modifying audio). */
+export function setImportedBreakBpm(breakId, bpm, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId)) return null;
+  const nextBpm = clamp(Math.round((Number(bpm) || cur.bpm) * 10) / 10, BREAK_BPM_RANGE[0], BREAK_BPM_RANGE[1]);
+  if (Math.abs(nextBpm - cur.bpm) < 0.05) return cur;
+  const next = { ...clone(cur), bpm: nextBpm };
+  if (next.analysis) next.analysis = { ...next.analysis, note: `BPM set to ${nextBpm} · ${next.bars}B` };
+  return commitImportedBreakMeta(breakId, next, { slotId, coalesce: `ruffbpm:${breakId}` });
+}
+
+/** Apply half-time (0.5) or double-time (2) correction cleanly to an imported break's BPM & bar count. */
+export function scaleImportedBreakTempo(breakId, factor, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId)) return null;
+  const f = factor >= 1.5 ? 2 : 0.5;
+  const candBars = Math.round(cur.bars * f);
+  const nextBars = IMPORTED_BREAK_BARS.includes(candBars) ? candBars : cur.bars;
+  const nextBpm = nextBars !== cur.bars && cur.duration > 0
+    ? bpmForBars(cur.duration, nextBars)
+    : clamp(Math.round(cur.bpm * f * 10) / 10, BREAK_BPM_RANGE[0], BREAK_BPM_RANGE[1]);
+  const buf = samples.buffer(breakId);
+  const sliceMeta = buf
+    ? extractSliceFeatures(buf, cur.slices, nextBars)
+    : cur.sliceMeta.map((m, k) => ({ ...m, beatPos: breakPosBeatLabel(cur.slices[k] ?? 0, nextBars) }));
+  const next = { ...clone(cur), bars: nextBars, bpm: nextBpm, sliceMeta };
+  if (next.analysis) next.analysis = { ...next.analysis, ambiguity: null, note: `${f === 2 ? '2×' : '½×'} → ${nextBpm} BPM · ${nextBars}B` };
+  const res = commitImportedBreakMeta(breakId, next, { slotId });
+  if (res) emit('toast', `${res.name}: ${res.bpm} BPM · ${res.bars} ${res.bars === 1 ? 'bar' : 'bars'}`);
+  return res;
+}
+
+/** Update an imported break's musical bar length (1, 2 or 4 bars) and recalculate its matching BPM non-destructively. */
+export function setImportedBreakBars(breakId, bars, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId) || !IMPORTED_BREAK_BARS.includes(bars)) return null;
+  if (cur.bars === bars) return cur;
+  const nextBpm = cur.duration > 0 ? bpmForBars(cur.duration, bars) : cur.bpm;
+  const buf = samples.buffer(breakId);
+  const sliceMeta = buf
+    ? extractSliceFeatures(buf, cur.slices, bars)
+    : cur.sliceMeta.map((m, k) => ({ ...m, beatPos: breakPosBeatLabel(cur.slices[k] ?? 0, bars) }));
+  const next = { ...clone(cur), bars, bpm: nextBpm, sliceMeta };
+  if (next.analysis) next.analysis = { ...next.analysis, ambiguity: null, note: `Set to ${bars} ${bars === 1 ? 'bar' : 'bars'} · ${nextBpm} BPM` };
+  const res = commitImportedBreakMeta(breakId, next, { slotId });
+  if (res) emit('toast', `${res.name}: ${bars} ${bars === 1 ? 'bar' : 'bars'} (${res.bpm} BPM)`);
+  return res;
+}
+
+/** Move one slice boundary of an imported break (continuous drag coalesced into one Undo step). */
+export function moveImportedBreakSlice(breakId, markerIndex, pos, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId)) return null;
+  const nextSlices = moveSliceBoundary(cur.slices, markerIndex, pos);
+  const buf = samples.buffer(breakId);
+  const sliceMeta = buf
+    ? extractSliceFeatures(buf, nextSlices, cur.bars)
+    : cur.sliceMeta.map((m, k) => ({ ...m, pos: nextSlices[k] ?? m.pos, beatPos: breakPosBeatLabel(nextSlices[k] ?? 0, cur.bars) }));
+  return commitImportedBreakMeta(breakId, { ...clone(cur), slices: nextSlices, sliceMeta }, {
+    slotId,
+    coalesce: `ruffslice:${breakId}:${markerIndex}`,
+    quiet: true,
+  });
+}
+
+/** Nudge one slice boundary by ~10 ms (touch-friendly fine adjustment, Undoable). */
+export function nudgeImportedBreakSlice(breakId, dir, markerIndex = store.ui.ruff.editMarker, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId) || markerIndex == null) {
+    emit('toast', 'Tap a slice marker first');
+    return null;
+  }
+  const step = Math.max(MIN_SLICE, cur.duration > 0 ? 0.01 / cur.duration : 0.005);
+  const res = moveImportedBreakSlice(breakId, markerIndex, cur.slices[markerIndex] + (dir < 0 ? -step : step), slotId);
+  sealHistory();
+  return res;
+}
+
+/** Insert a new slice boundary at `pos` (or split the selected slice if `pos` is omitted). Remaps edited RUFF patterns. */
+export function addImportedBreakSlice(breakId, pos = null, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId)) return null;
+  const r = pos != null ? insertSliceBoundary(cur.slices, pos) : splitSlice(cur.slices, store.ui.ruff.editSlice || 0);
+  if (r.error) {
+    const msgs = {
+      max: `RUFF supports up to ${MAX_SLICES} slices per break`,
+      close: 'Too close to another marker — move the cursor slightly',
+      range: 'Tap inside the waveform first',
+      none: 'Select a slice first',
+    };
+    emit('toast', msgs[r.error] || 'Could not add slice marker');
+    return null;
+  }
+  const buf = samples.buffer(breakId);
+  const sliceMeta = extractSliceFeatures(buf, r.slices, cur.bars);
+  const res = commitImportedBreakMeta(breakId, { ...clone(cur), slices: r.slices, sliceMeta }, {
+    slotId,
+    structural: true,
+    oldSlices: cur.slices,
+  });
+  if (res) {
+    const n = sliceCount(res.slices);
+    store.ui.ruff.editMarker = r.at;
+    store.ui.ruff.editSlice = clamp(r.at, 0, n - 1);
+    emit('ruffedit');
+  }
+  return res;
+}
+
+/** Remove an inner slice boundary, merging its adjacent slices. Remaps edited RUFF patterns. */
+export function removeImportedBreakSlice(breakId, markerIndex = store.ui.ruff.editMarker, slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId) || markerIndex == null) {
+    emit('toast', 'Tap an inner slice marker first');
+    return null;
+  }
+  const r = removeSliceBoundary(cur.slices, markerIndex);
+  if (r.error) {
+    emit('toast', r.error === 'edge' ? 'Outer start/end markers frame the break and cannot be deleted' : 'Could not delete marker');
+    return null;
+  }
+  const buf = samples.buffer(breakId);
+  const sliceMeta = extractSliceFeatures(buf, r.slices, cur.bars);
+  const res = commitImportedBreakMeta(breakId, { ...clone(cur), slices: r.slices, sliceMeta }, {
+    slotId,
+    structural: true,
+    oldSlices: cur.slices,
+  });
+  if (res) {
+    const idx = Math.max(0, markerIndex - 1);
+    store.ui.ruff.editMarker = idx;
+    store.ui.ruff.editSlice = clamp(idx, 0, Math.max(0, sliceCount(res.slices) - 1));
+    emit('ruffedit');
+  }
+  return res;
+}
+
+/** Reset an imported break's slices to either 'auto' (re-detect transients) or 'even' (equal rhythmic grid). */
+export function resetImportedBreakSlices(breakId, mode = 'even', slotId = store.ui.sel) {
+  const cur = getBreakDesc(breakId, slotId);
+  if (!cur || !isImportedBreakId(breakId)) return null;
+  const buf = samples.buffer(breakId);
+  let nextSlices;
+  let sliceMeta;
+  let nextAnalysis = cur.analysis ? clone(cur.analysis) : null;
+  if (mode === 'auto' && buf) {
+    const analyzed = analyzeBreakBuffer(buf, { preferredBars: cur.bars });
+    nextSlices = analyzed.slices;
+    sliceMeta = analyzed.sliceMeta;
+    nextAnalysis = analyzed.analysis;
+  } else {
+    const count = cur.bars === 1 ? 8 : MAX_SLICES;
+    nextSlices = defaultSlices(count);
+    sliceMeta = extractSliceFeatures(buf, nextSlices, cur.bars);
+    if (nextAnalysis) nextAnalysis = { ...nextAnalysis, fallback: false, note: `Reset to ${count} even slices` };
+  }
+  const res = commitImportedBreakMeta(breakId, {
+    ...clone(cur),
+    slices: nextSlices,
+    sliceMeta,
+    ...(nextAnalysis ? { analysis: nextAnalysis } : {}),
+  }, {
+    slotId,
+    structural: true,
+    oldSlices: cur.slices,
+  });
+  if (res) {
+    store.ui.ruff.editSlice = 0;
+    store.ui.ruff.editMarker = 0;
+    emit('toast', mode === 'auto' ? `Auto-detected ${sliceCount(res.slices)} slices` : `Reset to ${sliceCount(res.slices)} even slices`);
+  }
+  return res;
+}
+
 /** UI status snapshot for one RUFF break lane */
 export function breakLaneState(lane, slotId = store.ui.sel) {
   const s = slot(slotId);
   const id = (s && s.breaks && s.breaks[lane]) || null;
-  const desc = id ? getBuiltinBreak(id) : null;
+  const desc = id ? getBreakDesc(id, slotId) : null;
   const bankState = id ? samples.state(id) : { status: 'none', error: null };
   const aud = store.ui.ruff && store.ui.ruff.audition;
   return {
     lane,
     id,
     desc,
+    imported: !!(id && isImportedBreakId(id)),
+    unsaved: !!(id && isImportedBreakId(id) && samples.store.isUnsaved && samples.store.isUnsaved(id)),
     status: bankState.status,
     error: bankState.error,
     auditioning: !!(aud && aud.slotId === slotId && aud.lane === lane),
   };
 }
 
-/* ---------- RUFF Unified Sequencer, Locks & CHOP IT! (v0.7 PR33–34) ---------- */
+/* ---------- RUFF Unified Sequencer, Locks & CHOP IT! (v0.7 PR33–35) ---------- */
 let ruffSliceAudReq = 0;
 
 /** Select a step (and optionally lane) in the RUFF sequencer for inspection (UI-only, never mutates project). */
@@ -1506,14 +2100,14 @@ export function setRuffChopIntensity(value, { silent = false } = {}) {
 }
 
 /** Convert an unedited break lane into its editable 16-step groove on first edit (caller must checkpoint first). */
-function materializeBreakLane(pattern, lane, breakId) {
+function materializeBreakLane(pattern, lane, breakId, breakMeta = null) {
   if (!pattern.edited) pattern.edited = {};
   if (isBreakLaneEdited(pattern, lane)) {
     pattern.edited[lane] = true;
     return false;
   }
   pattern.edited[lane] = true;
-  pattern.lanes[lane] = breakId ? originalGrooveRow(breakId, pattern.len) : Array(pattern.len).fill(null);
+  pattern.lanes[lane] = breakId ? originalGrooveRow(breakId, pattern.len, breakMeta) : Array(pattern.len).fill(null);
   return true;
 }
 
@@ -1527,7 +2121,7 @@ export function auditionBreakSlice(lane, sliceIndex, slotId = store.ui.sel) {
   const s = slot(slotId);
   const breakId = s && s.breaks && s.breaks[lane];
   if (!s || !isBreakSlot(slotId) || !breakId) return false;
-  const slice = clampBreakSlice(breakId, sliceIndex);
+  const slice = clampBreakSlice(breakId, sliceIndex, 0, s.breakMeta);
   if (store.ui.ruff && store.ui.ruff.audition) stopBreakAudition(slotId);
   emit('livehit', { slotId, hits: [{ lane, slice, v: .9 }] });
   if (!canSound()) return true;
@@ -1537,7 +2131,12 @@ export function auditionBreakSlice(lane, sliceIndex, slotId = store.ui.sel) {
   engine.applyParams(slotId);
   const fire = () => {
     if (req !== ruffSliceAudReq) return;
-    hear(() => engine.audition(slotId, null, .9, { lane, breakId, slice, dur: engine.stepDur() * 2 }));
+    hear(() => engine.audition(slotId, null, .9, {
+      lane,
+      breakId,
+      slice,
+      ...(isImportedBreakId(breakId) ? {} : { dur: engine.stepDur() * 2 }),
+    }));
   };
   if (samples.buffer(breakId)) {
     prepareStretch();
@@ -1568,12 +2167,13 @@ export function toggleBreakStep(lane, step, slotId = store.ui.sel) {
     emit('toast', `Assign a break to ${lane.toUpperCase()} in SOUND first`);
     return false;
   }
+  const was4BarUnedited = !isBreakLaneEdited(p, lane) && breakBarsOf(breakId, s.breakMeta) === 4;
   checkpoint();
-  materializeBreakLane(p, lane, breakId);
+  materializeBreakLane(p, lane, breakId, s.breakMeta);
   if (p.lanes[lane][step]) {
     p.lanes[lane][step] = null;
   } else {
-    const slice = suggestedSliceForStep(breakId, step, p.len);
+    const slice = suggestedSliceForStep(breakId, step, p.len, s.breakMeta);
     p.lanes[lane][step] = { slice, v: 1, p: 1 };
     if (breakId) auditionBreakSlice(lane, slice, slotId);
   }
@@ -1581,6 +2181,7 @@ export function toggleBreakStep(lane, step, slotId = store.ui.sel) {
   store.ui.ruff.selLane = lane;
   save();
   emit('pattern');
+  if (was4BarUnedited) emit('toast', '4-bar break sliced onto 2-bar grid (all 4-bar slices available; Orig restores 4-bar loop)');
   return true;
 }
 
@@ -1598,7 +2199,7 @@ export function setBreakStepSlice(lane, step, sliceIndex, slotId = store.ui.sel)
     emit('toast', `Assign a break to ${lane.toUpperCase()} in SOUND first`);
     return false;
   }
-  const slice = clampBreakSlice(breakId, sliceIndex);
+  const slice = clampBreakSlice(breakId, sliceIndex, 0, s.breakMeta);
   store.ui.ruff.selStep = step;
   store.ui.ruff.selLane = lane;
   const alreadyEdited = isBreakLaneEdited(p, lane);
@@ -1609,7 +2210,7 @@ export function setBreakStepSlice(lane, step, sliceIndex, slotId = store.ui.sel)
     return false;
   }
   checkpoint();
-  materializeBreakLane(p, lane, breakId);
+  materializeBreakLane(p, lane, breakId, s.breakMeta);
   const cur = p.lanes[lane][step];
   p.lanes[lane][step] = cur ? { ...cur, slice } : { slice, v: 1, p: 1 };
   if (breakId) auditionBreakSlice(lane, slice, slotId);
@@ -1631,7 +2232,7 @@ export function eraseBreakStep(lane, step, slotId = store.ui.sel) {
   }
   if (!breakId && !isBreakLaneEdited(p, lane)) return false;
   checkpoint();
-  materializeBreakLane(p, lane, breakId);
+  materializeBreakLane(p, lane, breakId, s.breakMeta);
   p.lanes[lane][step] = null;
   store.ui.ruff.selStep = step;
   store.ui.ruff.selLane = lane;
@@ -1704,7 +2305,7 @@ export function clearBreakLane(lane, slotId = store.ui.sel) {
   if (isBreakLaneLocked(p, lane)) { emit('toast', `Break ${lane.toUpperCase()} is locked`); return false; }
   const breakId = (s.breaks && s.breaks[lane]) || null;
   const edited = isBreakLaneEdited(p, lane);
-  const eff = effectiveBreakRow(p, lane, breakId);
+  const eff = effectiveBreakRow(p, lane, breakId, s.breakMeta);
   const hasUnlocked = eff.some((c, i) => c && !isBreakCellLocked(p, lane, i));
   if (edited && !hasUnlocked) return false;
   if (!edited && !breakId) return false;
@@ -1733,7 +2334,7 @@ export function resetBreakLane(lane, slotId = store.ui.sel) {
   const hasStepLock = Array.from({ length: p.len }, (_, i) => isBreakCellLocked(p, lane, i)).some(Boolean);
   checkpoint();
   if (hasStepLock) {
-    const orig = breakId ? originalGrooveRow(breakId, p.len) : Array(p.len).fill(null);
+    const orig = breakId ? originalGrooveRow(breakId, p.len, s.breakMeta) : Array(p.len).fill(null);
     if (!p.edited) p.edited = {};
     p.edited[lane] = true;
     p.lanes[lane] = Array.from({ length: p.len }, (_, i) => (
@@ -1782,6 +2383,7 @@ export function chopRuff({
   const res = chopBreakPattern({
     pattern: p,
     breaks: s.breaks,
+    breakMeta: s.breakMeta || null,
     mode: cleanMode,
     profile: cleanProfile,
     intensity: cleanIntensity,

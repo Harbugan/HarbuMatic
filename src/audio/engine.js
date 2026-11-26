@@ -80,6 +80,7 @@ export function createEngine(getProject, { samples = null } = {}) {
       tempo: () => getProject().bpm,
       sample: () => { const s = slotById(getProject(), id); return (s && s.sample) || null; },
       breaks: () => { const s = slotById(getProject(), id); return (s && s.breaks) || null; },
+      breakMeta: () => { const s = slotById(getProject(), id); return (s && s.breakMeta) || null; },
     });
     return { type: slot.type, channel: ch, voice };
   }

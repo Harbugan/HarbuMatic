@@ -15,6 +15,7 @@ import { renderJamBar, updateLeds } from '../views/jam.js';
 import { updateRuffPlayhead } from '../views/ruff-seq.js';
 import { renderLab, renderScenes, renderRightTabs } from '../views/lab.js';
 import { renderBottom, syncShapers, renderSound, refreshSoundKnobs, refreshRuffState } from '../views/sound.js';
+import { refreshRuffEditor, ruffWaveDragging } from '../views/ruff-editor.js';
 import { renderArrange, markPlayingBlock } from '../views/arrange.js';
 import { refreshMunchSel, refreshMunchParams, refreshMunchPreview, refreshMunchGrid, munchHasHeld, releaseMunchLive, munchHits, munchStep, munchReact } from '../views/munch.js';
 import { waveDragging } from '../views/munch-wave.js';
@@ -67,7 +68,8 @@ function wire() {
   on('params', id => { syncCardVolume(id); if (id === store.ui.sel) { syncShapers(); if (munchOpen()) refreshMunchParams(); else if (store.ui.mode === 'sound') refreshSoundKnobs(); else if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); renderBottomFx(); } updateWiggle(); });
   on('mix', () => { updateCards(); if (store.ui.mode === 'sound' && isBreakSlot()) refreshRuffState(); if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
   on('strip', updateCards);
-  on('ruff', () => { updateCards(); if (store.ui.mode === 'sound' && isBreakSlot()) renderSound(); if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
+  on('ruff', () => { updateCards(); if (store.ui.mode === 'sound' && isBreakSlot()) { if (ruffWaveDragging()) refreshRuffEditor(); else renderSound(); } if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
+  on('ruffedit', () => { if (store.ui.mode === 'sound' && isBreakSlot()) refreshRuffEditor(); });
   on('ruffui', () => { if (store.ui.mode === 'jam' && isBreakSlot()) renderJamBar(); });
   // MUNCH workspace: sample state, recorder, slices and its pattern live in the SOUND view. While a waveform marker
   // is being dragged or live keys/pads are recording, update in place so gestures and multi-touch holds never break.
