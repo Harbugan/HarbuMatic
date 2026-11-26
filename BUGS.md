@@ -1,7 +1,7 @@
 # HarbuMatic — Bug & Improvement Tracker
 
 > Last updated: 2026-11-26  
-> Current development baseline: **v0.7 in progress** (RUFF PR31–33 merged; six instruments; PR34 CHOP IT! next)  
+> Current development baseline: **v0.7 in progress** (RUFF PR31–33 and CHOP IT! PR #36 merged and owner iPad-accepted; imported WAV breaks next)  
 > Stabilization: **v0.6 MUNCH stabilization** — MUNCH-1 … MUNCH-4 resolved after owner physical iPad acceptance (2026-11-24); see `docs/MUNCH-STABILIZATION.md`. Low microphone recording level tracked separately as P2.
 
 This file tracks reproducible bugs and smaller usability improvements. It complements [ROADMAP.md](ROADMAP.md), which covers larger product capabilities.
@@ -196,11 +196,20 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 ### UX-RUFF-01 — Compact and Lanes lack distinct purposes
 - **Type:** UX improvement
 - **Priority:** P2 — Medium (non-blocking)
-- **Status:** Open — revisit during PR34 CHOP IT! design
+- **Status:** Resolved — Compact/Lanes switch removed in PR #36; owner-verified on physical iPad (2026-11-26)
 - **Reported in:** PR33 physical iPad QA (2026-11-26)
 - **Observed:** Compact and expanded A/B/C views both work, but feel like two views of essentially the same step editor, with little experiential difference.
 - **Expected:** Compact should support quick playful groove interaction, while expanded Lanes supports precise per-source slice editing. Both must continue sharing one pattern.
-- **Decision:** Do not reopen accepted PR33 solely for this; evaluate in PR34 scope without introducing duplicate state or unrelated redesign.
+- **Resolution:** PR #36 replaced redundant Compact/Lanes views with one unified A/B/C editor and integrated CHOP IT!. Owner iPad QA 20/20 PASS. No additional issue remains open for this specific duplication.
+
+### UX-RUFF-02 — Built-in break sound character (non-blocking)
+- **Type:** Musical quality / content improvement
+- **Priority:** P2 — Medium
+- **Status:** Open — addressed strategically by next WAV break import milestone, not a PR #36 blocker
+- **Reported in:** PR #36 physical iPad QA (2026-11-26; 20/20 PASS)
+- **Observed:** Built-in break recordings sound generic/eJay-like to owner despite musically distinct CHOP IT! profiles.
+- **Decision:** Prioritize importing personally selected WAV breaks with non-destructive slicing and CHOP IT! compatibility. Do not treat subjective sample character as a functional regression or add unlicensed historical recordings.
+- **Acceptance:** Owner can import and musically reshape chosen WAV breaks on physical iPad; existing built-in breaks remain functional.
 
 ## New issue template
 
