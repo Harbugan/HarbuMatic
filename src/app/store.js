@@ -53,7 +53,7 @@ export const store = {
     // Live pattern recording state (view/session state only, never saved in the song)
     rec: { mode: 'off', quantize: true },
     // RUFF workspace view state (never saved in the song)
-    ruff: { audition: null, view: 'compact', selStep: 0, selLane: 'a' },
+    ruff: { audition: null, selStep: 0, selLane: 'a', chopMode: 'new', profile: 'jungle', intensity: 0.5 },
   },
 };
 export const slot = (id = store.ui.sel) => slotById(store.project, id);

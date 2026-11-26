@@ -324,7 +324,13 @@ export function validatePattern(type, p, defLen = 16) {
       if (p.edited && p.edited[id]) edited[id] = true;
     });
     if (isObj(p.locked)) {
-      for (let i = 0; i < len; i++) if (p.locked[String(i)]) locked[String(i)] = true;
+      for (let i = 0; i < len; i++) {
+        if (p.locked[String(i)]) locked[String(i)] = true;
+        BREAK_LANES.forEach(id => {
+          const k = `${id}:${i}`;
+          if (p.locked[k]) locked[k] = true;
+        });
+      }
     }
     return { len, lanes, locked, edited };
   }

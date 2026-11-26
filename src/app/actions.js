@@ -22,9 +22,14 @@ import {
 } from '../core/samples.js';
 import {
   getBuiltinBreak, breakRefsOf, breakFitPlayback, laneVolKey, laneMuteKey, isBuiltinBreakId,
-  isBreakLaneEdited, originalGrooveRow, suggestedSliceForStep, clampBreakSlice, BREAK_PATTERN_STEPS,
+  hasAssignedBreak, isBreakLaneEdited, originalGrooveRow, effectiveBreakRow, suggestedSliceForStep,
+  clampBreakSlice, BREAK_PATTERN_STEPS, breakCellLockKey, isBreakLaneLocked,
+  isBreakCellDirectlyLocked, isBreakCellLocked,
 } from '../core/breaks.js';
 import { magicChop as magicChopPattern, MAGIC_LABEL } from '../music/magicchop.js';
+import {
+  chopBreakPattern, RUFF_CHOP_MODES, RUFF_CHOP_PROFILES, RUFF_PROFILE_META,
+} from '../music/ruffchop.js';
 import { createSampleStore, indexedDbBackend, SampleError } from '../samples/store.js';
 import { createSampleBank } from '../samples/bank.js';
 import { createRecorder, canRecord, recordSupport } from '../samples/recorder.js';
@@ -760,9 +765,18 @@ export function clearPattern() {
     const sl = slot();
     if (!p.edited) p.edited = {};
     BREAK_LANES.forEach(id => {
-      if (p.locked[id]) return;
-      if ((sl && sl.breaks && sl.breaks[id]) || isBreakLaneEdited(p, id)) p.edited[id] = true;
-      p.lanes[id] = p.lanes[id].map((c, i) => (c && (c.locked || p.locked[String(i)]) ? c : null));
+      if (isBreakLaneLocked(p, id)) return;
+      const breakId = (sl && sl.breaks && sl.breaks[id]) || null;
+      const wasEdited = isBreakLaneEdited(p, id);
+      if (!breakId && !wasEdited) return;
+      const eff = effectiveBreakRow(p, id, breakId);
+      p.edited[id] = true;
+      p.lanes[id] = Array.from({ length: p.len }, (_, i) => {
+        if (!isBreakCellLocked(p, id, i)) return null;
+        if (wasEdited) return p.lanes[id][i] ? clone(p.lanes[id][i]) : null;
+        const c = eff[i];
+        return c ? { slice: c.slice, v: c.v ?? 1, p: c.p ?? 1 } : null;
+      });
     });
   } else p.notes = p.notes.filter(n => n.locked);
   save(); emit('pattern'); emit('toast', `${typeOf().name} cleared${drums ? '' : ' (locked notes kept)'}`);
@@ -1452,16 +1466,8 @@ export function breakLaneState(lane, slotId = store.ui.sel) {
   };
 }
 
-/* ---------- RUFF Hybrid Sequencer & Break-aware Slicing (v0.7 PR3) ---------- */
+/* ---------- RUFF Unified Sequencer, Locks & CHOP IT! (v0.7 PR33–34) ---------- */
 let ruffSliceAudReq = 0;
-
-/** Switch between Compact groove overview and Expanded A/B/C lanes (UI-only, never mutates project). */
-export function setRuffView(view) {
-  const next = view === 'expanded' ? 'expanded' : 'compact';
-  if (store.ui.ruff.view === next) return;
-  store.ui.ruff.view = next;
-  emit('ruffui');
-}
 
 /** Select a step (and optionally lane) in the RUFF sequencer for inspection (UI-only, never mutates project). */
 export function selectRuffStep(step, lane = null) {
@@ -1473,6 +1479,30 @@ export function selectRuffStep(step, lane = null) {
     changed = true;
   }
   if (changed) emit('ruffui');
+}
+
+/** Set CHOP IT! mode: 'new' (New Groove) or 'evolve' (Evolve) (UI-only, never mutates project). */
+export function setRuffChopMode(mode) {
+  const next = RUFF_CHOP_MODES.includes(mode) ? mode : 'new';
+  if (store.ui.ruff.chopMode === next) return;
+  store.ui.ruff.chopMode = next;
+  emit('ruffui');
+}
+
+/** Set CHOP IT! musical profile: 'jungle' | 'darkside' | 'atmospheric' | 'rolling' (UI-only). */
+export function setRuffChopProfile(profile) {
+  const next = RUFF_CHOP_PROFILES.includes(profile) ? profile : 'jungle';
+  if (store.ui.ruff.profile === next) return;
+  store.ui.ruff.profile = next;
+  emit('ruffui');
+}
+
+/** Set CHOP IT! Subtle–Wild intensity [0..1] (UI-only; pass `{ silent: true }` during continuous slider drag). */
+export function setRuffChopIntensity(value, { silent = false } = {}) {
+  const next = clamp(Number.isFinite(Number(value)) ? Number(value) : 0.5, 0, 1);
+  if (store.ui.ruff.intensity === next) return;
+  store.ui.ruff.intensity = next;
+  if (!silent) emit('ruffui');
 }
 
 /** Convert an unedited break lane into its editable 16-step groove on first edit (caller must checkpoint first). */
@@ -1488,9 +1518,7 @@ function materializeBreakLane(pattern, lane, breakId) {
 }
 
 function breakStepLocked(pattern, lane, step) {
-  if (!pattern) return false;
-  const cell = pattern.lanes && pattern.lanes[lane] && pattern.lanes[lane][step];
-  return !!(pattern.locked && (pattern.locked[lane] || pattern.locked[String(step)])) || !!(cell && cell.locked);
+  return isBreakCellLocked(pattern, lane, step);
 }
 
 /** Preview a single slice of a RUFF lane's assigned break immediately (synced to project BPM & Stretch/Tape). */
@@ -1612,39 +1640,172 @@ export function eraseBreakStep(lane, step, slotId = store.ui.sel) {
   return true;
 }
 
-/** Explicitly clear one RUFF lane in the current scene to silence (never falls back to whole-loop playback). */
-export function clearBreakLane(lane, slotId = store.ui.sel) {
+/**
+ * Toggle lock on a single (lane, step) cell — works identically on populated hits AND empty/silent cells.
+ * Uses persistent `pattern.locked["<lane>:<step>"]` without forcing unedited lanes into edited state.
+ */
+export function toggleBreakCellLock(lane, step, slotId = store.ui.sel) {
   if (!BREAK_LANES.includes(lane)) return false;
   const s = slot(slotId), p = pat(slotId);
-  if (!s || !p || !isBreakSlot(slotId)) return false;
-  if (p.locked && p.locked[lane]) { emit('toast', `Break ${lane.toUpperCase()} is locked`); return false; }
+  if (!s || !p || !isBreakSlot(slotId) || !Number.isInteger(step) || step < 0 || step >= p.len) return false;
   const breakId = (s.breaks && s.breaks[lane]) || null;
-  const edited = isBreakLaneEdited(p, lane);
-  const hasUnlocked = p.lanes[lane].some((c, i) => c && !(c.locked || (p.locked && p.locked[String(i)])));
-  if (edited && !hasUnlocked) return false;
-  if (!edited && !breakId) return false;
+  if (!breakId && !isBreakLaneEdited(p, lane) && !isBreakCellDirectlyLocked(p, lane, step)) return false;
   checkpoint();
-  if (!p.edited) p.edited = {};
-  p.edited[lane] = true;
-  p.lanes[lane] = p.lanes[lane].map((c, i) => (c && (c.locked || (p.locked && p.locked[String(i)])) ? c : null));
+  if (!p.locked) p.locked = {};
+  const key = breakCellLockKey(lane, step);
+  const cell = p.lanes[lane] && p.lanes[lane][step];
+  if (isBreakCellDirectlyLocked(p, lane, step)) {
+    delete p.locked[key];
+    if (cell && cell.locked) delete cell.locked;
+  } else {
+    p.locked[key] = true;
+  }
+  store.ui.ruff.selStep = step;
+  store.ui.ruff.selLane = lane;
   save();
   emit('pattern');
   return true;
 }
 
-/** Restore one RUFF lane in the current scene back to its unedited original break groove. */
+/** Toggle full-column lock on `step` across all A/B/C lanes (protects hits and silence). */
+export function toggleBreakColumnLock(step, slotId = store.ui.sel) {
+  const s = slot(slotId), p = pat(slotId);
+  if (!s || !p || !isBreakSlot(slotId) || !Number.isInteger(step) || step < 0 || step >= p.len) return false;
+  checkpoint();
+  if (!p.locked) p.locked = {};
+  const key = String(step);
+  if (p.locked[key]) delete p.locked[key];
+  else p.locked[key] = true;
+  store.ui.ruff.selStep = step;
+  save();
+  emit('pattern');
+  return true;
+}
+
+/** Toggle full-lane lock on A, B or C (protects the entire lane including unedited original playback). */
+export function toggleBreakLaneLock(lane, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return false;
+  const s = slot(slotId), p = pat(slotId);
+  if (!s || !p || !isBreakSlot(slotId)) return false;
+  checkpoint();
+  if (!p.locked) p.locked = {};
+  if (p.locked[lane]) delete p.locked[lane];
+  else p.locked[lane] = true;
+  save();
+  emit('pattern');
+  return true;
+}
+
+/** Explicitly clear one RUFF lane in the current scene to silence (preserves locked hits & never falls back to whole-loop). */
+export function clearBreakLane(lane, slotId = store.ui.sel) {
+  if (!BREAK_LANES.includes(lane)) return false;
+  const s = slot(slotId), p = pat(slotId);
+  if (!s || !p || !isBreakSlot(slotId)) return false;
+  if (isBreakLaneLocked(p, lane)) { emit('toast', `Break ${lane.toUpperCase()} is locked`); return false; }
+  const breakId = (s.breaks && s.breaks[lane]) || null;
+  const edited = isBreakLaneEdited(p, lane);
+  const eff = effectiveBreakRow(p, lane, breakId);
+  const hasUnlocked = eff.some((c, i) => c && !isBreakCellLocked(p, lane, i));
+  if (edited && !hasUnlocked) return false;
+  if (!edited && !breakId) return false;
+  checkpoint();
+  if (!p.edited) p.edited = {};
+  p.edited[lane] = true;
+  p.lanes[lane] = Array.from({ length: p.len }, (_, i) => {
+    if (!isBreakCellLocked(p, lane, i)) return null;
+    if (edited) return p.lanes[lane][i] ? clone(p.lanes[lane][i]) : null;
+    const c = eff[i];
+    return c ? { slice: c.slice, v: c.v ?? 1, p: c.p ?? 1 } : null;
+  });
+  save();
+  emit('pattern');
+  return true;
+}
+
+/** Restore one RUFF lane in the current scene back to its original break groove (preserving any locked steps/silence). */
 export function resetBreakLane(lane, slotId = store.ui.sel) {
   if (!BREAK_LANES.includes(lane)) return false;
   const s = slot(slotId), p = pat(slotId);
   if (!s || !p || !isBreakSlot(slotId)) return false;
+  if (isBreakLaneLocked(p, lane)) { emit('toast', `Break ${lane.toUpperCase()} is locked`); return false; }
   if (!isBreakLaneEdited(p, lane)) return false;
+  const breakId = (s.breaks && s.breaks[lane]) || null;
+  const hasStepLock = Array.from({ length: p.len }, (_, i) => isBreakCellLocked(p, lane, i)).some(Boolean);
   checkpoint();
-  if (p.edited) delete p.edited[lane];
-  p.lanes[lane] = Array(p.len).fill(null);
+  if (hasStepLock) {
+    const orig = breakId ? originalGrooveRow(breakId, p.len) : Array(p.len).fill(null);
+    if (!p.edited) p.edited = {};
+    p.edited[lane] = true;
+    p.lanes[lane] = Array.from({ length: p.len }, (_, i) => (
+      isBreakCellLocked(p, lane, i)
+        ? (p.lanes[lane][i] ? clone(p.lanes[lane][i]) : null)
+        : orig[i]
+    ));
+  } else {
+    if (p.edited) delete p.edited[lane];
+    p.lanes[lane] = Array(p.len).fill(null);
+  }
   save();
   emit('pattern');
-  emit('toast', `Break ${lane.toUpperCase()} reset to original groove`);
+  emit('toast', `Break ${lane.toUpperCase()} reset to original groove${hasStepLock ? ' (locked steps kept)' : ''}`);
   return true;
 }
+
+/**
+ * CHOP IT!: apply musical jungle/DnB break generation immediately to the intended scene's RUFF pattern.
+ * - One atomic Undo step per press; repeated presses evolve the current result.
+ * - Never auto-starts or stops global transport.
+ * - Preserves assigned breaks, all locks (hits, silence, columns, lanes) and explicitly silenced lanes.
+ */
+export function chopRuff({
+  mode = store.ui.ruff.chopMode,
+  profile = store.ui.ruff.profile,
+  intensity = store.ui.ruff.intensity,
+  seed = randomSeed(),
+  sceneIdx = store.project ? store.project.scene : 0,
+} = {}, slotId = store.ui.sel) {
+  const project = store.project;
+  const s = slot(slotId);
+  if (!project || !s || !isBreakSlot(slotId)) return null;
+  if (!hasAssignedBreak(s)) {
+    emit('toast', 'Load a break in Break Pool first');
+    return null;
+  }
+  const sc = clamp(Number.isInteger(sceneIdx) ? sceneIdx : project.scene, 0, Math.max(0, project.scenes.length - 1));
+  const p = patternAt(project, slotId, sc);
+  if (!p) return null;
+
+  const cleanMode = RUFF_CHOP_MODES.includes(mode) ? mode : 'new';
+  const cleanProfile = RUFF_CHOP_PROFILES.includes(profile) ? profile : 'jungle';
+  const cleanIntensity = clamp(Number.isFinite(Number(intensity)) ? Number(intensity) : 0.5, 0, 1);
+
+  const res = chopBreakPattern({
+    pattern: p,
+    breaks: s.breaks,
+    mode: cleanMode,
+    profile: cleanProfile,
+    intensity: cleanIntensity,
+    seed,
+  });
+
+  store.ui.ruff.chopMode = cleanMode;
+  store.ui.ruff.profile = cleanProfile;
+  store.ui.ruff.intensity = cleanIntensity;
+
+  if (!res.changed) {
+    emit('toast', 'All active lanes are locked or silenced — unlock or reset a lane to chop');
+    emit('ruffui');
+    return res;
+  }
+
+  checkpoint();
+  setPatternAt(project, slotId, sc, res.pattern);
+  save();
+  emit('pattern', { slot: slotId, kind: 'chop' });
+  const meta = RUFF_PROFILE_META[cleanProfile];
+  emit('toast', `CHOP IT! · ${meta.label} (${cleanMode === 'evolve' ? 'Evolve' : 'New Groove'})`);
+  return res;
+}
+
 
 
