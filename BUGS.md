@@ -1,7 +1,7 @@
 # HarbuMatic — Bug & Improvement Tracker
 
-> Last updated: 2026-11-24  
-> Current development baseline: **v0.6.1** (five instruments always available; Dynamic Scene Library merged in PR #18)  
+> Last updated: 2026-11-26  
+> Current development baseline: **v0.7 in progress** (RUFF PR31–33 merged; six instruments; PR34 CHOP IT! next)  
 > Stabilization: **v0.6 MUNCH stabilization** — MUNCH-1 … MUNCH-4 resolved after owner physical iPad acceptance (2026-11-24); see `docs/MUNCH-STABILIZATION.md`. Low microphone recording level tracked separately as P2.
 
 This file tracks reproducible bugs and smaller usability improvements. It complements [ROADMAP.md](ROADMAP.md), which covers larger product capabilities.
@@ -180,6 +180,27 @@ A fix is **not Resolved until it has been verified**. Record device/browser and 
 - **Investigation:** Determine whether the low level originates in capture, normalization/gain staging or playback; do not apply blind amplification.
 - **Acceptance:** Consistent usable microphone recordings on physical iPad, without distortion or regressions in sample playback.
 - **Release decision:** Not a v0.6.1 release blocker; defer to focused audio quality work.
+
+### BUG-RUFF-01 — BLIP/FUZZ lose audio after MUNCH CHOP scene switching (resolved)
+- **Type:** Audio regression / voice lifecycle
+- **Priority:** P1 — High (PR33 merge blocker until fixed)
+- **Status:** Resolved — owner-verified on physical iPad (2026-11-26)
+- **Reported in:** RUFF PR33 physical iPad QA; confirmed pre-existing on `main` by AntiGravity.
+- **Observed:** After repeatedly switching Scene A/B/C in MUNCH SOUND → CHOP and cycling global Stop/Play, BLIP and FUZZ became silent both in the song and when tapping their sequencer's left-side note areas. Other instruments continued playing. Reload restored audio.
+- **Root cause (AntiGravity investigation):** BLIP/FUZZ shared synth voice counter exhausted because scheduled voices were not reliably released when transport gates disconnected before WebKit `onended` callbacks; further triggers were rejected at the polyphony limit.
+- **Fix:** PR33 commit `9d9a2a0`, `src/audio/voices.js`: track and release active synth voices on silence/dispose, bound voice pool with oldest-voice stealing and robust cleanup; targeted `tests/blip-fuzz-audio.test.mjs` added.
+- **Automated verification (AntiGravity reported):** 4/4 focused tests PASS; `npm test` 306/306 PASS; `npm run test:ui` NOT RUN (Playwright unavailable). No baseline pass claimed.
+- **Physical verification:** Owner repeated MUNCH CHOP scene switching, Stop/Play and BLIP/FUZZ audition on iPad and reported all perfect on 2026-11-26. PR33 merged as `99cab751`.
+- **Regression guard:** Preserve BLIP/FUZZ note audition, transport and MUNCH isolated Preview when changing voice lifecycle or audio routing.
+
+### UX-RUFF-01 — Compact and Lanes lack distinct purposes
+- **Type:** UX improvement
+- **Priority:** P2 — Medium (non-blocking)
+- **Status:** Open — revisit during PR34 CHOP IT! design
+- **Reported in:** PR33 physical iPad QA (2026-11-26)
+- **Observed:** Compact and expanded A/B/C views both work, but feel like two views of essentially the same step editor, with little experiential difference.
+- **Expected:** Compact should support quick playful groove interaction, while expanded Lanes supports precise per-source slice editing. Both must continue sharing one pattern.
+- **Decision:** Do not reopen accepted PR33 solely for this; evaluate in PR34 scope without introducing duplicate state or unrelated redesign.
 
 ## New issue template
 

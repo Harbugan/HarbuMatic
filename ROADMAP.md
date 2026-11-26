@@ -1,7 +1,7 @@
 # HarbuMatic — Product Roadmap
 
 > **A little machine for making music.**  
-> Last updated: 2026-11-24 (v0.6.1 physical iPad QA accepted 7/7; final automated regression checks outstanding; Ruff v0.7 next)  
+> Last updated: 2026-11-26 (RUFF PR31–33 merged; PR33 owner iPad QA 22/22 PASS; BLIP/FUZZ P1 fix owner-verified; PR34 CHOP IT! next)  
 > Status: Living product roadmap — version assignments are provisional unless explicitly marked as decided.
 
 ## Development baseline — decided 2026-11-23
@@ -31,7 +31,7 @@ HarbuMatic is an original, tactile, whimsical music-making instrument. It should
 | **v0.5.1** | Bugfix & UI Polish | BOP sequencer reliability, knob shadows, navigation, alignment, release identity | **Accepted** — BUG-001…004 user-verified on iPad; remaining minor polish deferred |
 | **v0.6** | Sample Playground | Instrument foundation, five slots, MUNCH sampler, PLAY/CHOP/TWIST and .hbn | Phase 4 merged; **MUNCH stabilization** (mic, storage, retrigger, Stretch/Tape) implemented and owner-verified on physical iPad 2026-11-24; low mic recording level tracked as non-blocking MUNCH-5; Phase 5A (.hbn) merged in PR #13; WAV export moved to v0.9 |
 | **v0.6.1** | Dynamic Scenes & Playability | One scene by default; create, duplicate, copy, rename and delete scenes; focused iPad UX polish | **Physical iPad QA accepted (7/7 final checks)** — PR #15/#18/#21/#23/#25/#27/#29 merged; automated release regression checks still outstanding; next Ruff v0.7 after release gate; Preset UX deferred to final pre-1.0 polish |
-| **v0.7** | **Ruff in the Jungle** | Standalone sixth breakbeat instrument, hybrid Break Pool, CHOP IT!, live pads | **Product scope approved 2026-11-25; technical review pending; not implemented** |
+| **v0.7** | **Ruff in the Jungle** | Standalone sixth breakbeat instrument, hybrid Break Pool, CHOP IT!, live pads | **In progress:** PR31 foundation, PR32 first breaks and PR33 slicing/hybrid sequencer merged; PR33 physical iPad QA 22/22 PASS; PR34 CHOP IT! next (not implemented) |
 | **v0.8** | Play Together | Live performance, MIDI Clock, Ableton Link feasibility/integration | Proposed scope |
 | **v0.9** | Expand & Finish | The Catpound instrument selection and replacement, Song WAV Export, automation, stronger finishing tools | Replacement and Scene Library placement decided; other scope proposed |
 | **Pre-v1.0** | Preset UX + Musical Playability | Final preset/audition and creative-quality polish after v0.9 | Planned final polish milestone |
@@ -187,7 +187,15 @@ Owner completed the focused physical iPad final QA: **7/7 PASS** (MUNCH micropho
 
 ## v0.7 — Ruff in the Jungle (product specification approved 2026-11-25)
 
-**Status: owner-approved product scope; NOT implemented.** Technical feasibility, implementation slices, physical iPad layout and release QA remain open. Full specification: [docs/RUFF-07-SPEC.md](docs/RUFF-07-SPEC.md). Ruff is a **standalone sixth instrument**, not a BOP mode or MUNCH skin; the mascot is a punk/rave **kawaii cat** with lime accents and a Keith Flint-inspired attitude (original character design, not a replica).
+**Status: implementation in progress.** PR31–33 are merged and owner-accepted on physical iPad; CHOP IT!, pads, recording, DIRT/import and final v0.7 QA are not implemented/accepted. Technical feasibility and release QA remain open for subsequent stages. Full specification: [docs/RUFF-07-SPEC.md](docs/RUFF-07-SPEC.md). Ruff is a **standalone sixth instrument**, not a BOP mode or MUNCH skin; the mascot is a punk/rave **kawaii cat** with lime accents and a Keith Flint-inspired attitude (original character design, not a replica).
+
+### Implemented milestones and next PR (2026-11-26)
+
+- **PR31 — Instrument Foundation: merged; owner-verified.** Sixth RUFF slot, selectable/playable integration, scene-local A/B/C pattern foundation, five-visible strip paging and current-version project persistence.
+- **PR32 — First Breaks: merged; owner-verified.** Original built-in TIGHT, FUNKY and RUFF JUNGLE loops, simultaneous A/B/C playback, independent lane volume/mute and audition, Stretch/Tape, transport, save/reopen and .hbn.
+- **PR33 — Break-aware Slicing & Hybrid Sequencer: merged** (merge commit `99cab751`); **owner physical iPad QA 22/22 PASS**. Original groove preserved on first edit; compact and expanded A/B/C views share the pattern; auto-suggested/manual slices, explicit silent edited lanes, two-bar playback, Undo/Redo, scene independence, .hbn and existing instruments verified. Owner also retested the BLIP/FUZZ audio fix successfully. AntiGravity reported `npm test` 306/306 PASS (including four targeted audio tests); `npm run test:ui` NOT RUN in its VM; no full UI/baseline sign-off claimed.
+- **PR33 associated P1 fix:** BLIP/FUZZ synth voice-pool exhaustion after repeated MUNCH CHOP scene switching and Stop/Play. Root cause reported as pre-existing on main; fix in `src/audio/voices.js` (commit `9d9a2a0`) merged with PR33; owner verified restored manual audition and loop playback on physical iPad. See BUGS.md.
+- **PR34 — CHOP IT!: NEXT, planning only.** New Groove/Evolve, TIGHT/FUNKY/RUFF/CHAOS, Subtle–Wild intensity, lock-aware editable variation and Undo. Before handoff, clarify Compact vs Lanes UX: owner found the two views functionally redundant. Preserve one shared pattern; avoid adding a second competing sequencer or expanding PR34 into full live performance. Scope requires review against current main.
 
 **Musical identity:** a playful, immediate Breakbeat Performance Machine with the energy of 90s jungle, breakbeat and rave. Play first; tweak forever. Generated and manually edited events share one non-destructive pattern.
 
@@ -202,7 +210,7 @@ Owner completed the focused physical iPad final QA: **7/7 PASS** (MUNCH micropho
 
 **Explicit exclusions:** universal cross-instrument Live Play, MUTATOR, continuous effect automation, full Catpound replacement UI, and bundled unlicensed historical recordings. No automatic version bump or code change is authorized by this planning update.
 
-**Technical gates before PR #1:** inspect slot/project schema and current-version .hbn round-trip, existing sample/Stretch/Tape reuse, polyphonic slice scheduling and choke, live recording event model, library asset handling, touch/multi-touch and physical iPad Safari performance. Specify HOLD/CHAOS event semantics and replacement safety during implementation design. Pre-1.0 historical migration remains waived per baseline policy; preserve current-version projects and never silently delete stored work.
+**Historical technical gates (before PR31):** inspect slot/project schema and current-version .hbn round-trip, existing sample/Stretch/Tape reuse, polyphonic slice scheduling and choke, live recording event model, library asset handling, touch/multi-touch and physical iPad Safari performance. Specify HOLD/CHAOS event semantics and replacement safety during implementation design. Pre-1.0 historical migration remains waived per baseline policy; preserve current-version projects and never silently delete stored work.
 
 **Delivery:** small sequential Antigravity PRs with focused automated checks and owner physical iPad acceptance; verify musical quality, timing, transport, save/reopen, other instruments and landscape ergonomics. The final PR plan must follow repository inspection, not assumptions.
 
