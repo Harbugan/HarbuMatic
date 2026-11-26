@@ -20,8 +20,10 @@
 // bank (src/samples/bank.js) for an already decoded AudioBuffer when a hit is due, and stays silent when the
 // buffer is not ready. The scheduler dispatches its hits exactly as it does for the synths.
 
-import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback, defaultSlices } from '../core/samples.js';
-import { getBuiltinBreak, breakFitPlayback, breakSlicesOf, clampBreakSlice, laneAudibleLevel, laneVolKey } from '../core/breaks.js';
+import { sliceRegion, trimRegion, bufferRegion, rateForSemitones, noteSemitones, fitPlayback, defaultSlices, barsSeconds } from '../core/samples.js';
+import {
+  resolveBreakDesc, isImportedBreakId, breakFitPlayback, breakSlicesOf, clampBreakSlice, laneAudibleLevel, laneVolKey,
+} from '../core/breaks.js';
 
 export const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 export const cutHz = v => 50 * Math.pow(2, v * 8.4); // 0..1 → 50 Hz .. ~17 kHz
@@ -484,8 +486,8 @@ export const RUFF_POLY = 12;
 const RUFF_EDGE = .002;
 const RUFF_LANE_HEADROOM = .72;
 
-function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
-  const active = new Set(); // { src, env, laneGain, t, end, key, lane, breakId, audition, baseDuration, bars, points, onEnded, done }
+function createRuffVoice({ ctx, shared, channel, params, breaks, breakMeta, tempo }) {
+  const active = new Set(); // { src, env, laneGain, t, end, key, lane, breakId, audition, baseDuration, bars, sourceBpm, points, onEnded, done }
   const stats = { played: 0, missed: 0, stolen: 0, crossfaded: 0, stretched: 0, stretchFallback: 0 };
 
   function finishVoice(v) {
@@ -525,11 +527,13 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
     const base = bank.buffer(breakId, rev);
     if (!base) { stats.missed++; return null; }
 
-    const desc = getBuiltinBreak(breakId);
+    const bMeta = hit.breakMeta || (breakMeta && breakMeta()) || null;
+    const desc = resolveBreakDesc(breakId, bMeta);
     const bars = hit.loopBars || (desc && desc.bars) || 2;
-    const slices = breakSlicesOf(breakId);
+    const sourceBpm = (desc && isImportedBreakId(breakId) && desc.bpm > 0) ? desc.bpm : null;
+    const slices = breakSlicesOf(breakId, bMeta);
     const bpm = tempo ? tempo() : 120;
-    const fp = breakFitPlayback(p, base.duration, bars, bpm);
+    const fp = breakFitPlayback(p, base.duration, bars, bpm, sourceBpm);
 
     let buf = base, rate = fp.pitchRate;
     if (fp.stretch !== 1) {
@@ -544,7 +548,7 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
     let offset = 0, playDur = 0, loopBuffer = false;
     if (isAudition) {
       if (hit.slice != null) {
-        const reg = sliceRegion(slices, clampBreakSlice(breakId, hit.slice));
+        const reg = sliceRegion(slices, clampBreakSlice(breakId, hit.slice, 0, bMeta));
         if (!reg || !(reg[1] > reg[0])) return null;
         const br = bufferRegion(reg, buf.duration, rev);
         offset = br.offset;
@@ -556,11 +560,14 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
       }
     } else if (isLoopSeg) {
       const startFrac = Math.max(0, Math.min(1, hit.startFrac || 0));
-      offset = (startFrac * buf.duration) % buf.duration;
+      // When the user manually corrected BPM on an imported break, beat phase follows the corrected bar cycle
+      const cycleScale = sourceBpm && base.duration > 0 ? (barsSeconds(bars, sourceBpm) / base.duration) : 1;
+      const cycleDur = cycleScale > 0 ? buf.duration * cycleScale : buf.duration;
+      offset = (startFrac * cycleDur) % buf.duration;
       playDur = Math.max(.01, hit.dur || (buf.duration / rate / 8));
       loopBuffer = true;
     } else {
-      const reg = hit.slice != null ? sliceRegion(slices, clampBreakSlice(breakId, hit.slice)) : [0, 1];
+      const reg = hit.slice != null ? sliceRegion(slices, clampBreakSlice(breakId, hit.slice, 0, bMeta)) : [0, 1];
       if (!reg || !(reg[1] > reg[0])) return null;
       const br = bufferRegion(reg, buf.duration, rev);
       const startFrac = Math.max(0, Math.min(.95, hit.sliceStartFrac || 0));
@@ -616,7 +623,7 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
 
     const v = {
       src, env, laneGain, t, end, key, lane, breakId, audition: isAudition,
-      baseDuration: base.duration, bars,
+      baseDuration: base.duration, bars, sourceBpm,
       points: [[t, 0], [peakAt, vel], [fadeStart, vel], [end, 0]],
       onEnded: typeof hit.onEnded === 'function' ? hit.onEnded : null,
       done: false,
@@ -641,6 +648,7 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
     input: channel.bus,
     apply(p, now) {
       const curBreaks = breaks ? breaks() : null;
+      const curMeta = breakMeta ? breakMeta() : null;
       const bpm = tempo ? tempo() : 120;
       for (const v of [...active]) {
         if (!v.audition) {
@@ -652,7 +660,10 @@ function createRuffVoice({ ctx, shared, channel, params, breaks, tempo }) {
           try { v.laneGain.gain.setTargetAtTime(targetGain, now, .015); } catch (e) { /* gone */ }
         }
         if (p.fitMode === 'tape' && v.baseDuration > 0 && v.bars > 0) {
-          const fp = breakFitPlayback(p, v.baseDuration, v.bars, bpm);
+          const desc = resolveBreakDesc(v.breakId, curMeta);
+          const curBars = (desc && desc.bars) || v.bars;
+          const curSrcBpm = (desc && isImportedBreakId(v.breakId) && desc.bpm > 0) ? desc.bpm : v.sourceBpm;
+          const fp = breakFitPlayback(p, v.baseDuration, curBars, bpm, curSrcBpm);
           try { v.src.playbackRate.setTargetAtTime(fp.pitchRate, now, .015); } catch (e) { /* gone */ }
         }
       }

@@ -13,7 +13,7 @@ import * as A from '../app/actions.js';
 import { BREAK_LANES } from '../core/instruments.js';
 import {
   BREAK_PATTERN_STEPS, BREAK_STEP_SPAN, BREAK_LOOP_STEPS,
-  getBuiltinBreak, hasAssignedBreak, laneMuteKey,
+  resolveBreakDesc, breakBarsOf, hasAssignedBreak, laneMuteKey,
   isBreakLaneEdited, effectiveBreakRow, suggestedSliceForStep, breakSliceInfo,
   breakSliceCount, breakStepBeatLabel, isBreakLaneLocked, isBreakStepColumnLocked,
   isBreakCellDirectlyLocked, isBreakCellLocked,
@@ -37,6 +37,7 @@ function resolveActiveLane(sl, p) {
 
 function laneStatusKind(sl, p, lane) {
   const breakId = (sl && sl.breaks && sl.breaks[lane]) || null;
+  if (breakId && A.samples.state(breakId).status === 'missing') return 'missing';
   const edited = isBreakLaneEdited(p, lane);
   if (!edited) return breakId ? 'orig' : 'none';
   const row = p && p.lanes && p.lanes[lane];
@@ -44,8 +45,9 @@ function laneStatusKind(sl, p, lane) {
   return any ? 'edit' : 'silent';
 }
 
-function laneStatusText(kind) {
-  if (kind === 'orig') return 'Orig';
+function laneStatusText(kind, bars = 2) {
+  if (kind === 'missing') return 'Missing';
+  if (kind === 'orig') return bars !== 2 ? `${bars}B Orig` : 'Orig';
   if (kind === 'edit') return 'Edit';
   if (kind === 'silent') return 'Silent';
   return 'Empty';
@@ -57,7 +59,7 @@ function buildEmptyState(m) {
       h('div', { class: 'cat ' + m.visual.css, html: catSVG(m.type) }),
       h('div', { class: 'ruff-empty-body' },
         h('h3', {}, `${m.name} · Breakbeat Sequencer`),
-        h('p', {}, 'Load a break into A, B or C in Break Pool to hear its original 2-bar groove, then slice or CHOP IT! here.'),
+        h('p', {}, 'Load a built-in or imported WAV break into A, B or C in Break Pool to hear its original groove, then slice or CHOP IT! here.'),
         h('div', { class: 'ruff-empty-actions' },
           h('button', { type: 'button', class: 'btn tool on', 'data-action': 'open-pool', onclick: () => A.setMode('sound') }, 'Open RUFF Break Pool')))));
 }
@@ -159,10 +161,11 @@ function buildChopBar(sl) {
 
 function buildUnifiedGrid(sl, p, params, activeLane, selStep, rows) {
   const tool = store.ui.tool;
+  const bMeta = (sl && sl.breakMeta) || null;
   const fitLabel = params && params.fitMode === 'tape' ? 'Tape' : 'Stretch';
 
   const ruler = h('div', { class: 'ruff-exp-ruler' },
-    h('div', { class: 'ruff-exp-corner', title: `${fitLabel} · 2 Bars · 16 Slices · Tap step numbers to lock columns` },
+    h('div', { class: 'ruff-exp-corner', title: `${fitLabel} · 2-Bar Sequencer · 16 Steps · Tap step numbers to lock columns` },
       h('span', {}, '2 Bars'),
       h('small', {}, fitLabel)),
     h('div', { class: 'ruff-exp-steps-hdr', role: 'group', 'aria-label': 'Step column locks' },
@@ -193,7 +196,8 @@ function buildUnifiedGrid(sl, p, params, activeLane, selStep, rows) {
   BREAK_LANES.forEach(l => {
     const L = l.toUpperCase();
     const id = (sl && sl.breaks && sl.breaks[l]) || null;
-    const desc = id ? getBuiltinBreak(id) : null;
+    const desc = id ? resolveBreakDesc(id, bMeta) : null;
+    const bars = id ? breakBarsOf(id, bMeta) : 2;
     const kind = laneStatusKind(sl, p, l);
     const muted = !!(params && params[laneMuteKey(l)]);
     const laneLocked = isBreakLaneLocked(p, l);
@@ -203,12 +207,12 @@ function buildUnifiedGrid(sl, p, params, activeLane, selStep, rows) {
     const headBtn = h('button', {
       type: 'button',
       class: 'ruff-exp-lbtn',
-      title: id ? `Select Break ${L} (${desc ? desc.name : id})` : `Assign a break to ${L} in SOUND`,
+      title: id ? `Select Break ${L} (${desc ? desc.name : id}, ${bars}B)` : `Assign a break to ${L} in SOUND`,
     },
     h('span', { class: 'ruff-dot' }, L),
     h('span', { class: 'ruff-exp-lname' },
       h('b', {}, desc ? desc.name : (id || 'Empty')),
-      h('small', { class: 'ruff-mode-pill ' + kind }, laneStatusText(kind))));
+      h('small', { class: 'ruff-mode-pill ' + kind }, laneStatusText(kind, bars))));
     headBtn.onclick = () => {
       if (!id && !isBreakLaneEdited(p, l)) A.setMode('sound');
       else A.selectRuffStep(selStep, l);
@@ -271,8 +275,8 @@ function buildUnifiedGrid(sl, p, params, activeLane, selStep, rows) {
         'aria-pressed': String(!!c),
         disabled,
         title: c
-          ? `Break ${L} · Step ${s + 1} (${breakStepBeatLabel(s)}) · S${c.slice + 1} ${breakSliceInfo(id, c.slice).label}${c.virtual ? ' (Original)' : ''}${lockTag}`
-          : `Break ${L} · Step ${s + 1} (${breakStepBeatLabel(s)}) · ${locked ? 'Locked Silence' : `Empty (tap to add S${suggestedSliceForStep(id, s, p.len) + 1})`}${lockTag}`,
+          ? `Break ${L} · Step ${s + 1} (${breakStepBeatLabel(s)}) · S${c.slice + 1} ${breakSliceInfo(id, c.slice, bMeta).label}${c.virtual ? ' (Original)' : ''}${lockTag}`
+          : `Break ${L} · Step ${s + 1} (${breakStepBeatLabel(s)}) · ${locked ? 'Locked Silence' : `Empty (tap to add S${suggestedSliceForStep(id, s, p.len, bMeta) + 1})`}${lockTag}`,
       },
       h('span', { class: 'ruff-ecell-txt' }, c ? `S${c.slice + 1}` : (locked ? '—' : '')),
       locked ? h('span', { class: 'ruff-ecell-lock', html: ico('lock') }) : null);
@@ -316,16 +320,17 @@ function buildUnifiedGrid(sl, p, params, activeLane, selStep, rows) {
 
 function buildInspector(sl, p, params, activeLane, selStep, rows) {
   const L = activeLane.toUpperCase();
+  const bMeta = (sl && sl.breakMeta) || null;
   const breakId = (sl && sl.breaks && sl.breaks[activeLane]) || null;
-  const desc = breakId ? getBuiltinBreak(breakId) : null;
+  const desc = breakId ? resolveBreakDesc(breakId, bMeta) : null;
   const kind = laneStatusKind(sl, p, activeLane);
   const edited = isBreakLaneEdited(p, activeLane);
   const effRow = rows[activeLane];
   const cell = effRow[selStep];
-  const suggested = suggestedSliceForStep(breakId, selStep, p.len);
+  const suggested = suggestedSliceForStep(breakId, selStep, p.len, bMeta);
   const curSlice = cell ? cell.slice : suggested;
-  const sliceInfo = breakSliceInfo(breakId, curSlice);
-  const sliceTotal = breakSliceCount(breakId);
+  const sliceInfo = breakSliceInfo(breakId, curSlice, bMeta);
+  const sliceTotal = breakSliceCount(breakId, bMeta);
   const beatLabel = breakStepBeatLabel(selStep);
   const muted = !!(params && params[laneMuteKey(activeLane)]);
 
@@ -364,13 +369,14 @@ function buildInspector(sl, p, params, activeLane, selStep, rows) {
     }));
 
   const lockSuffix = laneLocked ? ' · Lane Locked' : colLocked ? ' · Col Locked' : cellDirectLock ? ' · Locked' : '';
+  const sugInfo = breakSliceInfo(breakId, suggested, bMeta);
   const identityText = !breakId && !edited
     ? `Break ${L} unassigned`
     : cell
       ? `${sliceInfo.code} · ${sliceInfo.label}${cell.virtual ? ' (Orig)' : ''}${lockSuffix}`
       : cellLocked
         ? `Locked Silence${laneLocked ? ' (Lane)' : colLocked ? ' (Col)' : ''}`
-        : `Empty · Suggested ${breakSliceInfo(breakId, suggested).code} (${breakSliceInfo(breakId, suggested).label})`;
+        : `Empty · Suggested ${sugInfo.code} (${sugInfo.label})`;
 
   const toggleBtn = h('button', {
     type: 'button',
@@ -382,7 +388,7 @@ function buildInspector(sl, p, params, activeLane, selStep, rows) {
       ? 'Unlock this step before editing'
       : cell
         ? `Remove ${L} hit on step ${selStep + 1}`
-        : `Add ${L} hit on step ${selStep + 1} (${breakSliceInfo(breakId, suggested).code})`,
+        : `Add ${L} hit on step ${selStep + 1} (${sugInfo.code})`,
   }, cell ? 'Hit On' : '+ Add');
   toggleBtn.onclick = () => A.toggleBreakStep(activeLane, selStep);
 
@@ -390,7 +396,7 @@ function buildInspector(sl, p, params, activeLane, selStep, rows) {
     type: 'button',
     class: 'ruff-act hear',
     'data-testid': 'ruff-slice-audition',
-    disabled: !breakId,
+    disabled: !breakId || kind === 'missing',
     title: breakId ? `Audition ${sliceInfo.code} (${sliceInfo.label})` : 'Assign a break first',
   }, h('span', { class: 'ruff-act-i', html: ico('play') }), h('span', {}, sliceInfo.code));
   hearBtn.onclick = () => A.auditionBreakSlice(activeLane, curSlice);
@@ -467,7 +473,7 @@ function buildInspector(sl, p, params, activeLane, selStep, rows) {
       h('button', { type: 'button', class: 'ruff-act on', onclick: () => A.setMode('sound') }, 'Assign in Break Pool'));
   } else {
     for (let k = 0; k < sliceTotal; k++) {
-      const info = breakSliceInfo(breakId, k);
+      const info = breakSliceInfo(breakId, k, bMeta);
       const isCur = !!cell && cell.slice === k;
       const isSug = k === suggested;
       const sb = h('button', {
@@ -475,7 +481,7 @@ function buildInspector(sl, p, params, activeLane, selStep, rows) {
         class: 'ruff-slice-btn'
           + (isCur ? (cell.virtual ? ' orig-on' : ' on') : '')
           + (isSug ? ' sug' : '')
-          + (k === 8 ? ' bar2' : ''),
+          + (k === Math.floor(sliceTotal / 2) ? ' bar2' : ''),
         'data-slice': String(k),
         'data-role': info.role,
         'data-testid': `ruff-slice-${k}`,
@@ -513,7 +519,8 @@ export function renderRuffSequencer() {
 
   const selStep = Math.max(0, Math.min(BREAK_PATTERN_STEPS - 1, store.ui.ruff.selStep || 0));
   const activeLane = resolveActiveLane(sl, p);
-  const rows = Object.fromEntries(BREAK_LANES.map(l => [l, effectiveBreakRow(p, l, sl && sl.breaks && sl.breaks[l])]));
+  const bMeta = (sl && sl.breakMeta) || null;
+  const rows = Object.fromEntries(BREAK_LANES.map(l => [l, effectiveBreakRow(p, l, sl && sl.breaks && sl.breaks[l], bMeta)]));
 
   host.dataset.view = 'unified';
   const chopBar = buildChopBar(sl);

@@ -126,10 +126,17 @@ export function sampleRefFor(meta, slices = defaultSlices()) {
   return cleanSampleRef({ id: meta.id, name: meta.name, duration: meta.duration, sampleRate: meta.sampleRate, channels: meta.channels, slices });
 }
 
-/** every sample id a project references (in slot order, without duplicates) */
+/** every user-imported sample id a project references (MUNCH samples + assigned imported RUFF breaks, without duplicates) */
 export function sampleRefsOf(project) {
   const out = [];
-  for (const s of (project && project.slots) || []) if (s.sample && isSampleId(s.sample.id) && !out.includes(s.sample.id)) out.push(s.sample.id);
+  for (const s of (project && project.slots) || []) {
+    if (s.sample && isSampleId(s.sample.id) && !out.includes(s.sample.id)) out.push(s.sample.id);
+    if (s.breaks && typeof s.breaks === 'object') {
+      for (const id of Object.values(s.breaks)) {
+        if (isSampleId(id) && !out.includes(id)) out.push(id);
+      }
+    }
+  }
   return out;
 }
 

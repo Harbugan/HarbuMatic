@@ -6,11 +6,12 @@ import { BREAK_LANES } from '../core/instruments.js';
 import { BUILTIN_BREAKS, laneVolKey, laneMuteKey, laneAudibleLevel } from '../core/breaks.js';
 import { auditionPitch } from './strip.js';
 import { $, h } from '../ui/dom.js';
-import { Knob, Seg } from '../ui/controls.js';
+import { Knob, Seg, dialog, confirmDialog } from '../ui/controls.js';
 import { ico } from '../ui/icons.js';
 import { catSVG } from '../ui/characters.js';
 import { MACRO_KEYS, MACRO_HINT } from '../music/macros.js';
 import { renderMunch, setMunchRerender } from './munch.js';
+import { buildRuffBreakEditor } from './ruff-editor.js';
 
 let shaperKnobs = {};
 export function renderBottom() {
@@ -74,12 +75,34 @@ let soundSwitches = [];
 let ruffLaneRefs = [];
 let ruffStatusEl = null;
 
+function ruffStorageDialog() {
+  const err = A.samples.store.lastError();
+  const detail = err ? `${err.name} while ${err.phase}${err.message ? `: ${err.message}` : ''}` : 'No storage error recorded';
+  dialog('Imported break not saved offline', h('div', { class: 'ruff-storage-dlg' },
+    h('p', {}, 'This imported WAV plays in the current session, but the browser refused to write it to local sample storage. After a reload or offline launch, it will be missing unless saved.'),
+    h('p', { class: 'mini-hint' }, `Last storage error: ${detail}`)),
+  [
+    { label: 'Close', cls: 'dlg-no' },
+    { label: 'Retry save', cls: 'dlg-ok', onClick: () => { A.retrySaveSamples().then(() => renderSound()); } },
+    {
+      label: 'Repair storage…',
+      cls: 'dlg-warn',
+      onClick: () => {
+        confirmDialog('Repair sample storage?',
+          'HarbuMatic will read any samples that can still be rescued, reset only its sample database, and write them back. Songs are not deleted.',
+          'Repair', () => { A.repairSampleStorage().then(() => renderSound()); });
+      },
+    },
+  ]);
+}
+
 function ruffStatusSummary(sel) {
   const sl = slot(sel), p = P(sel), bpm = store.project.bpm;
   const aud = store.ui.ruff && store.ui.ruff.audition;
   if (aud && aud.slotId === sel) {
-    const st = A.breakLaneState(aud.lane, sel);
-    return { active: true, text: `Audition ${aud.lane.toUpperCase()} · ${st.desc ? st.desc.name : 'Break'}` };
+    const desc = A.getBreakDesc(aud.breakId, sel);
+    const label = aud.lane === 'edit' ? 'Break' : `Audition ${aud.lane.toUpperCase()}`;
+    return { active: true, text: `${label} · ${desc ? desc.name : 'Break'}` };
   }
   const assigned = BREAK_LANES.filter(l => sl && sl.breaks && sl.breaks[l]);
   const audibleLanes = assigned.filter(l => laneAudibleLevel(p, l) > 0);
@@ -93,12 +116,31 @@ function ruffStatusSummary(sel) {
     return { active: false, text: `Paused · ${assigned.length} loaded · ${bpm} BPM` };
   }
   if (assigned.length) return { active: false, text: `Ready · ${assigned.length} loaded · ${bpm} BPM` };
-  return { active: false, text: `Assign a break to A, B or C` };
+  return { active: false, text: `Assign or import a break` };
+}
+
+function bindBreakDrop(el, onFile) {
+  el.addEventListener('dragover', e => {
+    if (!e.dataTransfer || !e.dataTransfer.types || ![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    el.classList.add('drop-active');
+  });
+  el.addEventListener('dragleave', e => {
+    if (!el.contains(e.relatedTarget)) el.classList.remove('drop-active');
+  });
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drop-active');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) onFile(f);
+  });
 }
 
 function buildRuffDeck(sel, p) {
   const deck = h('div', { class: 'ruff-deck', 'data-testid': 'ruff-deck' });
   const playing = A.transport.playing && A.engine.audible(sel);
+  const imported = A.listImportedBreaks(sel);
+
   BREAK_LANES.forEach(l => {
     const L = l.toUpperCase();
     const st = A.breakLaneState(l, sel);
@@ -106,14 +148,18 @@ function buildRuffDeck(sel, p) {
     const muted = !!p[muteKey], vol = p[volKey] ?? .85;
     const isLive = playing && !!st.id && !muted && vol > 0;
     const card = h('div', {
-      class: 'ruff-lane' + (st.id ? ' loaded' : '') + (muted ? ' muted' : '') + (isLive ? ' playing' : '') + (st.auditioning ? ' auditioning' : ''),
+      class: 'ruff-lane' + (st.id ? ' loaded' : '') + (muted ? ' muted' : '') + (isLive ? ' playing' : '') + (st.auditioning ? ' auditioning' : '') + (st.status === 'missing' ? ' missing' : ''),
       'data-lane': l,
     });
-    const metaText = st.status === 'loading' ? 'Loading…' : st.status === 'error' || st.status === 'missing' ? 'Error' : st.desc ? `${st.desc.bpm} BPM` : 'Off';
+    const metaText = st.status === 'loading' ? 'Loading…'
+      : st.status === 'missing' ? 'Missing'
+        : st.status === 'error' ? 'Error'
+          : st.unsaved ? 'Unsaved'
+            : st.desc ? `${st.desc.bpm} BPM${st.desc.bars !== 2 ? ` · ${st.desc.bars}B` : ''}` : 'Off';
     const head = h('div', { class: 'ruff-lane-head' },
       h('span', { class: 'ruff-lane-id' }, L),
       h('b', { class: 'ruff-lane-name' }, st.desc ? st.desc.name : (st.id || 'Empty')),
-      h('span', { class: 'ruff-lane-meta' }, metaText),
+      h('span', { class: 'ruff-lane-meta' + (st.status === 'missing' || st.unsaved ? ' warn' : '') }, metaText),
       h('i', { class: 'ruff-led', 'aria-hidden': 'true' }));
 
     const srcGrid = h('div', { class: 'ruff-src-grid', role: 'group', 'aria-label': `Break ${L} source` });
@@ -138,16 +184,38 @@ function buildRuffDeck(sel, p) {
       btnEl.onclick = () => A.assignBreak(l, b.id, sel);
       srcGrid.append(btnEl);
     });
+    imported.forEach(b => {
+      const on = st.id === b.id;
+      const btnEl = h('button', {
+        type: 'button',
+        class: 'ruff-src imported' + (on ? ' on' : '') + (b.status === 'missing' ? ' missing' : ''),
+        'data-break': b.id,
+        'aria-pressed': String(on),
+        title: `${b.name} — Imported WAV (${b.bpm} BPM, ${b.bars}B)${b.status === 'missing' ? ' — Missing WAV' : ''}`,
+      }, b.name);
+      btnEl.onclick = () => A.assignBreak(l, b.id, sel);
+      srcGrid.append(btnEl);
+    });
 
     const audBtn = h('button', {
       type: 'button',
       class: 'ruff-aud' + (st.auditioning ? ' on' : ''),
       'data-action': 'audition',
-      disabled: !st.id,
+      disabled: !st.id || st.status === 'missing',
       'aria-pressed': String(st.auditioning),
       title: st.id ? (st.auditioning ? `Stop Break ${L} audition` : `Audition Break ${L}`) : `Assign a break to ${L} first`,
     }, h('span', { class: 'ruff-aud-i', html: ico(st.auditioning ? 'stop' : 'play') }), h('span', {}, st.auditioning ? 'Stop' : 'Audition'));
     audBtn.onclick = () => A.auditionBreak(l, sel);
+
+    const editBtn = st.imported
+      ? h('button', {
+        type: 'button',
+        class: 'ruff-edit-btn' + (store.ui.ruff.editBreakId === st.id ? ' on' : ''),
+        'data-action': 'edit-break',
+        title: `Edit ${st.desc ? st.desc.name : 'imported break'} BPM, bars & slices`,
+        onclick: () => A.selectRuffEditBreak(st.id),
+      }, 'Edit')
+      : null;
 
     const muteBtn = h('button', {
       type: 'button',
@@ -171,8 +239,9 @@ function buildRuffDeck(sel, p) {
     volKnob.k = volKey;
     soundKnobs.push(volKnob);
 
-    const ctls = h('div', { class: 'ruff-lane-ctl' }, audBtn, muteBtn, volKnob.el);
+    const ctls = h('div', { class: 'ruff-lane-ctl' }, audBtn, editBtn, muteBtn, volKnob.el);
     card.append(head, srcGrid, ctls);
+    bindBreakDrop(card, f => A.importBreakFile(f, { lane: l, slotId: sel }));
     deck.append(card);
     ruffLaneRefs.push({ lane: l, card, muteKey, volKey, muteBtn });
   });
@@ -208,11 +277,44 @@ export function renderSound() {
   const sel = store.ui.sel, m = typeOf(sel), p = P(sel), type = m.type, placeholder = isPlaceholderSlot(sel), isBreak = isBreakSlot(sel);
   const hear = () => { if (!placeholder && !isBreak) A.engine.audition(sel, auditionPitch(m, store.project.key, 'soundPitch')); };
   const pr = h('div', { class: 'presets' + (isBreak ? ' ruff-head-ctls' : '') });
+  let triggerBreakPicker = null;
   if (isBreak) {
+    A.ensureLocalBreakPool();
     const sum = ruffStatusSummary(sel);
     ruffStatusEl = h('span', { class: 'ruff-status' + (sum.active ? ' active' : ''), 'data-testid': 'ruff-status' },
       h('i', { class: 'ruff-led', 'aria-hidden': 'true' }),
       h('span', { class: 'ruff-status-txt' }, sum.text));
+    const fileInput = h('input', {
+      type: 'file',
+      accept: '.wav,audio/wav,audio/wave,audio/x-wav',
+      hidden: true,
+      'data-testid': 'ruff-import-file',
+    });
+    fileInput.onchange = async () => {
+      const f = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (f) await A.importBreakFile(f, { slotId: sel });
+    };
+    triggerBreakPicker = () => fileInput.click();
+    const impBtn = h('button', {
+      type: 'button',
+      class: 'ruff-import-btn',
+      'data-testid': 'ruff-import-btn',
+      title: 'Import your own WAV drum break (1, 2 or 4 bars)',
+    }, h('span', { class: 'ruff-imp-i', html: ico('upload') }), h('span', {}, 'Import WAV'));
+    impBtn.onclick = triggerBreakPicker;
+
+    const unsaved = A.unsavedBreakIds(sel);
+    const unsavedBtn = unsaved.length
+      ? h('button', {
+        type: 'button',
+        class: 'btn mini ruff-unsaved-btn',
+        'data-testid': 'ruff-unsaved-btn',
+        title: 'An imported break could not be saved offline on this device',
+        onclick: ruffStorageDialog,
+      }, 'Not saved')
+      : null;
+
     const fitSeg = Seg(
       [['stretch', 'Stretch'], ['tape', 'Tape']],
       p.fitMode === 'tape' ? 'tape' : 'stretch',
@@ -220,7 +322,7 @@ export function renderSound() {
       { label: 'Tempo sync mode: Stretch keeps pitch, Tape follows speed' },
     );
     fitSeg.classList.add('ruff-fit-seg');
-    pr.append(ruffStatusEl, fitSeg);
+    pr.append(ruffStatusEl, unsavedBtn, impBtn, fileInput, fitSeg);
   } else if (placeholder) {
     pr.append(h('span', { class: 'ruff-ph-tag' }, 'Foundation · Non-playing'));
   } else {
@@ -230,7 +332,11 @@ export function renderSound() {
   host.append(h('div', { class: 'view-head sound-head' },
     h('div', { class: 'chip' }, h('span', { class: 'dot' }), h('span', { class: 'chip-name' }, m.name), h('span', { class: 'chip-scene' }, isBreak ? 'Break Pool · A/B/C' : placeholder ? 'Breakbeat Machine' : 'Sound design')),
     pr));
-  if (isBreak) host.append(buildRuffDeck(sel, p));
+  if (isBreak) {
+    host.append(buildRuffDeck(sel, p));
+    const editor = buildRuffBreakEditor(sel, { onReimport: triggerBreakPicker });
+    if (editor) host.append(editor);
+  }
   const groups = h('div', { class: 'sgroups sound-grid' + (isBreak ? ' ruff-sound-bottom' : ''), 'data-inst': type });
   if (placeholder) {
     const sl = slot(sel);
